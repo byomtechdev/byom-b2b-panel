@@ -3340,9 +3340,13 @@ async function urunEkle() {
     urunEkleUyar('Geçerli bir fiyat yazın.\nÖrnek: 2450,00');
     $('#yeniFiyat').focus(); return;
   }
-  if (indirimliYazi && (isNaN(indirimli) || !isFinite(indirimli) || indirimli < 0)) {
+  /* SIFIR da geçersizdir: sale_price="0.00" WooCommerce'de geçerli bir indirim
+     sayılır (boş dize DEĞİL ve normal fiyattan küçük), yani ürün sitede bedavaya
+     düşer. Üstelik okuma tarafındaki indirimliFiyatCoz (n > 0) sıfırı '' gösterip
+     kutuyu boş bıraktığı için kullanıcı hatayı sonradan fark edemiyordu. */
+  if (indirimliYazi && (isNaN(indirimli) || !isFinite(indirimli) || indirimli <= 0)) {
     urunEkleUyar('Geçerli bir indirimli fiyat yazın.\nÖrnek: 1990,00\n' +
-                 'İndirim uygulamak istemiyorsanız kutuyu boş bırakın.');
+                 'Sıfır yazılamaz — indirim uygulamak istemiyorsanız kutuyu boş bırakın.');
     $('#yeniIndirimliFiyat').focus(); return;
   }
   /* Sunucu (b2b-core) indirimli fiyatın normal fiyattan KÜÇÜK olmasını şart koşar;
@@ -3467,6 +3471,8 @@ async function urunEkle() {
   await urunleriYukle('');   // Siteden tazele, gerçek veriyi göster
 
   bildir('Ürün eklendi:\n' + ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
+         (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli) : '') +
+         (koli > 1 ? '\nKoli içi adet: ' + koli : '') +
          (yuklenenler.length ? '\nGörsel: ' + yuklenenler.length + ' adet yüklendi' : '') +
          (kategoriId ? '\nKategori: ' + kategoriAdi : '') +
          '\nSitenize kaydedildi.', 'basari');

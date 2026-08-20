@@ -759,8 +759,13 @@ async function urunDuzenleAc(id) {
     /* İndirimli fiyat: üründe indirim yoksa kutu BOŞ kalır — "0,00" yazılsaydı
        kullanıcı dokunmadan kaydettiğinde ürün bedavaya düşerdi. */
     const indirimliAlani = $('#duzenleIndirimliFiyat');
+    const indirimliDeger = indirimliFiyatCoz(urun.indirimliFiyat);
+    /* Açılıştaki indirim durumu saklanır: kaydetme bildirimindeki "İndirim
+       kaldırıldı" satırı YALNIZCA gerçekten var olan bir indirim silindiğinde
+       çıksın. İndirimsiz üründe kutu zaten boş olduğu için bu satır her kayıtta
+       (ör. yalnızca stok düzeltilirken) yanıltıcı biçimde görünüyordu. */
+    d.duzenleIlkIndirimliVarMi = (indirimliDeger !== '');
     if (indirimliAlani) {
-      const indirimliDeger = indirimliFiyatCoz(urun.indirimliFiyat);
       indirimliAlani.value = (indirimliDeger === '') ? '' : fiyatYazi(indirimliDeger);
     }
 
@@ -883,9 +888,11 @@ async function urunDuzenleKaydet() {
     if (fiyatAlani) fiyatAlani.focus();
     return;
   }
-  if (indirimliYazi && (isNaN(indirimli) || !isFinite(indirimli) || indirimli < 0)) {
+  /* Sıfır da geçersiz — bkz. renderer.js urunEkle: sale_price="0.00" ürünü
+     sitede bedavaya düşürür, panel ise kutuyu boş gösterip hatayı gizler. */
+  if (indirimliYazi && (isNaN(indirimli) || !isFinite(indirimli) || indirimli <= 0)) {
     duzenleUyar('Geçerli bir indirimli fiyat yazın.\nÖrnek: 1990,00\n' +
-                'İndirimi kaldırmak için kutuyu tamamen boşaltın.');
+                'Sıfır yazılamaz — indirimi kaldırmak için kutuyu tamamen boşaltın.');
     if (indirimliAlani) indirimliAlani.focus();
     return;
   }
@@ -987,7 +994,8 @@ async function urunDuzenleKaydet() {
       urunleriCiz('');
 
       bildir('Ürün güncellendi:\n' + ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
-             (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli) : '\nİndirim kaldırıldı') +
+             (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli)
+                            : (d.duzenleIlkIndirimliVarMi ? '\nİndirim kaldırıldı' : '')) +
              (koli > 1 ? '\nKoli içi adet: ' + koli : '') +
              (yeniGorseller.length ? '\nGörsel: ' + yeniGorseller.length + ' adet değiştirildi' : '') +
              '\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
@@ -1074,7 +1082,8 @@ async function urunDuzenleKaydet() {
     await urunleriYukle(ekAramaMetni());
 
     bildir('Ürün güncellendi:\n' + ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
-           (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli) : '\nİndirim kaldırıldı') +
+           (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli)
+                          : (d.duzenleIlkIndirimliVarMi ? '\nİndirim kaldırıldı' : '')) +
            (koli > 1 ? '\nKoli içi adet: ' + koli : '') +
            (kodDegistiMi && kod ? '\nBarkod/SKU: ' + kod : '') +
            (kategoriDegistiMi && kategoriId ? '\nKategori: ' + kategoriAdi : '') +

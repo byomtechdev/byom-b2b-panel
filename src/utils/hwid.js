@@ -398,10 +398,15 @@ async function hwidUret() {
   return (await hwidDetay()).hwid;
 }
 
-/** Önbelleği temizler — donanım değişikliğinden sonra elle yeniden hesaplamak için. */
+/** Önbelleği temizler — donanım değişikliğinden sonra elle yeniden hesaplamak için.
+    SÜREN işlemin kilidine DOKUNULMAZ: kilit de sıfırlansaydı hwidDetay'daki
+    kuyruklama dalı ("if (_suredekiIslem)") atlanır ve halihazırda çalışan tura
+    PARALEL ikinci bir PowerShell turu başlardı — "Donanım Kimliğini Yenile",
+    açılış hesabı sürerken tam olarak buna yol açıyordu. Süren tur kilidi kendi
+    finalizer'ında zaten bırakıyor; ardından gelen hwidDetay(true) çağrısı sırası
+    gelince temizlenmiş önbellekle yeniden hesaplar. */
 function onbellegiTemizle() {
   _onbellek = null;
-  _suredekiIslem = null;
 }
 
 module.exports = {
