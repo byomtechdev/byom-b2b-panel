@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https:; img-src 'self' data: https: http:;" />
+<title>B2B Yönetim Paneli</title>
+
+<!-- ===================================================================
+     TAILWIND CSS
+     Önce proje içindeki yerel kopya denenir (internetsiz sunum için).
+     Bulunamazsa CDN'e düşer. İkisi de olmazsa aşağıdaki yedek CSS devreye girer.
+     =================================================================== -->
+<script>
+  function tailwindAyarla() {
+    if (!window.tailwind) return;
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            marka: {
+              50:'#eef4ff',100:'#dbe6ff',200:'#bed0ff',300:'#93b0ff',
+              400:'#6086ff',500:'#3b60f6',600:'#2542eb',700:'#1d33d8',
+              800:'#1e2daf',900:'#1e2c8a'
+            }
+          }
+        }
+      }
+    };
+  }
+  function tailwindCdnDene() {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.tailwindcss.com';
+    s.onload = tailwindAyarla;
+    document.head.appendChild(s);
+  }
+</script>
+<script src="vendor/tailwind.js" onload="tailwindAyarla()" onerror="tailwindCdnDene()"></script>
+
+<!-- ===================================================================
+     GÖRÜNÜM ÖLÇEĞİ (UI ZOOM)
+     Sayfa çizilmeden ÖNCE uygulanır ki açılışta ekran zıplamasın.
+     Electron'da webFrame.setZoomFactor kullanılır — tarayıcının kendi
+     yakınlaştırması olduğu için Tailwind grid/flex düzeni hiç bozulmaz.
+     Electron yoksa (düz tarayıcıda açılırsa) CSS zoom'a düşer.
+     =================================================================== -->
+<script>
+  (function () {
+    window.B2B_OLCEK_SECENEKLERI = [70, 80, 90, 100, 110, 120];
+    window.B2B_OLCEK_ANAHTARI   = 'b2b_ui_olcek';
+    window.B2B_OLCEK_VARSAYILAN = 100;
+
+    /** localStorage'daki ölçeği okur; geçersizse %100 döner. */
+    window.b2bOlcekOku = function () {
+      var ham = 0;
+      try { ham = parseInt(localStorage.getItem(window.B2B_OLCEK_ANAHTARI), 10); } catch (e) { ham = 0; }
+      return window.B2B_OLCEK_SECENEKLERI.indexOf(ham) !== -1 ? ham : window.B2B_OLCEK_VARSAYILAN;
+    };
+
+    /** Ölçeği uygular ve hatırlanmak üzere localStorage'a yazar. Uygulanan değeri döner. */
+    window.b2bOlcekUygula = function (yuzde) {
+      var y = window.B2B_OLCEK_SECENEKLERI.indexOf(Number(yuzde)) !== -1
+        ? Number(yuzde)
+        : window.B2B_OLCEK_VARSAYILAN;
+      var carpan = y / 100;
+
+      var uygulandi = false;
+      try {
+        var webFrame = require('electron').webFrame;
+        if (webFrame && typeof webFrame.setZoomFactor === 'function') {
+          webFrame.setZoomFactor(carpan);
+          uygulandi = true;
+        }
+      } catch (e) { uygulandi = false; }
+
+      if (!uygulandi && document.documentElement) {
+        document.documentElement.style.zoom = carpan; // Yedek yol
+      }
+
+      try { localStorage.setItem(window.B2B_OLCEK_ANAHTARI, String(y)); } catch (e) { /* önemli değil */ }
+      window.B2B_OLCEK = y;
+      return y;
+    };
+
+    // Açılışta kayıtlı ölçeği hemen uygula
+    window.b2bOlcekUygula(window.b2bOlcekOku());
+  })();
+</script>
+
+<style>
+  /* ---- Temel / yedek stiller (Tailwind hiç yüklenemezse bile okunabilir kalsın) ---- */
+  :root { color-scheme: light; }
+  html { font-size: 17px; }              /* Büyük punto: gözü yormasın */
+  html.dark { color-scheme: dark; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Segoe UI Variable", Roboto, system-ui, -apple-system, Arial, sans-serif;
+    background: #f1f5f9; color: #0f172a;
+    height: 100vh; overflow: hidden;
+  }
+  html.dark body { background: #0b1220; color: #e2e8f0; }
+  button { font-family: inherit; cursor: pointer; }
+  input, select, textarea { font-family: inherit; }
+  * { box-sizing: border-box; }
+
+  /* Kaydırma çubuğu — kalın ve görünür olsun */
+  ::-webkit-scrollbar { width: 14px; height: 14px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; border: 4px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; background-clip: content-box; }
+  html.dark ::-webkit-scrollbar-thumb { background: #334155; background-clip: content-box; }
+
+  /* Sayı kutularındaki minik okları kaldır — yanlışlıkla tıklanmasın */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+
+  .sekme-govde { display: none; }
+  .sekme-govde.acik { display: block; animation: girisAnimasyon .18s ease-out; }
+  @keyframes girisAnimasyon { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .donuyor { animation: donme 1s linear infinite; display: inline-block; }
+  @keyframes donme { to { transform: rotate(360deg); } }
+
+  .bildirim-giris { animation: bildirimGir .25s cubic-bezier(.2,.8,.2,1); }
+  @keyframes bildirimGir { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+
+<div class="flex flex-col h-screen">
+
+  <!-- ==================================================================
+       ÜST BİLGİ ÇUBUĞU
+       ================================================================== -->
+  <header class="h-20 shrink-0 flex items-center gap-4 px-5 bg-white dark:bg-slate-800
+                 border-b-2 border-slate-200 dark:border-slate-700 shadow-sm z-20">
+
+    <div class="flex items-center gap-3 min-w-0">
+      <div id="firmaVarsayilanSimge" class="w-14 h-14 rounded-2xl bg-marka-700 text-white grid place-items-center text-3xl shadow-lg shrink-0">🔧</div>
+      <div id="firmaLogoKutu" class="hidden w-14 h-14 rounded-2xl bg-white border-2 border-slate-200 dark:border-slate-600 overflow-hidden shadow-lg shrink-0 grid place-items-center">
+        <img id="firmaLogo" alt="Firma logosu" class="max-w-full max-h-full object-contain" />
+      </div>
+      <div class="min-w-0">
+        <div id="firmaAdiBaslik" class="text-2xl font-black leading-tight truncate">Yükleniyor…</div>
+        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide">B2B YÖNETİM PANELİ · Sürüm 1.0</div>
+      </div>
+    </div>
+
+    <div class="ml-auto flex items-center gap-3 shrink-0">
+
+      <!-- Lisans / Yıllık bakım durumu -->
+      <div id="lisansRozet"
+           class="hidden sm:flex items-center gap-2 h-12 px-4 rounded-xl font-bold text-base
+                  bg-emerald-50 text-emerald-800 border-2 border-emerald-200
+                  dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30">
+        🟢 Lisans kontrol ediliyor…
+      </div>
+
+      <!-- API bağlantı durumu -->
+      <div id="apiRozet"
+           class="flex items-center gap-2 h-12 px-4 rounded-xl font-bold text-base
+                  bg-amber-50 text-amber-800 border-2 border-amber-200
+                  dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30">
+        🟡 DEMO MODU
+      </div>
+
+      <!-- Görünüm ölçeği (UI Zoom) -->
+      <div title="Arayüz görünüm ölçeği — Ctrl+ / Ctrl− / Ctrl0"
+           class="hidden md:flex items-center gap-2 h-12 px-3 rounded-xl
+                  bg-slate-100 border-2 border-slate-200
+                  dark:bg-slate-700 dark:border-slate-600">
+        <span class="text-xl leading-none select-none">🔍</span>
+        <select id="zoomSecUst" aria-label="Görünüm ölçeği"
+                class="bg-transparent text-base font-extrabold outline-none cursor-pointer
+                       text-slate-700 dark:text-slate-100">
+          <option value="70">%70</option>
+          <option value="80">%80</option>
+          <option value="90">%90</option>
+          <option value="100">%100</option>
+          <option value="110">%110</option>
+          <option value="120">%120</option>
+        </select>
+      </div>
+
+      <!-- Koyu / Açık tema -->
+      <button id="temaBtn" title="Koyu / Açık görünüm"
+              class="w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition">🌙</button>
+    </div>
+  </header>
+
+  <div class="flex flex-1 min-h-0">
+
+    <!-- ==================================================================
+         SOL MENÜ (4 ANA SEKME)
+         ================================================================== -->
+    <nav class="w-72 shrink-0 bg-white dark:bg-slate-800 border-r-2 border-slate-200 dark:border-slate-700
+                p-4 flex flex-col gap-3 overflow-y-auto">
+
+      <button data-sekme="siparisler" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <span class="text-3xl align-middle mr-2">📦</span>
+        <span class="align-middle">Siparişler &<br><span class="ml-10">Depo Fişi</span></span>
+      </button>
+
+      <button data-sekme="urunler" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <span class="text-3xl align-middle mr-2">🏷️</span>
+        <span class="align-middle">Ürün &<br><span class="ml-10">Stok Yönetimi</span></span>
+      </button>
+
+      <button data-sekme="uyeler" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+        <span class="text-3xl align-middle mr-2">👥</span>
+        <span class="align-middle">B2B Üye<br><span class="ml-10">Onayları</span></span>
+        <span id="uyeSayaci"
+              class="hidden absolute top-3 right-3 min-w-8 h-8 px-2 rounded-full bg-red-600 text-white
+                     text-base font-black grid place-items-center shadow-lg">0</span>
+      </button>
+
+      <button data-sekme="iskonto" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <span class="text-3xl align-middle mr-2">🏷️</span>
+        <span class="align-middle">İSKONTO<br><span class="ml-10">ORANLARI</span></span>
+      </button>
+
+      <button data-sekme="vitrin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <span class="text-3xl align-middle mr-2">🖼️</span>
+        <span class="align-middle">Web<br><span class="ml-10">Vitrini</span></span>
+      </button>
+
+      <button data-sekme="ayarlar" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <span class="text-3xl align-middle mr-2">⚙️</span>
+        <span class="align-middle">API &<br><span class="ml-10">Site Ayarları</span></span>
+      </button>
+
+      <!-- BYOM Brain destek masası: talepler doğrudan merkezî sisteme düşer -->
+      <button data-sekme="destek" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+        <span class="text-3xl align-middle mr-2">🎧</span>
+        <span class="align-middle">BYOM<br><span class="ml-10">Destek</span></span>
+        <span id="destekSayaci"
+              class="hidden absolute top-3 right-3 min-w-8 h-8 px-2 rounded-full bg-red-600 text-white
+                     text-base font-black grid place-items-center shadow-lg">0</span>
+      </button>
+
+      <div class="mt-auto pt-4 text-center text-sm text-slate-400 dark:text-slate-500 leading-relaxed">
+        Yardım için<br><span class="font-bold text-slate-500 dark:text-slate-400">0850 000 00 00</span>
+      </div>
+    </nav>
+
+    <!-- ==================================================================
+         İÇERİK ALANI
+         ================================================================== -->
+    <main class="flex-1 min-w-0 overflow-y-auto p-6">
+
+      <!-- ============================================================
+           SEKME 1 — 📦 SİPARİŞLER & DEPO FİŞİ
+           ============================================================ -->
+      <section id="sekme-siparisler" class="sekme-govde acik">
+
+        <div class="flex flex-wrap items-center gap-4 mb-5">
+          <h1 class="text-3xl font-black">📦 Siparişler</h1>
+
+          <div id="siparisSonKontrol"
+               class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
+
+          <label class="ml-auto flex items-center gap-2 h-14 px-4 rounded-2xl cursor-pointer select-none
+                        bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600
+                        text-lg font-bold">
+            <input id="otoYenileKutu" type="checkbox" class="w-6 h-6 accent-emerald-600" />
+            ⏱️ Otomatik Yenile
+          </label>
+
+          <button id="siparisYenileBtn"
+                  class="h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            🔄 YENİLE
+          </button>
+        </div>
+
+        <!-- Sipariş sekmeleri: [Aktif Siparişler] [Kargodakiler] [Teslim Edilenler]
+             Her sekme sunucudan KENDİ durum kümesini çeker (bkz. SIPARIS_SEKMELERI). -->
+        <div id="siparisSekmeler" class="flex flex-wrap gap-3 mb-5"></div>
+
+        <!-- Durum süzgeci (açık sekmenin içini daraltır) -->
+        <div id="siparisSuzgecler" class="flex flex-wrap gap-2 mb-3"></div>
+
+        <!-- Teslim durumu süzgeci (müşterinin web sitesinden verdiği cevap) -->
+        <div id="teslimSuzgecler" class="flex flex-wrap gap-2 mb-5"></div>
+
+        <!-- Özet kartlar -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
+            <div class="text-base font-bold text-slate-500 dark:text-slate-400">LİSTELENEN SİPARİŞ</div>
+            <div id="ozetToplam" class="text-4xl font-black mt-1">—</div>
+          </div>
+          <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border-2 border-amber-300 dark:border-amber-500/40 shadow-sm">
+            <div class="text-base font-bold text-amber-600 dark:text-amber-400">HAZIRLANMAYI BEKLEYEN</div>
+            <div id="ozetBekleyen" class="text-4xl font-black mt-1 text-amber-600 dark:text-amber-400">—</div>
+          </div>
+          <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border-2 border-emerald-300 dark:border-emerald-500/40 shadow-sm">
+            <div class="text-base font-bold text-emerald-600 dark:text-emerald-400">TOPLAM TUTAR</div>
+            <div id="ozetTutar" class="text-4xl font-black mt-1 text-emerald-600 dark:text-emerald-400">—</div>
+          </div>
+        </div>
+
+        <div id="siparisListesi" class="flex flex-col gap-4"></div>
+      </section>
+
+      <!-- ============================================================
+           SEKME 2 — 🏷️ ÜRÜN & STOK YÖNETİMİ
+           ============================================================ -->
+      <section id="sekme-urunler" class="sekme-govde">
+
+        <div class="flex flex-wrap items-center gap-4 mb-6">
+          <h1 class="text-3xl font-black">🏷️ Ürün & Stok Yönetimi</h1>
+          <button id="urunEkleBtn"
+                  class="ml-auto h-14 px-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            ➕ YENİ ÜRÜN EKLE
+          </button>
+          <button id="urunYenileBtn"
+                  class="h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            🔄 YENİLE
+          </button>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-4 mb-6">
+          <div class="relative flex-1">
+            <span class="absolute left-5 top-1/2 -translate-y-1/2 text-3xl pointer-events-none">🔎</span>
+            <input id="urunArama" type="search" autocomplete="off"
+                   placeholder="Ürün adı veya stok kodu yazın…"
+                   class="w-full h-16 pl-16 pr-5 rounded-2xl text-xl font-semibold
+                          bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600
+                          focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+          </div>
+          <select id="urunDurumSuzgec"
+                  class="h-16 px-4 rounded-2xl text-xl font-bold shrink-0
+                         bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600
+                         focus:border-marka-600 outline-none transition">
+            <option value="">🗂️ Tüm Ürünler</option>
+            <option value="publish">🟢 Sadece Yayında</option>
+            <option value="draft">⚪ Sadece Gizli (Taslak)</option>
+          </select>
+        </div>
+
+        <div id="urunListesi" class="flex flex-col gap-4"></div>
+      </section>
+
+      <!-- ============================================================
+           SEKME 3 — 👥 B2B ÜYE ONAYLARI
+           ============================================================ -->
+      <section id="sekme-uyeler" class="sekme-govde">
+
+        <div class="flex flex-wrap items-center gap-4 mb-4">
+          <h1 class="text-3xl font-black">👥 B2B Üye Onayları</h1>
+          <button id="uyeYenileBtn"
+                  class="ml-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            🔄 YENİLE
+          </button>
+        </div>
+
+        <p class="mb-5 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
+                  border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+          ℹ️ Aşağıdaki firmalar sitenizden <b>toptan fiyatları görebilmek</b> için başvurdu.
+          <b>Onayladığınız</b> müşteriler toptan fiyat listesine erişebilir.
+          Bir bayi kartına tıklayarak <b>geçmiş siparişlerinin dökümünü</b> görebilirsiniz.
+        </p>
+
+        <div class="flex flex-col lg:flex-row gap-4 mb-6">
+          <div id="uyeSuzgecler" class="flex flex-wrap gap-2"></div>
+          <div class="relative flex-1 min-w-64">
+            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-2xl pointer-events-none">🔎</span>
+            <input id="uyeArama" type="search" autocomplete="off"
+                   placeholder="Firma adı, e-posta, vergi no veya telefon…"
+                   class="w-full h-14 pl-14 pr-4 rounded-2xl text-lg font-semibold
+                          bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600
+                          focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+          </div>
+        </div>
+
+        <div id="uyeListesi" class="grid grid-cols-1 xl:grid-cols-2 gap-4"></div>
+      </section>
+
+      <!-- ============================================================
+           SEKME 4 — 🏷️ İSKONTO ORANLARI
+           Nakit / Kredi Kartı / Vadeli sipariş iskontoları.
+           Kaydedilen oranlar POST /wp-json/b2b/v1/settings/discounts ucuna
+           gönderilir ve web sitesindeki sepet hesabında anında geçerli olur.
+           ============================================================ -->
+      <section id="sekme-iskonto" class="sekme-govde">
+
+        <div class="flex flex-wrap items-center gap-4 mb-5">
+          <h1 class="text-3xl font-black">🏷️ İskonto Oranları</h1>
+          <button id="iskontoYenileBtn"
+                  class="ml-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            🔄 YENİLE
+          </button>
+        </div>
+
+        <p class="mb-6 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
+                  border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4 leading-relaxed">
+          ℹ️ Bayileriniz sipariş oluştururken <b>Nakit</b>, <b>Kredi Kartı</b> veya <b>Vadeli</b>
+          seçeneklerinden birini seçmek zorundadır. Aşağıda belirlediğiniz oran, seçilen türe göre
+          <b>sepet toplamına anında</b> uygulanır ve siparişin üzerine not olarak işlenir.
+          <br>Vadeli siparişlerde genellikle iskonto uygulanmaz (%0 = sabit fiyat).
+        </p>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+          <!-- Sol: oran formu -->
+          <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700
+                      shadow-sm flex flex-col gap-6">
+
+            <div class="rounded-2xl border-2 border-emerald-300 dark:border-emerald-500/40
+                        bg-emerald-50 dark:bg-emerald-500/10 p-5">
+              <label for="iskontoNakit" class="block text-xl font-black mb-1 text-emerald-800 dark:text-emerald-300">
+                💵 Nakit Sipariş
+              </label>
+              <p class="text-base text-emerald-700 dark:text-emerald-400 mb-3">
+                Sipariş bedeli nakit veya havale ile peşin ödenir.
+              </p>
+              <div class="flex items-center gap-3">
+                <input id="iskontoNakit" type="text" inputmode="decimal" placeholder="12"
+                       class="w-40 h-16 px-4 rounded-xl text-3xl font-black text-right
+                              bg-white dark:bg-slate-900 border-2 border-emerald-400 dark:border-emerald-500/50
+                              focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/20 outline-none transition" />
+                <span class="text-3xl font-black text-emerald-700 dark:text-emerald-400">% İskonto</span>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border-2 border-sky-300 dark:border-sky-500/40
+                        bg-sky-50 dark:bg-sky-500/10 p-5">
+              <label for="iskontoKart" class="block text-xl font-black mb-1 text-sky-800 dark:text-sky-300">
+                💳 Kredi Kartı Sipariş
+              </label>
+              <p class="text-base text-sky-700 dark:text-sky-400 mb-3">
+                Ödeme kredi kartı ile tahsil edilir.
+              </p>
+              <div class="flex items-center gap-3">
+                <input id="iskontoKart" type="text" inputmode="decimal" placeholder="8"
+                       class="w-40 h-16 px-4 rounded-xl text-3xl font-black text-right
+                              bg-white dark:bg-slate-900 border-2 border-sky-400 dark:border-sky-500/50
+                              focus:border-sky-600 focus:ring-4 focus:ring-sky-600/20 outline-none transition" />
+                <span class="text-3xl font-black text-sky-700 dark:text-sky-400">% İskonto</span>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border-2 border-amber-300 dark:border-amber-500/40
+                        bg-amber-50 dark:bg-amber-500/10 p-5">
+              <label for="iskontoVadeli" class="block text-xl font-black mb-1 text-amber-800 dark:text-amber-300">
+                🗓️ Vadeli Sipariş
+              </label>
+              <p class="text-base text-amber-700 dark:text-amber-400 mb-3">
+                Sipariş cari hesaba vadeli işlenir. %0 girilirse sabit fiyat uygulanır.
+              </p>
+              <div class="flex items-center gap-3">
+                <input id="iskontoVadeli" type="text" inputmode="decimal" placeholder="0"
+                       class="w-40 h-16 px-4 rounded-xl text-3xl font-black text-right
+                              bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-500/50
+                              focus:border-amber-600 focus:ring-4 focus:ring-amber-600/20 outline-none transition" />
+                <span class="text-3xl font-black text-amber-700 dark:text-amber-400">% İskonto</span>
+              </div>
+            </div>
+
+            <button id="iskontoKaydetBtn"
+                    class="h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                           text-white text-xl font-extrabold shadow-lg transition">
+              💾 ORANLARI KAYDET
+            </button>
+
+            <div id="iskontoDurum" class="text-lg font-bold whitespace-pre-line"></div>
+          </div>
+
+          <!-- Sağ: canlı önizleme -->
+          <div class="flex flex-col gap-6">
+            <!-- Canlı örnek hesap tablosu renderer-ek.js tarafından çizilir -->
+            <div id="iskontoOnizleme"></div>
+
+            <div class="bg-marka-50 dark:bg-marka-900/20 rounded-2xl p-6 border-2 border-marka-200 dark:border-marka-800">
+              <div class="text-xl font-black mb-3 text-marka-800 dark:text-marka-200">📘 Nasıl Çalışır?</div>
+              <ol class="list-decimal ml-6 space-y-2 text-lg leading-relaxed text-slate-700 dark:text-slate-200">
+                <li>Bayi sepetini doldurup <b>Sipariş Oluştur</b> ekranına gelir.</li>
+                <li>Üç seçenekten birini işaretlemeden siparişi tamamlayamaz.</li>
+                <li>Seçtiği türün iskontosu sepet toplamına <b>anında</b> yansır.</li>
+                <li>Sipariş kaydında tür ve oran saklanır; bu ekranın
+                    <b>📦 Siparişler</b> sekmesinde rozet olarak görünür.</li>
+              </ol>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ============================================================
+           SEKME — 🖼️ WEB VİTRİNİ (kampanyalı ürünler + banner/slider)
+           İçerik renderer-ek.js tarafından doldurulur.
+           ============================================================ -->
+      <section id="sekme-vitrin" class="sekme-govde">
+
+        <div class="flex flex-wrap items-center gap-4 mb-5">
+          <h1 class="text-3xl font-black">🖼️ Web Vitrini</h1>
+          <button id="vitrinYenileBtn"
+                  class="ml-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            🔄 SİTEDEN YÜKLE
+          </button>
+        </div>
+
+        <p class="mb-6 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
+                  border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4 leading-relaxed">
+          ℹ️ Burada seçtiğiniz <b>Öne Çıkan Ürünler</b> ve <b>Banner/Slider</b> görselleri
+          sitenizin B2B Core yapılandırmasına (<code>theme-config</code>) kaydedilir —
+          <b>B2B Core eklentisi</b> gerektirir. Bu veriyi ana sayfada göstermek, sitenizin
+          <b>temasının</b> bu alanları okuyacak şekilde uyarlanmasına bağlıdır.
+        </p>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+          <!-- Sol: Kampanyalı / Öne Çıkan Ürünler -->
+          <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700
+                      shadow-sm flex flex-col gap-4">
+            <div class="text-xl font-black">⭐ Kampanyalı / Öne Çıkan Ürünler</div>
+            <p class="text-base text-slate-500 dark:text-slate-400">
+              Ürün ara, tek tıkla vitrine ekle. Sıra ▲▼ ile değiştirilir; listedeki
+              ürün sırası web sitesinde de aynen kullanılır.
+            </p>
+
+            <div class="relative">
+              <input id="vitrinUrunArama" type="text" placeholder="🔎 Ürün ara (ad veya stok kodu)…" autocomplete="off"
+                     class="w-full h-14 px-4 rounded-xl text-lg font-semibold
+                            bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                            focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+              <div id="vitrinUrunAramaSonuc"
+                   class="hidden absolute z-10 mt-2 w-full max-h-72 overflow-y-auto rounded-xl border-2
+                          border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl p-2
+                          flex flex-col gap-1"></div>
+            </div>
+
+            <div class="text-base font-bold text-slate-500 dark:text-slate-400">
+              Vitrindeki Ürünler (<span id="vitrinUrunSayisi">0</span>)
+            </div>
+            <div id="vitrinUrunListesi" class="flex flex-col gap-2"></div>
+          </div>
+
+          <!-- Sağ: Ana Sayfa Slider / Banner -->
+          <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700
+                      shadow-sm flex flex-col gap-4">
+            <div class="flex items-center gap-3">
+              <div class="text-xl font-black">🎞️ Ana Sayfa Slider / Banner</div>
+              <button id="vitrinBannerEkleBtn" type="button"
+                      class="ml-auto h-12 px-5 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                             dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                             text-base font-extrabold transition">➕ BANNER EKLE</button>
+              <input id="vitrinBannerDosyaSec" type="file" accept="image/*" class="hidden" />
+            </div>
+            <p class="text-base text-slate-500 dark:text-slate-400">
+              Görsel yükleyin, isterseniz başlık ve tıklanınca gidilecek bağlantıyı yazın.
+              Sıra ▲▼ ile değiştirilir.
+            </p>
+
+            <div id="vitrinBannerListesi" class="flex flex-col gap-4"></div>
+          </div>
+
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-center gap-4">
+          <button id="vitrinGonderBtn"
+                  class="h-16 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            🚀 DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER
+          </button>
+          <div id="vitrinDurum" class="text-lg font-bold whitespace-pre-line"></div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           SEKME 5 — ⚙️ API & SİTE AYARLARI
+           ============================================================ -->
+      <section id="sekme-ayarlar" class="sekme-govde">
+
+        <h1 class="text-3xl font-black mb-6">⚙️ API & Site Ayarları</h1>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+          <!-- Sol sütun: form -->
+          <div class="flex flex-col gap-5">
+
+            <!-- Demo / Canlı anahtarı -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
+              <div class="text-xl font-black mb-4">Çalışma Modu</div>
+              <div class="flex items-center gap-5 flex-wrap">
+                <span id="etiketDemo" class="text-xl font-extrabold">🎭 Demo Modu</span>
+                <button id="modToggle" type="button" role="switch" aria-checked="true"
+                        class="relative w-28 h-14 rounded-full bg-amber-400 transition-colors shrink-0
+                               focus:outline-none focus:ring-4 focus:ring-marka-600/30">
+                  <span id="modTopuz"
+                        class="absolute top-1.5 left-1.5 w-11 h-11 rounded-full bg-white shadow-lg
+                               transition-transform duration-200"></span>
+                </button>
+                <span id="etiketCanli" class="text-xl font-extrabold opacity-40">🌐 Canlı Mod</span>
+              </div>
+              <p id="modAciklama" class="mt-4 text-lg text-slate-600 dark:text-slate-300 leading-relaxed">
+                Şu an <b>Demo Modu</b> açık. Ekrandaki siparişler, ürünler ve üyeler örnek verilerdir;
+                sitenizde <b>hiçbir değişiklik yapılmaz</b>. Sunum ve deneme için güvenlidir.
+              </p>
+            </div>
+
+            <!-- Görünüm ölçeği (UI Zoom) -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
+              <div class="text-xl font-black mb-2">🔍 Görünüm Ölçeği</div>
+              <p class="mb-4 text-base text-slate-600 dark:text-slate-300 leading-relaxed">
+                Ekrana sığmayan uzun listeler için <b>tüm arayüzü</b> (yazılar, butonlar, kartlar)
+                orantılı olarak küçültür veya büyütür. Seçiminiz bu bilgisayarda hatırlanır ve
+                uygulama her açıldığında otomatik uygulanır.<br>
+                Kısayol: <b>Ctrl +</b> büyüt · <b>Ctrl −</b> küçült · <b>Ctrl 0</b> varsayılana dön.
+              </p>
+
+              <div id="zoomSecenekleri" class="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                <button type="button" data-zoom="70"  class="h-12 rounded-xl border-2 text-lg font-extrabold transition">%70</button>
+                <button type="button" data-zoom="80"  class="h-12 rounded-xl border-2 text-lg font-extrabold transition">%80</button>
+                <button type="button" data-zoom="90"  class="h-12 rounded-xl border-2 text-lg font-extrabold transition">%90</button>
+                <button type="button" data-zoom="100" class="h-12 rounded-xl border-2 text-lg font-extrabold transition">%100</button>
+                <button type="button" data-zoom="110" class="h-12 rounded-xl border-2 text-lg font-extrabold transition">%110</button>
+                <button type="button" data-zoom="120" class="h-12 rounded-xl border-2 text-lg font-extrabold transition">%120</button>
+              </div>
+
+              <div id="zoomBilgi" class="mt-3 text-base font-bold text-slate-500 dark:text-slate-400"></div>
+            </div>
+
+            <!-- Firma & API bilgileri -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700 shadow-sm flex flex-col gap-5">
+
+              <div>
+                <label for="girdiFirmaAdi" class="block text-lg font-extrabold mb-2">🏢 Firma Adınız</label>
+                <input id="girdiFirmaAdi" type="text" placeholder="Örn: Yılmaz Hırdavat Ltd. Şti."
+                       class="w-full h-14 px-4 rounded-xl text-lg font-semibold
+                              bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                              focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+                <p class="mt-1 text-sm text-slate-500">Depo fişlerinin başlığında ve üst çubukta görünür.</p>
+              </div>
+
+              <div>
+                <label class="block text-lg font-extrabold mb-2">🖼️ Firma Logosu</label>
+                <div class="flex items-center gap-4">
+                  <div id="logoOnizlemeKutu" class="hidden w-16 h-16 rounded-xl bg-slate-50 dark:bg-slate-900
+                              border-2 border-slate-300 dark:border-slate-600 overflow-hidden shrink-0 grid place-items-center">
+                    <img id="logoOnizleme" alt="Logo önizleme" class="max-w-full max-h-full object-contain" />
+                  </div>
+                  <div id="logoYokKutu" class="w-16 h-16 rounded-xl bg-slate-50 dark:bg-slate-900
+                              border-2 border-dashed border-slate-300 dark:border-slate-600 shrink-0 grid place-items-center text-2xl text-slate-400">
+                    🖼️
+                  </div>
+                  <div class="flex-1 flex flex-wrap gap-2">
+                    <button id="logoYukleBtn" type="button"
+                            class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                                   dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                                   text-base font-extrabold transition">📤 YEREL LOGO YÜKLE</button>
+                    <button id="logoKaldirBtn" type="button"
+                            class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
+                                   dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
+                                   text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
+                  </div>
+                  <input id="logoDosyaSec" type="file" accept="image/*" class="hidden" />
+                </div>
+                <p id="logoAciklama" class="mt-2 text-sm text-slate-500">
+                  Sitenize bağlandığınızda logo otomatik çekilir. Site logosu yoksa veya
+                  çekilemezse burada yüklediğiniz yerel logo üst çubukta gösterilir.
+                </p>
+              </div>
+
+              <div>
+                <label for="girdiUrl" class="block text-lg font-extrabold mb-2">🌐 WooCommerce Site Adresi</label>
+                <input id="girdiUrl" type="text" placeholder="https://www.siteniz.com" spellcheck="false"
+                       class="w-full h-14 px-4 rounded-xl text-lg font-semibold
+                              bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                              focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+                <p class="mt-1 text-sm text-slate-500">Sadece site adresi yeterli. <code>/wp-json</code> yazmanıza gerek yok.</p>
+              </div>
+
+              <div>
+                <label for="girdiCk" class="block text-lg font-extrabold mb-2">🔑 Consumer Key</label>
+                <input id="girdiCk" type="text" placeholder="ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" spellcheck="false"
+                       class="w-full h-14 px-4 rounded-xl text-lg font-mono
+                              bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                              focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+              </div>
+
+              <div>
+                <label for="girdiCs" class="block text-lg font-extrabold mb-2">🔒 Consumer Secret</label>
+                <div class="flex gap-2">
+                  <input id="girdiCs" type="password" placeholder="cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" spellcheck="false"
+                         class="flex-1 h-14 px-4 rounded-xl text-lg font-mono
+                                bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                                focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+                  <button id="csGosterBtn" type="button" title="Göster / Gizle"
+                          class="w-14 h-14 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                                 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition">👁️</button>
+                </div>
+              </div>
+
+              <!-- Bağlantı kilidi: bağlantı doğrulandıktan sonra yukarıdaki üç kutu
+                   salt okunur olur ve anahtarlar maskelenir (bkz. apiKilidiniUygula). -->
+              <div id="apiKilitKutusu" class="hidden rounded-xl border-2 border-emerald-300 dark:border-emerald-500/30
+                          bg-emerald-50 dark:bg-emerald-500/10 p-4 flex flex-wrap items-center gap-4">
+                <div class="flex-1 min-w-64">
+                  <div class="text-lg font-extrabold text-emerald-800 dark:text-emerald-300">
+                    🔒 Bağlantı ayarları kilitli
+                  </div>
+                  <div class="mt-1 text-base leading-relaxed text-emerald-900/80 dark:text-emerald-200/80">
+                    Bağlantı doğrulandı; site adresi ve anahtarlar yanlışlıkla değiştirilmesin diye
+                    kilitlendi. Değiştirmeniz gerekiyorsa kilidi açın.
+                  </div>
+                </div>
+                <button id="apiKilitAcBtn" type="button"
+                        class="h-14 px-6 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95
+                               text-white text-lg font-extrabold shadow-md transition shrink-0">
+                  🔓 KİLİDİ AÇ
+                </button>
+              </div>
+
+              <!-- E-posta bildirimleri -->
+              <div class="rounded-xl border-2 border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3">
+                <div class="text-lg font-extrabold">📧 Otomatik E-posta Bildirimleri</div>
+
+                <label class="flex items-start gap-3 cursor-pointer select-none">
+                  <input id="girdiOnayEpostasi" type="checkbox" class="w-6 h-6 mt-1 accent-emerald-600 shrink-0" />
+                  <span class="text-base leading-relaxed">
+                    <b>Bayi onaylandığında</b> firmaya "Bayiliğiniz Onaylanmıştır" e-postası gönderilsin.
+                  </span>
+                </label>
+
+                <label class="flex items-start gap-3 cursor-pointer select-none">
+                  <input id="girdiDurumEpostasi" type="checkbox" class="w-6 h-6 mt-1 accent-emerald-600 shrink-0" />
+                  <span class="text-base leading-relaxed">
+                    <b>Sipariş durumu değiştiğinde</b> müşteriye bilgilendirme e-postası gönderilsin
+                    (Hazırlanıyor / Sipariş Hazır / Kargoya Verildi).
+                  </span>
+                </label>
+              </div>
+
+              <!-- Gelişmiş (B2B alan adları — yalnızca eklenti yoksa kullanılır) -->
+              <details class="rounded-xl border-2 border-slate-200 dark:border-slate-700 p-4">
+                <summary class="cursor-pointer text-lg font-extrabold select-none">
+                  🧩 Gelişmiş — Eklentisiz Çalışma (Yedek Yöntem)
+                </summary>
+                <p class="mt-3 mb-4 text-base text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Sitenizde <b>B2B Core eklentisi kuruluysa bu bölüme dokunmanıza gerek yoktur</b> —
+                  bayi onayları doğrudan eklentinin <code>wc-b2b/v1</code> uçlarından yürütülür.<br><br>
+                  Eklenti <b>yoksa</b> uygulama yedek yönteme geçer: üye onayı, müşteri kaydındaki bir
+                  <b>özel alana (meta)</b> yazılarak yapılır. Sitenizdeki başka bir B2B eklentisi farklı
+                  alan adı kullanıyorsa buradan değiştirin.
+                </p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label for="girdiB2bAlan" class="block font-bold mb-1">Alan adı (meta key)</label>
+                    <input id="girdiB2bAlan" type="text" spellcheck="false"
+                           class="w-full h-12 px-3 rounded-lg font-mono bg-slate-50 dark:bg-slate-900
+                                  border-2 border-slate-300 dark:border-slate-600 outline-none focus:border-marka-600" />
+                  </div>
+                  <div>
+                    <label for="girdiB2bBekliyor" class="block font-bold mb-1">"Bekliyor" değeri</label>
+                    <input id="girdiB2bBekliyor" type="text" spellcheck="false"
+                           class="w-full h-12 px-3 rounded-lg font-mono bg-slate-50 dark:bg-slate-900
+                                  border-2 border-slate-300 dark:border-slate-600 outline-none focus:border-marka-600" />
+                  </div>
+                  <div>
+                    <label for="girdiB2bOnay" class="block font-bold mb-1">"Onaylandı" değeri</label>
+                    <input id="girdiB2bOnay" type="text" spellcheck="false"
+                           class="w-full h-12 px-3 rounded-lg font-mono bg-slate-50 dark:bg-slate-900
+                                  border-2 border-slate-300 dark:border-slate-600 outline-none focus:border-marka-600" />
+                  </div>
+                  <div>
+                    <label for="girdiB2bRed" class="block font-bold mb-1">"Reddedildi" değeri</label>
+                    <input id="girdiB2bRed" type="text" spellcheck="false"
+                           class="w-full h-12 px-3 rounded-lg font-mono bg-slate-50 dark:bg-slate-900
+                                  border-2 border-slate-300 dark:border-slate-600 outline-none focus:border-marka-600" />
+                  </div>
+                </div>
+              </details>
+
+              <div class="flex flex-wrap gap-4 pt-1">
+                <button id="baglantiTestBtn"
+                        class="flex-1 min-w-56 h-16 rounded-2xl bg-slate-800 hover:bg-slate-900 active:scale-95
+                               dark:bg-slate-600 dark:hover:bg-slate-500
+                               text-white text-xl font-extrabold shadow-lg transition">
+                  🔌 BAĞLANTIYI TEST ET
+                </button>
+                <button id="ayarKaydetBtn"
+                        class="flex-1 min-w-56 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                               text-white text-xl font-extrabold shadow-lg transition">
+                  💾 AYARLARI KAYDET
+                </button>
+              </div>
+
+              <div id="testSonucu" class="hidden rounded-xl p-4 text-lg font-semibold whitespace-pre-line"></div>
+            </div>
+          </div>
+
+          <!-- Sağ sütun: yardım -->
+          <div class="flex flex-col gap-6">
+            <div class="bg-marka-50 dark:bg-marka-900/20 rounded-2xl p-6 border-2 border-marka-200 dark:border-marka-800">
+              <div class="text-xl font-black mb-4 text-marka-800 dark:text-marka-200">
+                📘 API Anahtarı Nasıl Alınır? (Adım Adım)
+              </div>
+              <ol class="list-decimal ml-6 space-y-3 text-lg leading-relaxed text-slate-700 dark:text-slate-200">
+                <li>Sitenizin yönetim paneline girin:<br><code class="text-base">https://siteniz.com/wp-admin</code></li>
+                <li>Sol menüden <b>WooCommerce → Ayarlar</b>'a tıklayın.</li>
+                <li>Üstteki <b>Gelişmiş</b> sekmesine, oradan <b>REST API</b>'ye geçin.</li>
+                <li><b>Anahtar ekle</b> butonuna basın.</li>
+                <li>Açıklama: <b>B2B Panel</b> · Kullanıcı: <b>kendi yönetici hesabınız</b> ·
+                    İzin: <b class="text-emerald-700 dark:text-emerald-400">Okuma/Yazma</b> seçin.</li>
+                <li><b>API anahtarı oluştur</b>'a basın.</li>
+                <li>Ekranda çıkan <b>Consumer Key</b> ve <b>Consumer Secret</b> değerlerini
+                    soldaki kutulara yapıştırıp <b>💾 AYARLARI KAYDET</b> deyin.</li>
+              </ol>
+              <div class="mt-5 p-4 rounded-xl bg-amber-100 dark:bg-amber-500/15 border-2 border-amber-300 dark:border-amber-500/30
+                          text-amber-900 dark:text-amber-200 text-lg font-bold">
+                ⚠️ Consumer Secret sadece <u>bir kez</u> gösterilir. Pencereyi kapatmadan kopyalayın!
+              </div>
+            </div>
+
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700">
+              <div class="text-xl font-black mb-3">🛡️ Lisans & Bakım</div>
+              <div id="lisansDetay" class="text-lg leading-relaxed text-slate-700 dark:text-slate-200"></div>
+              <div id="ayarDosyaYolu" class="mt-4 text-sm text-slate-400 break-all"></div>
+            </div>
+
+            <!-- ==========================================================
+                 BYOM BRAIN — LİSANS & SUNUCU
+                 İçerik renderer-byom.js tarafından doldurulur.
+                 ========================================================== -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700">
+              <div class="text-xl font-black mb-1 flex items-center gap-2">
+                🧠 BYOM Brain Lisansı
+                <span id="byomDurumRozeti"
+                      class="ml-auto text-sm font-extrabold px-3 py-1 rounded-lg
+                             bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">…</span>
+              </div>
+              <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                Lisansınız merkezî BYOM Brain sunucusunda tutulur ve bu bilgisayarın donanım kimliğine bağlıdır.
+              </p>
+
+              <div id="byomLisansDetay" class="text-base leading-relaxed text-slate-700 dark:text-slate-200"></div>
+
+              <div class="mt-4">
+                <div class="text-sm font-extrabold text-slate-500 dark:text-slate-400 mb-1">DONANIM KİMLİĞİ (HWID)</div>
+                <div class="flex gap-2">
+                  <code id="byomHwid"
+                        class="flex-1 px-3 py-3 rounded-xl bg-slate-100 dark:bg-slate-900 text-base font-mono
+                               break-all border-2 border-slate-200 dark:border-slate-700">hesaplanıyor…</code>
+                  <button id="byomHwidKopyaBtn" type="button" title="Panoya kopyala"
+                          class="w-14 shrink-0 rounded-xl text-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                                 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition">📋</button>
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <label for="byomApiUrl" class="block text-sm font-extrabold text-slate-500 dark:text-slate-400 mb-1">
+                  BYOM BRAIN SUNUCU ADRESİ
+                </label>
+                <input id="byomApiUrl" type="text" spellcheck="false" placeholder="https://hub.byomtech.com"
+                       class="w-full h-12 px-4 rounded-xl text-base font-mono
+                              bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                              focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+                <p id="byomApiBilgi" class="mt-1 text-sm text-slate-500 whitespace-pre-line"></p>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 mt-4">
+                <button id="byomKontrolBtn" type="button"
+                        class="h-12 rounded-xl text-base font-extrabold text-white bg-marka-700 hover:bg-marka-800 transition active:scale-95">
+                  🔄 LİSANSI KONTROL ET
+                </button>
+                <button id="byomApiKaydetBtn" type="button"
+                        class="h-12 rounded-xl text-base font-extrabold bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition active:scale-95">
+                  💾 ADRESİ KAYDET
+                </button>
+                <button id="byomApiTestBtn" type="button"
+                        class="h-12 rounded-xl text-base font-extrabold bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition active:scale-95">
+                  📡 BAĞLANTIYI TEST ET
+                </button>
+                <button id="byomDestekGitBtn" type="button"
+                        class="h-12 rounded-xl text-base font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white transition active:scale-95">
+                  🎧 DESTEK TALEBİ AÇ
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ============================================================
+           SEKME 6 — 🎧 BYOM DESTEK (merkezî destek masası)
+           Talepler BYOM Brain'e gider; müşteri yalnızca KENDİ taleplerini
+           ve adminin cevaplarını görür.
+           ============================================================ -->
+      <section id="sekme-destek" class="sekme-govde">
+
+        <div class="flex items-center gap-4 mb-5 flex-wrap">
+          <h1 class="text-3xl font-black">🎧 BYOM Destek</h1>
+          <span id="destekLisansBilgi"
+                class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
+                       dark:bg-slate-800 dark:text-slate-300"></span>
+          <div class="ml-auto flex gap-3">
+            <button id="destekYenileBtn"
+                    class="h-14 px-5 rounded-2xl text-lg font-extrabold bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                           dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition active:scale-95">
+              🔄 YENİLE
+            </button>
+            <button id="destekYeniBtn"
+                    class="h-14 px-6 rounded-2xl text-lg font-extrabold text-white bg-marka-700 hover:bg-marka-800
+                           shadow-lg transition active:scale-95">
+              ➕ YENİ DESTEK TALEBİ
+            </button>
+          </div>
+        </div>
+
+        <div id="destekUyari" class="hidden mb-4 p-4 rounded-2xl text-lg font-bold whitespace-pre-line"></div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+          <!-- Sol: taleplerim -->
+          <div class="xl:col-span-1 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700
+                      shadow-sm flex flex-col overflow-hidden" style="height: 68vh; min-height: 420px;">
+            <div class="p-3 border-b-2 border-slate-200 dark:border-slate-700">
+              <div id="destekSuzgecler" class="grid grid-cols-3 gap-2"></div>
+            </div>
+            <div id="destekListe" class="flex-1 overflow-y-auto p-3 flex flex-col gap-2"></div>
+          </div>
+
+          <!-- Sağ: sohbet / yeni talep -->
+          <div class="xl:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700
+                      shadow-sm flex flex-col overflow-hidden" style="height: 68vh; min-height: 420px;">
+
+            <div id="destekSohbetBaslik"
+                 class="hidden p-5 border-b-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40"></div>
+
+            <div id="destekSohbet" class="flex-1 overflow-y-auto p-5 flex flex-col gap-4"></div>
+
+            <!-- Yanıt kutusu -->
+            <div id="destekYanitAlani" class="hidden border-t-2 border-slate-200 dark:border-slate-700 p-4">
+              <div class="flex gap-3 items-end">
+                <textarea id="destekYanitMetni" rows="2" placeholder="Cevabınızı yazın…"
+                          class="flex-1 p-4 rounded-xl text-lg resize-none bg-slate-50 dark:bg-slate-900
+                                 border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                                 focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
+                <button id="destekYanitGonderBtn"
+                        class="h-16 px-7 rounded-xl text-lg font-extrabold text-white bg-marka-700 hover:bg-marka-800
+                               transition active:scale-95 shrink-0">GÖNDER</button>
+              </div>
+              <div data-yanit-ipucu class="mt-2 text-sm text-slate-400">Ctrl + Enter ile de gönderebilirsiniz.</div>
+            </div>
+
+            <!-- Yeni talep formu -->
+            <div id="destekYeniForm" class="hidden flex-1 overflow-y-auto p-6">
+              <div class="text-2xl font-black mb-5">➕ Yeni Destek Talebi</div>
+
+              <div class="mb-5">
+                <label for="destekBaslik" class="block text-lg font-extrabold mb-2">Konu Başlığı *</label>
+                <input id="destekBaslik" type="text" maxlength="120"
+                       placeholder="Örn: Siparişler sekmesi açılmıyor"
+                       class="w-full h-14 px-4 rounded-xl text-lg font-semibold
+                              bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                              focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+              </div>
+
+              <div class="mb-5">
+                <label class="block text-lg font-extrabold mb-2">Öncelik</label>
+                <div id="destekOncelikler" class="grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
+              </div>
+
+              <div class="mb-5">
+                <label for="destekMesaj" class="block text-lg font-extrabold mb-2">Sorununuz *</label>
+                <textarea id="destekMesaj" rows="7"
+                          placeholder="Ne yapmak istediğinizi ve ekranda ne gördüğünüzü olabildiğince ayrıntılı yazın."
+                          class="w-full p-4 rounded-xl text-lg resize-y bg-slate-50 dark:bg-slate-900
+                                 border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                                 focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
+                <p class="mt-1 text-sm text-slate-500">
+                  Lisans anahtarınız, firma adınız, sürüm ve donanım kimliğiniz talebe otomatik eklenir.
+                </p>
+              </div>
+
+              <div class="flex gap-3">
+                <button id="destekGonderBtn"
+                        class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
+                               shadow-lg transition active:scale-95">📨 TALEBİ GÖNDER</button>
+                <button id="destekVazgecBtn"
+                        class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                               dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ==================================================================
+     BİLDİRİM (TOAST) ALANI
+     ================================================================== -->
+<div id="bildirimAlani" class="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end pointer-events-none"></div>
+
+<!-- ==================================================================
+     YENİ ÜRÜN EKLEME PENCERESİ
+     ================================================================== -->
+<div id="urunModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-4xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700">
+
+    <div class="flex items-center gap-4 p-6 border-b-2 border-slate-200 dark:border-slate-700
+                sticky top-0 bg-white dark:bg-slate-800 rounded-t-3xl z-10">
+      <span class="text-4xl">➕</span>
+      <div class="min-w-0">
+        <div class="text-2xl font-black">Yeni Ürün Ekle</div>
+        <div id="urunModalMod" class="text-base font-bold"></div>
+      </div>
+      <button id="urunModalKapat" title="Kapat"
+              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition">✖</button>
+    </div>
+
+    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+
+      <div class="md:col-span-2">
+        <label for="yeniAd" class="block text-lg font-extrabold mb-2">📝 Ürün Adı <span class="text-red-600">*</span></label>
+        <input id="yeniAd" type="text" placeholder="Örn: Bosch GSB 13 RE Darbeli Matkap 600W"
+               class="w-full h-14 px-4 rounded-xl text-lg font-semibold bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="yeniFiyat" class="block text-lg font-extrabold mb-2">💰 Fiyat (₺) <span class="text-red-600">*</span></label>
+        <input id="yeniFiyat" type="text" inputmode="decimal" placeholder="2450,00"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="yeniStok" class="block text-lg font-extrabold mb-2">📦 Stok Adedi</label>
+        <input id="yeniStok" type="text" inputmode="numeric" placeholder="0"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="yeniKod" class="block text-lg font-extrabold mb-2">🔖 Stok Kodu (SKU)</label>
+        <input id="yeniKod" type="text" spellcheck="false" placeholder="BSH-GSB13RE"
+               class="w-full h-14 px-4 rounded-xl text-lg font-mono bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <p class="mt-1 text-sm text-slate-500">Boş bırakabilirsiniz. Girerseniz benzersiz olmalıdır.</p>
+      </div>
+
+      <div>
+        <label for="yeniKategori" class="block text-lg font-extrabold mb-2">🗂️ Kategori</label>
+        <select id="yeniKategori"
+                class="w-full h-14 px-3 rounded-xl text-lg font-semibold bg-slate-50 dark:bg-slate-900
+                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                       focus:ring-4 focus:ring-marka-600/20 outline-none transition"></select>
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-lg font-extrabold mb-2">🖼️ Ürün Görselleri</label>
+
+        <!-- SÜRÜKLE-BIRAK ALANI -->
+        <div id="gorselBirakAlani"
+             class="rounded-2xl border-4 border-dashed border-slate-300 dark:border-slate-600
+                    bg-slate-50 dark:bg-slate-900/60 p-7 text-center cursor-pointer transition
+                    hover:border-marka-500 hover:bg-marka-50 dark:hover:bg-marka-900/20">
+          <div class="text-5xl mb-2 pointer-events-none">📤</div>
+          <div class="text-xl font-extrabold pointer-events-none">
+            Görselleri buraya sürükleyip bırakın
+          </div>
+          <div class="text-base text-slate-500 dark:text-slate-400 mt-1 pointer-events-none">
+            veya <u>tıklayarak bilgisayarınızdan seçin</u> · JPG, PNG, WEBP, GIF
+          </div>
+          <div id="gorselBirakDurum" class="mt-3 text-base font-bold"></div>
+        </div>
+        <input id="gorselDosyaSec" type="file" accept="image/*" multiple class="hidden" />
+
+        <!-- YÜKLENEN GÖRSEL KÜÇÜK RESİMLERİ -->
+        <div id="gorselOnizleme" class="flex flex-wrap gap-3 mt-4"></div>
+
+        <p class="mt-2 text-sm text-slate-500">
+          Bıraktığınız görseller sitenizin medya kütüphanesine yüklenir
+          (<code>POST /wc-b2b/v1/media</code>). İlk görsel <b>öne çıkan görsel</b> olur.
+        </p>
+
+        <details class="mt-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 p-3">
+          <summary class="cursor-pointer text-base font-bold select-none">🔗 Bunun yerine bir görsel bağlantısı (URL) kullan</summary>
+          <input id="yeniGorsel" type="text" spellcheck="false" placeholder="https://siteniz.com/gorsel/matkap.jpg"
+                 class="mt-3 w-full h-14 px-4 rounded-xl text-lg bg-slate-50 dark:bg-slate-900
+                        border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                        focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+          <p class="mt-1 text-sm text-slate-500">
+            Görselin internette açılabilir bir adresi olmalı — siteniz onu kendi ortamına indirir.
+            Yukarıya dosya bıraktıysanız bu alan dikkate alınmaz.
+          </p>
+        </details>
+      </div>
+
+      <div class="md:col-span-2">
+        <label for="yeniAciklama" class="block text-lg font-extrabold mb-2">🗒️ Açıklama</label>
+        <textarea id="yeniAciklama" rows="3" placeholder="İsteğe bağlı — ürün hakkında kısa bilgi"
+                  class="w-full p-4 rounded-xl text-lg bg-slate-50 dark:bg-slate-900 resize-y
+                         border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                         focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
+      </div>
+
+      <div id="urunEkleUyari" class="hidden md:col-span-2 rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                     bg-red-50 text-red-800 border-2 border-red-300
+                                     dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
+    </div>
+
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700
+                sticky bottom-0 rounded-b-3xl">
+      <button id="urunEkleVazgec"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="urunEkleOnay"
+              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
+                     transition active:scale-95 shadow-lg">➕ ÜRÜNÜ EKLE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     ÜRÜN DÜZENLE PENCERESİ
+     Mevcut bir ürünün görseli, adı, fiyatı, stoğu, barkodu ve kategorisi
+     yeniden ürün oluşturmaya gerek kalmadan güncellenir.
+     (PUT /wp-json/wc/v3/products/<id>)
+     ================================================================== -->
+<div id="urunDuzenleKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-4xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700">
+
+    <div class="flex items-center gap-4 p-6 border-b-2 border-slate-200 dark:border-slate-700
+                sticky top-0 bg-white dark:bg-slate-800 rounded-t-3xl z-10">
+      <span class="text-4xl">✏️</span>
+      <div class="min-w-0">
+        <div id="duzenleBaslik" class="text-2xl font-black">Ürünü Düzenle</div>
+        <div id="duzenleAltBaslik" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
+      </div>
+      <button id="duzenleKapatBtn" title="Kapat"
+              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition">✖</button>
+    </div>
+
+    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+
+      <div class="md:col-span-2">
+        <label for="duzenleAd" class="block text-lg font-extrabold mb-2">📝 Ürün Adı <span class="text-red-600">*</span></label>
+        <input id="duzenleAd" type="text"
+               class="w-full h-14 px-4 rounded-xl text-lg font-semibold bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="duzenleFiyat" class="block text-lg font-extrabold mb-2">💰 Fiyat (₺) <span class="text-red-600">*</span></label>
+        <input id="duzenleFiyat" type="text" inputmode="decimal"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="duzenleStok" class="block text-lg font-extrabold mb-2">📦 Stok Adedi</label>
+        <input id="duzenleStok" type="text" inputmode="numeric"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="duzenleKod" class="block text-lg font-extrabold mb-2">🔖 Barkod / Stok Kodu (SKU)</label>
+        <input id="duzenleKod" type="text" spellcheck="false"
+               class="w-full h-14 px-4 rounded-xl text-lg font-mono bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <p class="mt-1 text-sm text-slate-500">Girerseniz benzersiz olmalıdır. Boş bırakılabilir.</p>
+      </div>
+
+      <div>
+        <label for="duzenleKategori" class="block text-lg font-extrabold mb-2">🗂️ Kategori</label>
+        <select id="duzenleKategori"
+                class="w-full h-14 px-3 rounded-xl text-lg font-semibold bg-slate-50 dark:bg-slate-900
+                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                       focus:ring-4 focus:ring-marka-600/20 outline-none transition"></select>
+      </div>
+
+      <div>
+        <label for="duzenleDurumSec" class="block text-lg font-extrabold mb-2">👁️ Yayın Durumu</label>
+        <select id="duzenleDurumSec"
+                class="w-full h-14 px-3 rounded-xl text-lg font-semibold bg-slate-50 dark:bg-slate-900
+                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                       focus:ring-4 focus:ring-marka-600/20 outline-none transition">
+          <option value="publish">🟢 Yayında (sitede görünür)</option>
+          <option value="draft">⚪ Gizli / Taslak (sitede görünmez)</option>
+        </select>
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-lg font-extrabold mb-2">🖼️ Ürün Görseli</label>
+
+        <div id="duzenleGorselKutu" class="flex flex-wrap gap-3 mb-3"></div>
+
+        <div id="duzenleGorselBirak"
+             class="rounded-2xl border-4 border-dashed border-slate-300 dark:border-slate-600
+                    bg-slate-50 dark:bg-slate-900/60 p-6 text-center cursor-pointer transition
+                    hover:border-marka-500 hover:bg-marka-50 dark:hover:bg-marka-900/20">
+          <div class="text-4xl mb-1 pointer-events-none">📤</div>
+          <div class="text-lg font-extrabold pointer-events-none">
+            Yeni görsel bırakın veya tıklayarak seçin
+          </div>
+          <div class="text-base text-slate-500 dark:text-slate-400 mt-1 pointer-events-none">
+            Yeni görsel yüklerseniz ürünün öne çıkan görseli değişir · JPG, PNG, WEBP, GIF
+          </div>
+          <div id="duzenleGorselDurum" class="mt-2 text-base font-bold"></div>
+        </div>
+        <input id="duzenleDosyaSec" type="file" accept="image/*" multiple class="hidden" />
+
+        <details class="mt-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 p-3">
+          <summary class="cursor-pointer text-base font-bold select-none">🔗 Bunun yerine bir görsel bağlantısı (URL) kullan</summary>
+          <input id="duzenleGorselUrl" type="text" spellcheck="false" placeholder="https://siteniz.com/gorsel/urun.jpg"
+                 class="mt-3 w-full h-14 px-4 rounded-xl text-lg bg-slate-50 dark:bg-slate-900
+                        border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                        focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+          <p class="mt-1 text-sm text-slate-500">
+            Yukarıya dosya bıraktıysanız bu alan dikkate alınmaz.
+          </p>
+        </details>
+      </div>
+
+      <div class="md:col-span-2">
+        <label for="duzenleAciklama" class="block text-lg font-extrabold mb-2">🗒️ Açıklama</label>
+        <textarea id="duzenleAciklama" rows="3"
+                  class="w-full p-4 rounded-xl text-lg bg-slate-50 dark:bg-slate-900 resize-y
+                         border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                         focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
+      </div>
+
+      <div id="duzenleUyari" class="hidden md:col-span-2 rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                    bg-red-50 text-red-800 border-2 border-red-300
+                                    dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
+    </div>
+
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700
+                sticky bottom-0 rounded-b-3xl">
+      <button id="duzenleVazgecBtn"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="duzenleKaydetBtn"
+              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
+                     transition active:scale-95 shadow-lg">💾 DEĞİŞİKLİKLERİ KAYDET</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     ONAY PENCERESİ (MODAL)
+     ================================================================== -->
+<div id="modalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
+    <div class="p-7">
+      <div id="modalBaslik" class="text-2xl font-black mb-3">Emin misiniz?</div>
+      <div id="modalMesaj" class="text-lg leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-line"></div>
+    </div>
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
+      <button id="modalVazgec"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="modalTamam"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
+                     transition active:scale-95">EVET</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     BAYİ DETAY & GEÇMİŞ SİPARİŞ DÖKÜMÜ PENCERESİ
+     ================================================================== -->
+<div id="bayiModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-5xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700">
+
+    <div class="flex items-center gap-4 p-6 border-b-2 border-slate-200 dark:border-slate-700
+                sticky top-0 bg-white dark:bg-slate-800 rounded-t-3xl z-10">
+      <span class="text-4xl">🏢</span>
+      <div class="min-w-0">
+        <div id="bayiModalBaslik" class="text-2xl font-black truncate">Bayi Detayı</div>
+        <div id="bayiModalAltBaslik" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
+      </div>
+      <button id="bayiModalKapat" title="Kapat"
+              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition">✖</button>
+    </div>
+
+    <div id="bayiModalGovde" class="p-6 flex flex-col gap-6"></div>
+
+    <div id="bayiModalAyak"
+         class="flex flex-wrap gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2
+                border-slate-200 dark:border-slate-700 sticky bottom-0 rounded-b-3xl"></div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     SİPARİŞ DURUMU / KARGO BİLGİSİ PENCERESİ
+     ================================================================== -->
+<div id="kargoModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
+
+    <div class="p-6 border-b-2 border-slate-200 dark:border-slate-700">
+      <div id="kargoModalBaslik" class="text-2xl font-black">🚚 Kargoya Verildi</div>
+      <div id="kargoModalAciklama" class="text-lg text-slate-600 dark:text-slate-300 mt-1"></div>
+    </div>
+
+    <div class="p-6 flex flex-col gap-5">
+      <div id="kargoAlanlar" class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div>
+          <label for="kargoFirma" class="block text-lg font-extrabold mb-2">🚚 Kargo Firması</label>
+          <input id="kargoFirma" type="text" list="kargoFirmaListesi" placeholder="Aras Kargo"
+                 class="w-full h-14 px-4 rounded-xl text-lg font-semibold bg-slate-50 dark:bg-slate-900
+                        border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                        focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+          <datalist id="kargoFirmaListesi">
+            <option value="Aras Kargo"></option>
+            <option value="Yurtiçi Kargo"></option>
+            <option value="MNG Kargo"></option>
+            <option value="PTT Kargo"></option>
+            <option value="Sürat Kargo"></option>
+            <option value="UPS Kargo"></option>
+            <option value="Sendeo"></option>
+            <option value="Firma Aracı (Kendi Aracımız)"></option>
+            <option value="Elden Teslim"></option>
+          </datalist>
+        </div>
+
+        <div>
+          <label for="kargoTakip" class="block text-lg font-extrabold mb-2">🔢 Takip Numarası</label>
+          <input id="kargoTakip" type="text" spellcheck="false" placeholder="1234567890123"
+                 class="w-full h-14 px-4 rounded-xl text-lg font-mono bg-slate-50 dark:bg-slate-900
+                        border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                        focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        </div>
+      </div>
+
+      <div>
+        <label for="kargoNot" class="block text-lg font-extrabold mb-2">🗒️ Sipariş Notu (isteğe bağlı)</label>
+        <textarea id="kargoNot" rows="2" placeholder="Örn: Sabah kargoya teslim edildi."
+                  class="w-full p-4 rounded-xl text-lg bg-slate-50 dark:bg-slate-900 resize-y
+                         border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                         focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
+      </div>
+
+      <label class="flex items-start gap-3 cursor-pointer select-none">
+        <input id="kargoBildir" type="checkbox" class="w-6 h-6 mt-1 accent-emerald-600 shrink-0" />
+        <span class="text-lg leading-relaxed">
+          Müşteriye <b>durum bilgilendirme e-postası</b> gönderilsin.
+        </span>
+      </label>
+
+      <div id="kargoUyari" class="hidden rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                  bg-red-50 text-red-800 border-2 border-red-300
+                                  dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
+    </div>
+
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
+      <button id="kargoVazgec"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="kargoOnay"
+              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
+                     transition active:scale-95 shadow-lg">✅ DURUMU GÜNCELLE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     SİPARİŞ REVİZE PENCERESİ (DEPOCU KOLİ DÜZENLEME)
+
+     Müşteri 25 adet istedi ama koli bozulmadığı için 20 adet konulduysa,
+     fiili adet buradan girilir. Onaylandığında sipariş kalemleri
+     güncellenir, tutar ve KDV sitede yeniden hesaplanır ve sipariş
+     "Sipariş Hazır" durumuna geçer.
+     ================================================================== -->
+<div id="revizeModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-5xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700">
+
+    <div class="flex items-start gap-4 p-6 border-b-2 border-slate-200 dark:border-slate-700
+                sticky top-0 bg-white dark:bg-slate-800 rounded-t-3xl z-10">
+      <span class="text-4xl">📝</span>
+      <div class="min-w-0">
+        <div id="revizeModalBaslik" class="text-2xl font-black truncate">Siparişi Hazırla &amp; Revize Et</div>
+        <div id="revizeModalAciklama" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
+      </div>
+      <button id="revizeModalKapat" title="Kapat"
+              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0">✖</button>
+    </div>
+
+    <div class="p-6 flex flex-col gap-5">
+
+      <div class="rounded-2xl border-2 border-dashed border-marka-300 dark:border-marka-700
+                  bg-marka-50 dark:bg-marka-900/20 p-4 text-lg">
+        ℹ️ <b>Koliye fiilen koyduğunuz adedi</b> yazın. Örnek: müşteri 25 adet istedi, koli bozulmasın
+        diye 20 adet koyduysanız <b>20</b> girin. Sitedeki <b>tutar ve KDV</b> yeni adetlere göre
+        otomatik yeniden hesaplanır, <b>stok farkı</b> geri eklenir.
+      </div>
+
+      <!-- Ürün satırları (renderer.js doldurur) -->
+      <div id="revizeGovde"></div>
+
+      <!-- Canlı toplam -->
+      <div id="revizeToplam"
+           class="rounded-2xl border-2 border-slate-200 dark:border-slate-700
+                  bg-slate-50 dark:bg-slate-900/50 p-4"></div>
+
+      <div>
+        <label for="revizeNot" class="block text-lg font-extrabold mb-2">🗒️ Sipariş Notu (isteğe bağlı)</label>
+        <textarea id="revizeNot" rows="2" placeholder="Örn: Koli bozulmadığı için 20 adet gönderildi."
+                  class="w-full p-4 rounded-xl text-lg bg-slate-50 dark:bg-slate-900 resize-y
+                         border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                         focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
+      </div>
+
+      <label class="flex items-start gap-3 cursor-pointer select-none">
+        <input id="revizeHazirYap" type="checkbox" class="w-6 h-6 mt-1 accent-emerald-600 shrink-0" />
+        <span class="text-lg leading-relaxed">
+          Onaylayınca siparişi <b>“Sipariş Hazır”</b> durumuna al.
+        </span>
+      </label>
+
+      <label class="flex items-start gap-3 cursor-pointer select-none">
+        <input id="revizeBildir" type="checkbox" class="w-6 h-6 mt-1 accent-emerald-600 shrink-0" />
+        <span class="text-lg leading-relaxed">
+          Bayiye <b>durum bilgilendirme e-postası</b> gönderilsin.
+        </span>
+      </label>
+
+      <div id="revizeUyari" class="hidden rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                   bg-red-50 text-red-800 border-2 border-red-300
+                                   dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
+    </div>
+
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700
+                sticky bottom-0 rounded-b-3xl">
+      <button id="revizeVazgec"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="revizeOnay"
+              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
+                     transition active:scale-95 shadow-lg">✅ SİPARİŞİ ONAYLA</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     METİN SORMA PENCERESİ (ör. red sebebi)
+     ================================================================== -->
+<div id="metinModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
+    <div class="p-7">
+      <div id="metinModalBaslik" class="text-2xl font-black mb-3">Sebep</div>
+      <div id="metinModalMesaj" class="text-lg leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-line mb-4"></div>
+      <textarea id="metinModalGirdi" rows="3"
+                class="w-full p-4 rounded-xl text-lg bg-slate-50 dark:bg-slate-900 resize-y
+                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                       focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
+    </div>
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
+      <button id="metinModalVazgec"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="metinModalTamam"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-red-600 hover:bg-red-700
+                     transition active:scale-95">DEVAM ET</button>
+    </div>
+  </div>
+</div>
+
+<script src="renderer.js"></script>
+<!-- Ek modüller: İskonto Oranları sekmesi, Ürün Düzenle paneli, sürükle-bırak sıralama.
+     renderer.js'ten SONRA yüklenir; oradaki genel fonksiyonları ve `durum` nesnesini kullanır. -->
+<script src="renderer-ek.js"></script>
+<!-- BYOM Brain entegrasyonu: lisans rozeti + 🎧 BYOM Destek sekmesi.
+     renderer.js ve renderer-ek.js'ten SONRA yüklenir; sekmeAc / bildir gibi
+     genel fonksiyonları sarmalayarak genişletir. -->
+<script src="renderer-byom.js"></script>
+</body>
+</html>

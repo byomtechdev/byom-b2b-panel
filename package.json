@@ -1,0 +1,78 @@
+{
+  "name": "b2b-yonetim-paneli",
+  "version": "1.0.0",
+  "description": "Toptanci ve hirdavatcilar icin WooCommerce B2B Yonetim Paneli",
+  "main": "main.js",
+  "author": {
+    "name": "B2B Yonetim Paneli",
+    "email": "destek@ornek.com"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/byomtechdev/byom-b2b-panel.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:dir": "electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.byomtech.b2b",
+    "productName": "BYOM B2B Panel",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "index.html",
+      "renderer.js",
+      "renderer-ek.js",
+      "renderer-byom.js",
+      "src/**/*",
+      "lisans/**/*",
+      "vendor/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "BYOM-B2B-Panel-Kurulum-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BYOM B2B Panel",
+      "language": "1055",
+      "installerLanguages": [
+        "tr_TR"
+      ],
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "byomtechdev",
+      "repo": "byom-b2b-panel",
+      "releaseType": "release"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

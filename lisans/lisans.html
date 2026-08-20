@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+<title>BYOM Lisans</title>
+<style>
+  /* ==========================================================================
+     BYOM LİSANS EKRANI
+     Bu pencere ana uygulamadan bağımsızdır: Tailwind ya da başka bir dış dosya
+     BEKLEMEZ. Sebep — lisans ekranı internet/CDN olmadan da açılmak zorunda;
+     kullanıcı uygulamanın ilk gördüğü yüzü burasıdır.
+     ========================================================================== */
+
+  :root {
+    color-scheme: dark;
+    --zemin:      #070c17;
+    --zemin-ust:  #0f172a;
+    --kart:       #111c33;
+    --kart-kenar: #1e2b47;
+    --metin:      #e8eefc;
+    --soluk:      #94a3b8;
+    --marka:      #3b60f6;
+    --marka-koyu: #2542eb;
+    --yesil:      #10b981;
+    --sari:       #f59e0b;
+    --kirmizi:    #ef4444;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: "Segoe UI", "Segoe UI Variable", Roboto, system-ui, -apple-system, Arial, sans-serif;
+    background: radial-gradient(1200px 700px at 20% -10%, #1b2a52 0%, var(--zemin-ust) 45%, var(--zemin) 100%);
+    color: var(--metin);
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar { width: 12px; }
+  ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+
+  .sayfa { height: 100%; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 28px 24px 32px; }
+
+  /* ---- Marka başlığı ---- */
+  .marka { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .marka-logo {
+    width: 58px; height: 58px; border-radius: 18px;
+    background: linear-gradient(135deg, var(--marka) 0%, #7c3aed 100%);
+    display: grid; place-items: center; font-size: 30px;
+    box-shadow: 0 12px 30px rgba(59,96,246,.35);
+  }
+  .marka-ad { font-size: 25px; font-weight: 800; letter-spacing: .3px; line-height: 1.1; }
+  .marka-alt { font-size: 13px; color: var(--soluk); font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; }
+
+  /* ---- Kart ---- */
+  .kart {
+    width: 100%; max-width: 620px;
+    background: rgba(17,28,51,.92);
+    border: 1px solid var(--kart-kenar);
+    border-radius: 22px;
+    box-shadow: 0 28px 70px rgba(0,0,0,.55);
+    padding: 30px;
+  }
+  .kart + .kart { margin-top: 16px; }
+
+  h1 { font-size: 23px; margin: 0 0 8px; font-weight: 800; }
+  h2 { font-size: 16px; margin: 0 0 14px; font-weight: 700; color: var(--soluk); }
+  p  { margin: 0 0 14px; line-height: 1.62; color: #c7d2e5; font-size: 15px; }
+
+  /* ---- Form ---- */
+  label { display: block; font-size: 13px; font-weight: 700; color: var(--soluk); margin: 0 0 6px; letter-spacing: .4px; }
+  .alan { margin-bottom: 16px; }
+  input[type=text], select, textarea {
+    width: 100%; height: 50px; padding: 0 15px;
+    background: #0b1526;
+    border: 2px solid #24344f; border-radius: 13px;
+    color: var(--metin); font-size: 16px; font-family: inherit; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  textarea { height: auto; padding: 13px 15px; resize: vertical; line-height: 1.55; }
+  input[type=text]:focus, select:focus, textarea:focus { border-color: var(--marka); box-shadow: 0 0 0 4px rgba(59,96,246,.18); }
+  input[type=text]::placeholder, textarea::placeholder { color: #55688a; }
+  input.anahtar { font-family: "Consolas", "Cascadia Mono", monospace; letter-spacing: 1.6px; text-transform: uppercase; font-size: 17px; }
+  .ipucu { font-size: 12.5px; color: #6b7f9e; margin-top: 6px; line-height: 1.5; }
+
+  /* ---- Düğmeler ---- */
+  .dugmeler { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
+  button {
+    height: 52px; padding: 0 24px; border: 0; border-radius: 14px;
+    font-family: inherit; font-size: 16px; font-weight: 800; cursor: pointer;
+    transition: transform .1s, filter .15s, background .15s;
+  }
+  button:active:not(:disabled) { transform: scale(.98); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ana { flex: 1; min-width: 200px; background: linear-gradient(135deg, var(--marka) 0%, var(--marka-koyu) 100%); color: #fff; box-shadow: 0 10px 26px rgba(37,66,235,.35); }
+  .btn-ana:hover:not(:disabled) { filter: brightness(1.1); }
+  .btn-ikincil { background: #1c2b47; color: #cfdcf3; border: 1px solid #2c3d5e; }
+  .btn-ikincil:hover:not(:disabled) { background: #24365a; }
+  .btn-sessiz { background: transparent; color: var(--soluk); height: 44px; padding: 0 14px; font-size: 14px; font-weight: 700; }
+  .btn-sessiz:hover { color: var(--metin); }
+
+  /* ---- Donanım kimliği kutusu ---- */
+  .hwid-kutu {
+    display: flex; align-items: center; gap: 12px;
+    background: #0b1526; border: 1px dashed #2d4166; border-radius: 14px;
+    padding: 14px 16px; margin-top: 4px;
+  }
+  .hwid-metin { flex: 1; min-width: 0; font-family: "Consolas", "Cascadia Mono", monospace; font-size: 15px; letter-spacing: .6px; word-break: break-all; color: #a8c4ff; }
+  .hwid-etiket { font-size: 11.5px; color: var(--soluk); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
+
+  /* ---- Durum kutusu (hata / bilgi) ---- */
+  .kutu { border-radius: 14px; padding: 15px 17px; font-size: 14.5px; line-height: 1.6; margin-bottom: 16px; white-space: pre-line; border: 1px solid transparent; }
+  .kutu-hata  { background: rgba(239,68,68,.11);  border-color: rgba(239,68,68,.35);  color: #ffc9c9; }
+  .kutu-uyari { background: rgba(245,158,11,.11); border-color: rgba(245,158,11,.35); color: #ffe0a8; }
+  .kutu-bilgi { background: rgba(59,96,246,.11);  border-color: rgba(59,96,246,.35);  color: #cbd9ff; }
+  .kutu-basari{ background: rgba(16,185,129,.11); border-color: rgba(16,185,129,.35); color: #a7f3d0; }
+
+  /* ---- Splash / kontrol ---- */
+  .kontrol-govde { text-align: center; padding: 26px 10px 10px; }
+  .halka {
+    width: 62px; height: 62px; margin: 0 auto 20px;
+    border: 5px solid #23345a; border-top-color: var(--marka);
+    border-radius: 50%; animation: don 900ms linear infinite;
+  }
+  @keyframes don { to { transform: rotate(360deg); } }
+  .adim { font-size: 16px; color: #c7d2e5; font-weight: 600; }
+
+  /* ---- Kilit ekranı ---- */
+  .kilit-simge { font-size: 46px; margin-bottom: 12px; }
+  .rozet { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 800; letter-spacing: .5px; }
+  .rozet-kirmizi { background: rgba(239,68,68,.16); color: #fca5a5; }
+  .rozet-sari    { background: rgba(245,158,11,.16); color: #fcd34d; }
+
+  /* ---- Bilgi satırları ---- */
+  .satir { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid #1b2a45; font-size: 14.5px; }
+  .satir:last-child { border-bottom: 0; }
+  .satir .ad { color: var(--soluk); font-weight: 600; }
+  .satir .deger { font-weight: 700; text-align: right; word-break: break-word; }
+
+  /* ---- İletişim ---- */
+  .iletisim { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+  .iletisim a {
+    display: flex; align-items: center; gap: 10px; text-decoration: none;
+    background: #0f1c33; border: 1px solid #24344f; border-radius: 13px;
+    padding: 13px 15px; color: var(--metin); font-weight: 700; font-size: 14.5px;
+    transition: background .15s, border-color .15s;
+  }
+  .iletisim a:hover { background: #16253f; border-color: #35496f; }
+  .iletisim .simge { font-size: 19px; }
+
+  /* ---- Gelişmiş (sunucu adresi) ---- */
+  .gelismis-baslik { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--soluk); font-size: 13.5px; font-weight: 700; user-select: none; margin-top: 20px; }
+  .gelismis-baslik:hover { color: var(--metin); }
+  .gelismis-govde { margin-top: 14px; padding-top: 16px; border-top: 1px solid #1b2a45; }
+  .gizli { display: none !important; }
+
+  .alt-not { margin-top: 20px; font-size: 12.5px; color: #5f7395; text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+
+<div class="sayfa">
+
+  <div class="marka">
+    <div class="marka-logo">🧠</div>
+    <div>
+      <div class="marka-ad">BYOM Brain</div>
+      <div class="marka-alt">Lisans &amp; Destek Merkezi</div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       EKRAN 1 — KONTROL (SPLASH)
+       ====================================================================== -->
+  <div id="ekranKontrol" class="kart">
+    <div class="kontrol-govde">
+      <div class="halka"></div>
+      <div class="adim" id="kontrolAdim">Başlatılıyor…</div>
+      <p style="margin-top:14px; font-size:13.5px; color:#7d8fae;">
+        Lisansınız merkezî BYOM Brain sunucusunda doğrulanıyor.
+      </p>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       EKRAN 2 — AKTİVASYON
+       ====================================================================== -->
+  <div id="ekranAktivasyon" class="kart gizli">
+    <h1>🔑 Lisans Aktivasyonu</h1>
+    <p>
+      B2B Yönetim Paneli'ni kullanmaya başlamak için size iletilen lisans anahtarını girin.
+      Anahtar bu bilgisayarın donanım kimliğine tanımlanacaktır.
+    </p>
+
+    <div id="aktivasyonMesaj" class="kutu kutu-hata gizli"></div>
+
+    <div class="alan">
+      <label for="lisansAnahtari">LİSANS ANAHTARI *</label>
+      <input type="text" id="lisansAnahtari" class="anahtar" spellcheck="false" autocomplete="off"
+             placeholder="BYOM-FIRMA-20260101-A1B2C3D4" />
+      <div class="ipucu">
+        Biçim: <b>BYOM-FİRMA-YYYYAAGG-HASH8</b> · Anahtarı e-posta ya da sözleşmenizde bulabilirsiniz.
+        Kopyala-yapıştır yapabilirsiniz.
+      </div>
+    </div>
+
+    <div class="alan">
+      <label for="firmaAdi">FİRMA ADI *</label>
+      <input type="text" id="firmaAdi" spellcheck="false" placeholder="Örnek Hırdavat ve Yapı Market A.Ş." />
+    </div>
+
+    <div class="alan">
+      <label for="domain">SİTE ADRESİ (DOMAIN)</label>
+      <input type="text" id="domain" spellcheck="false" autocomplete="off" placeholder="www.siteniz.com" />
+      <div class="ipucu">WooCommerce mağazanızın adresi. Zorunlu değildir ama destek sürecini hızlandırır.</div>
+    </div>
+
+    <div class="alan">
+      <div class="hwid-etiket">Bu bilgisayarın donanım kimliği</div>
+      <div class="hwid-kutu">
+        <div class="hwid-metin" id="hwidAktivasyon">hesaplanıyor…</div>
+        <button class="btn-ikincil" style="height:40px; padding:0 14px; font-size:13px;"
+                data-kopyala="hwidAktivasyon">📋 KOPYALA</button>
+      </div>
+      <div class="ipucu" id="hwidUyari"></div>
+    </div>
+
+    <div class="dugmeler">
+      <button class="btn-ana" id="aktiveBtn">🚀 LİSANSI ETKİNLEŞTİR</button>
+      <button class="btn-ikincil" id="cikisBtn1">ÇIKIŞ</button>
+    </div>
+
+    <div class="gelismis-baslik" data-gelismis="gelismisGovde">
+      <span data-ok>▸</span> Gelişmiş: BYOM Brain sunucu adresi
+    </div>
+    <div id="gelismisGovde" class="gelismis-govde gizli">
+      <div class="alan">
+        <label for="apiUrl">SUNUCU ADRESİ</label>
+        <input type="text" id="apiUrl" spellcheck="false" placeholder="https://hub.byomtech.com" />
+        <div class="ipucu" id="apiUrlBilgi"></div>
+      </div>
+      <div class="dugmeler" style="margin-top:0;">
+        <button class="btn-ikincil" id="apiKaydetBtn">ADRESİ KAYDET</button>
+        <button class="btn-ikincil" id="apiTestBtn">BAĞLANTIYI TEST ET</button>
+      </div>
+      <div id="apiMesaj" class="kutu kutu-bilgi gizli" style="margin-top:14px; margin-bottom:0;"></div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       EKRAN 3 — KİLİT / İLETİŞİM
+       ====================================================================== -->
+  <div id="ekranKilit" class="kart gizli">
+    <div class="kilit-simge" id="kilitSimge">🔒</div>
+    <div style="margin-bottom:10px;"><span class="rozet rozet-kirmizi" id="kilitRozet">UYGULAMA KİLİTLİ</span></div>
+    <h1 id="kilitBaslik">Lisans doğrulanamadı</h1>
+    <p id="kilitAciklama"></p>
+    <div id="kilitEkMesaj" class="kutu kutu-uyari gizli"></div>
+
+    <div style="margin-top:18px;">
+      <div class="hwid-etiket">Donanım kimliği (destek için)</div>
+      <div class="hwid-kutu">
+        <div class="hwid-metin" id="hwidKilit">—</div>
+        <button class="btn-ikincil" style="height:40px; padding:0 14px; font-size:13px;"
+                data-kopyala="hwidKilit">📋 KOPYALA</button>
+      </div>
+    </div>
+
+    <div id="kilitDetay" style="margin-top:18px;"></div>
+
+    <div class="dugmeler">
+      <button class="btn-ana" id="tekrarDeneBtn">🔄 TEKRAR DENE</button>
+      <button class="btn-ikincil" id="lisansDegistirBtn">FARKLI LİSANS GİR</button>
+      <button class="btn-ikincil" id="cikisBtn2">ÇIKIŞ</button>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       İLETİŞİM KARTI (kilit ekranıyla birlikte görünür)
+       ====================================================================== -->
+  <div id="iletisimKart" class="kart gizli">
+    <h2>📞 BYOM DESTEK HATTI</h2>
+    <p style="margin-bottom:16px;">
+      Lisansınızı yenilemek, başka bilgisayara taşımak veya sorununuzu çözmek için bize ulaşın.
+      Donanım kimliğinizi iletmeniz işlemi hızlandırır.
+    </p>
+    <div class="iletisim">
+      <a href="#" data-baglanti="tel:+908500000000"><span class="simge">☎️</span><span>0850 000 00 00</span></a>
+      <a href="#" data-baglanti="mailto:destek@byomtech.com"><span class="simge">✉️</span><span>destek@byomtech.com</span></a>
+      <a href="#" data-baglanti="https://byomtech.com"><span class="simge">🌐</span><span>byomtech.com</span></a>
+      <a href="#" data-baglanti="https://wa.me/908500000000"><span class="simge">💬</span><span>WhatsApp Destek</span></a>
+    </div>
+    <!-- Süresi dolmuş / dondurulmuş lisanslar da destek talebi açabilir
+         (BYOM Brain buna izin verir). Kullanıcı telefon beklemek zorunda kalmasın. -->
+    <div class="gelismis-baslik" data-gelismis="kilitDestekGovde">
+      <span data-ok>▸</span> Buradan destek talebi gönder
+    </div>
+    <div id="kilitDestekGovde" class="gelismis-govde gizli">
+      <div id="kilitDestekMesaj" class="kutu kutu-bilgi gizli"></div>
+
+      <div class="alan">
+        <label for="kilitDestekBaslik">KONU</label>
+        <input type="text" id="kilitDestekBaslik" maxlength="120" placeholder="Örn: Lisans yenileme talebi" />
+      </div>
+
+      <div class="alan">
+        <label for="kilitDestekMetni">MESAJINIZ</label>
+        <textarea id="kilitDestekMetni" rows="4"
+                  placeholder="Durumunuzu kısaca yazın. Lisans anahtarınız ve donanım kimliğiniz talebe otomatik eklenir."></textarea>
+      </div>
+
+      <div class="dugmeler" style="margin-top:0;">
+        <button class="btn-ana" id="kilitDestekGonderBtn">📨 TALEBİ GÖNDER</button>
+      </div>
+    </div>
+
+    <div class="alt-not">
+      Hafta içi 09:00 – 18:00 · BYOM Teknoloji<br />
+      Bu ekran, lisansınız doğrulanana kadar uygulamanın açılmasını engeller.
+    </div>
+  </div>
+
+</div>
+
+<script src="lisans.js"></script>
+</body>
+</html>
