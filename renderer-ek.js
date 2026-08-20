@@ -90,24 +90,66 @@ function ekUrunIndeksi(liste, id) {
 }
 
 /* ==========================================================================
- *  BÖLÜM A — 💸 İSKONTO ORANLARI SEKMESİ
+ *  BÖLÜM A — 💸 ROL BAZLI ÖDEME MATRİSİ (İSKONTO / FİYAT AYARLARI)
+ *  ---------------------------------------------------------------------------
+ *  Eskiden tek bir oran listesi vardı (Nakit / Kredi Kartı / Vadeli) ve bu
+ *  oranlar SİTEDEKİ HERKESE aynı şekilde uygulanıyordu. Oysa aynı mağaza hem
+ *  son kullanıcıya hem bayiye satış yapıyor: bayiye vadeli açılırken bireysel
+ *  müşteriye açılmaması, kartta bayiye %8 verilirken bireysele hiç
+ *  verilmemesi olağan durumlar.
+ *
+ *  Bu yüzden ayar artık İKİ BOYUTLUDUR:
+ *
+ *      rol (individual | corporate)  ×  yöntem (cash | card | term)
+ *
+ *  ve her hücrede iki bilgi tutulur:
+ *
+ *      enabled  → yöntem o role sitede GÖSTERİLSİN Mİ?
+ *      discount → gösteriliyorsa sepete uygulanacak iskonto yüzdesi
+ *
+ *  "enabled=false" ile "discount=0" AYNI ŞEY DEĞİLDİR: ilki yöntemi ödeme
+ *  ekranından tamamen kaldırır, ikincisi yöntemi açık bırakır ama indirim
+ *  vermez (vadeli satışın olağan hâli).
+ *
+ *  --- SAKLAMA ---
+ *  Matris, sunucudaki theme-config.json içine `payment_matrix` anahtarıyla
+ *  yazılır (GET/POST /wp-json/wc-b2b/v1/theme-config). theme-config rastgele
+ *  anahtar kabul eder (B2B_Config::save → deep_merge), bu yüzden eklentiye
+ *  yeni bir uç eklemek gerekmez — vitrin verisi de aynı yoldan gidiyor.
+ *
+ *  --- ESKİ SÜRÜMLERLE UYUM ---
+ *  Site tarafındaki eski kod hâlâ /settings/discounts ucundaki DÜZ oranlara
+ *  bakıyor olabilir. Bu yüzden kayıt sırasında KURUMSAL satırın oranları o
+ *  uca da yazılır. Sıralama bilinçli: önce matris (asıl kayıt), sonra eski
+ *  uç (yansıma). Eski uç hata verirse matris yine de kaydedilmiş olur ve
+ *  kullanıcı uyarılır — sessizce yutulmaz.
  * ========================================================================*/
 
-/** Ödeme tipleri — sözleşme gereği anahtarlar SABİT: cash / card / term. */
-const ISKONTO_TIPLERI = [
+/** Alıcı rolleri — anahtarlar SABİT: individual / corporate. */
+const MATRIS_ROLLERI = [
   {
-    kod: 'cash', ad: 'Nakit Sipariş', simge: '💵', alan: '#iskontoNakit', renk: 'emerald',
-    aciklama: 'Nakit veya havale/EFT ile ödenen siparişlerde uygulanır.'
+    kod: 'individual', ad: 'Bireysel Müşteriler', simge: '👤', renk: 'sky',
+    aciklama: 'Sitenizden alışveriş yapan son kullanıcılar (WooCommerce "customer" rolü).'
   },
   {
-    kod: 'card', ad: 'Kredi Kartı Sipariş', simge: '💳', alan: '#iskontoKart', renk: 'sky',
-    aciklama: 'Kredi kartı ile ödenen siparişlerde uygulanır.'
-  },
-  {
-    kod: 'term', ad: 'Vadeli Sipariş', simge: '🗓️', alan: '#iskontoVadeli', renk: 'amber',
-    aciklama: 'Vadeli (açık hesap) siparişlerde uygulanır. Genellikle %0 bırakılır.'
+    kod: 'corporate', ad: 'Kurumsal Bayiler', simge: '🏢', renk: 'emerald',
+    aciklama: 'Onaylanmış toptan bayiler (b2b_customer rolü).'
   }
 ];
+
+/** Ödeme yöntemleri — anahtarlar SABİT: cash / card / term. */
+const ODEME_YONTEMLERI = [
+  { kod: 'cash', ad: 'Nakit', simge: '💵', renk: 'emerald',
+    aciklama: 'Nakit veya havale/EFT ile peşin ödenen siparişler.' },
+  { kod: 'card', ad: 'Kredi Kartı', simge: '💳', renk: 'sky',
+    aciklama: 'Sanal POS üzerinden kredi kartı ile tahsil edilen siparişler.' },
+  { kod: 'term', ad: 'Vadeli', simge: '🗓️', renk: 'amber',
+    aciklama: 'Cari hesaba vadeli işlenen siparişler. Genellikle %0 bırakılır.' }
+];
+
+/* Sipariş kartı rozetleri ve önizleme metinleri eskiden bu listeden
+   besleniyordu; adı korunuyor ki dışarıdaki çağrılar kırılmasın. */
+const ISKONTO_TIPLERI = ODEME_YONTEMLERI;
 
 /** Önizlemede kullanılan örnek sepet tutarı. */
 const ISKONTO_ORNEK_SEPET = 1000;
@@ -122,6 +164,20 @@ const ISKONTO_KUTU_SINIFLARI = {
          'dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30',
   hata: 'bg-red-50 text-red-800 border-red-300 ' +
         'dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30'
+};
+
+/** Rol kartının kenarlık / başlık renkleri. */
+const MATRIS_RENKLERI = {
+  sky: {
+    kenar: 'border-sky-300 dark:border-sky-500/40',
+    baslik: 'text-sky-800 dark:text-sky-300',
+    zemin: 'bg-sky-50/60 dark:bg-sky-500/5'
+  },
+  emerald: {
+    kenar: 'border-emerald-300 dark:border-emerald-500/40',
+    baslik: 'text-emerald-800 dark:text-emerald-300',
+    zemin: 'bg-emerald-50/60 dark:bg-emerald-500/5'
+  }
 };
 
 /** Önizleme tablosundaki oran sütunu için renk sınıfı. */
@@ -151,92 +207,369 @@ function iskontoDurumYaz(tur, baslik, mesaj) {
     '</div>';
 }
 
-/** Oran kutularını doldurur ve önizlemeyi tazeler. */
-function iskontoFormunuDoldur(oranlar) {
-  const kaynak = oranlar || {};
+/* --------------------------------------------------------------------------
+ *  MATRİS VERİSİ
+ * ------------------------------------------------------------------------*/
 
-  ISKONTO_TIPLERI.forEach(function (tip) {
-    const alan = $(tip.alan);
-    if (!alan) return;
-    const deger = Number(kaynak[tip.kod]);
-    alan.value = iskontoYazi(isFinite(deger) ? deger : 0);
-  });
-
-  iskontoOnizlemeCiz();
+/**
+ * Fabrika ayarı.
+ *
+ * Bireysel müşteride vadeli KAPALI gelir: açık hesap, tanınan ve cari kaydı
+ * olan bayiler içindir; son kullanıcıya vadeli açmak varsayılan olmamalıdır.
+ */
+function varsayilanMatris() {
+  return {
+    individual: {
+      cash: { enabled: true,  discount: 0 },
+      card: { enabled: true,  discount: 0 },
+      term: { enabled: false, discount: 0 }
+    },
+    corporate: {
+      cash: { enabled: true,  discount: 12 },
+      card: { enabled: true,  discount: 8 },
+      term: { enabled: true,  discount: 0 }
+    }
+  };
 }
 
-/** Kutulardaki oranları okur: { cash, card, term, gecerliMi, hataliTip } */
-function iskontoFormunuOku() {
-  const sonuc = { cash: 0, card: 0, term: 0, gecerliMi: true, hataliTip: null };
+/** Bir hücreyi okunur hâle getirir; alan adları sunucu sürümüne göre değişebilir. */
+function matrisHucresiCoz(ham, varsayilan) {
+  const v = varsayilan || { enabled: true, discount: 0 };
 
-  ISKONTO_TIPLERI.forEach(function (tip) {
-    const alan = $(tip.alan);
-    const ham = alan ? sayiCoz(alan.value) : NaN;
+  /* Eski biçim: hücre yerine düz sayı (yalnızca oran) yazılmış olabilir. */
+  if (typeof ham === 'number' || typeof ham === 'string') {
+    const sayi = Number(String(ham).replace(',', '.'));
+    return {
+      enabled: v.enabled,
+      discount: (isFinite(sayi) && sayi >= 0 && sayi <= 100) ? sayi : v.discount
+    };
+  }
 
-    if (isNaN(ham) || !isFinite(ham) || ham < 0 || ham > 100) {
-      if (sonuc.gecerliMi) { sonuc.gecerliMi = false; sonuc.hataliTip = tip; }
-      sonuc[tip.kod] = 0;
-      return;
-    }
+  if (!ham || typeof ham !== 'object') return { enabled: v.enabled, discount: v.discount };
 
-    sonuc[tip.kod] = Math.round(ham * 100) / 100;
+  const acikHam = (ham.enabled !== undefined) ? ham.enabled
+                : (ham.active !== undefined) ? ham.active
+                : (ham.aktif !== undefined) ? ham.aktif
+                : v.enabled;
+
+  const oranHam = (ham.discount !== undefined) ? ham.discount
+                : (ham.rate !== undefined) ? ham.rate
+                : (ham.oran !== undefined) ? ham.oran
+                : v.discount;
+
+  const oran = Number(String(oranHam === null || oranHam === undefined ? 0 : oranHam).replace(',', '.'));
+
+  return {
+    enabled: !(acikHam === false || acikHam === 0 || acikHam === '0' ||
+               acikHam === 'no' || acikHam === 'false'),
+    discount: (isFinite(oran) && oran >= 0 && oran <= 100) ? Math.round(oran * 100) / 100 : 0
+  };
+}
+
+/** Sunucudan gelen ham matrisi tam ve güvenli bir yapıya çevirir. */
+function matrisNormalle(ham) {
+  const kaynak = ham && typeof ham === 'object' ? ham : {};
+  const varsayilanlar = varsayilanMatris();
+  const sonuc = {};
+
+  MATRIS_ROLLERI.forEach(function (rol) {
+    /* Rol adı sunucuda "bireysel" / "dealer" gibi de yazılmış olabilir. */
+    const rolHam = kaynak[rol.kod] ||
+                   (rol.kod === 'individual' ? (kaynak.bireysel || kaynak.customer || kaynak.b2c) : null) ||
+                   (rol.kod === 'corporate' ? (kaynak.kurumsal || kaynak.dealer || kaynak.b2b) : null) ||
+                   {};
+
+    sonuc[rol.kod] = {};
+    ODEME_YONTEMLERI.forEach(function (yon) {
+      sonuc[rol.kod][yon.kod] = matrisHucresiCoz(rolHam[yon.kod], varsayilanlar[rol.kod][yon.kod]);
+    });
   });
 
   return sonuc;
 }
 
-/** 1.000 TL örnek sepet üzerinden canlı önizleme tablosu. */
+/**
+ * Eski /settings/discounts oranlarını matrise çevirir.
+ *
+ * Eski oranlar YALNIZCA bayilere uygulanıyordu (o dönem panelde bireysel
+ * müşteri kavramı yoktu), bu yüzden kurumsal satıra taşınır. Bireysel satır
+ * fabrika ayarında bırakılır — eski oranı oraya da kopyalamak, mağazanın hiç
+ * vermediği bir indirimi son kullanıcıya açardı.
+ */
+function eskiOranlariMatriseCevir(oranlar) {
+  const matris = varsayilanMatris();
+  const kaynak = oranlar || {};
+
+  ODEME_YONTEMLERI.forEach(function (yon) {
+    const sayi = Number(kaynak[yon.kod]);
+    if (isFinite(sayi) && sayi >= 0 && sayi <= 100) {
+      matris.corporate[yon.kod].discount = Math.round(sayi * 100) / 100;
+    }
+  });
+
+  return matris;
+}
+
+/* --------------------------------------------------------------------------
+ *  MATRİS TABLOSU (ARAYÜZ)
+ * ------------------------------------------------------------------------*/
+
+/** Tek bir hücrenin satır HTML'i: [anahtar] [yöntem adı] [% kutusu] */
+function matrisSatiriHtml(rol, yon, hucre) {
+  const anahtar = rol.kod + '|' + yon.kod;
+  const acik = !!hucre.enabled;
+
+  return '' +
+  '<div data-matris-satir="' + kacis(anahtar) + '" ' +
+       'class="rounded-2xl border-2 p-4 flex flex-wrap items-center gap-4 transition ' +
+       (acik
+         ? 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900/40'
+         : 'border-dashed border-slate-300 bg-slate-100/70 dark:border-slate-700 dark:bg-slate-900/70') + '">' +
+
+    /* --- Açık / Kapalı anahtarı --- */
+    '<button type="button" role="switch" data-matris-anahtar="' + kacis(anahtar) + '" ' +
+            'aria-checked="' + (acik ? 'true' : 'false') + '" ' +
+            'title="' + kacis(yon.ad + ' yöntemini "' + rol.ad + '" için aç / kapat') + '" ' +
+            'class="relative w-20 h-11 rounded-full shrink-0 transition-colors focus:outline-none ' +
+                   'focus:ring-4 focus:ring-emerald-500/30 ' +
+                   (acik ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600') + '">' +
+      '<span class="absolute top-1 left-1 w-9 h-9 rounded-full bg-white shadow-lg transition-transform duration-200 ' +
+            (acik ? 'translate-x-9' : '') + '"></span>' +
+    '</button>' +
+
+    '<div class="min-w-0 flex-1">' +
+      '<div class="text-lg font-extrabold ' + (acik ? '' : 'opacity-60') + '">' +
+        yon.simge + ' ' + kacis(yon.ad) + '</div>' +
+      '<div class="text-base font-semibold ' +
+           (acik ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400') + '">' +
+        (acik ? 'Açık — sitede seçilebilir' : 'Kapalı — sitede hiç görünmez') +
+      '</div>' +
+    '</div>' +
+
+    /* --- İskonto oranı --- */
+    '<label class="flex items-center gap-2 text-lg font-extrabold shrink-0 ' +
+           (acik ? '' : 'opacity-50') + '">' +
+      '<span>İskonto</span>' +
+      '<span class="relative">' +
+        '<input data-matris-oran="' + kacis(anahtar) + '" type="text" inputmode="decimal" ' +
+               (acik ? '' : 'disabled ') +
+               'value="' + kacis(iskontoYazi(hucre.discount)) + '" ' +
+               'class="w-28 h-12 pl-4 pr-8 rounded-xl text-xl font-black text-right ' +
+                      'bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 ' +
+                      'focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition ' +
+                      'disabled:cursor-not-allowed" />' +
+        '<span class="absolute right-3 top-1/2 -translate-y-1/2 text-lg font-black text-slate-400 ' +
+              'pointer-events-none">%</span>' +
+      '</span>' +
+    '</label>' +
+  '</div>';
+}
+
+/** Bir rolün tablosunu ilgili kaba çizer. */
+function matrisTablosuCiz(rol) {
+  const kap = $(rol.kod === 'individual' ? '#matrisBireysel' : '#matrisKurumsal');
+  if (!kap) return;
+
+  const d = ekDurum();
+  const matris = (d && d.odemeMatrisi) || varsayilanMatris();
+  const renk = MATRIS_RENKLERI[rol.renk] || MATRIS_RENKLERI.sky;
+
+  const acikSayisi = ODEME_YONTEMLERI.filter(function (yon) {
+    return matris[rol.kod][yon.kod].enabled;
+  }).length;
+
+  kap.innerHTML = '' +
+  '<div class="h-full rounded-2xl border-2 ' + renk.kenar + ' ' + renk.zemin + ' p-6 flex flex-col gap-4">' +
+    '<div>' +
+      '<div class="text-2xl font-black ' + renk.baslik + '">' +
+        rol.simge + ' ' + kacis(rol.ad) + '</div>' +
+      '<div class="text-base font-semibold text-slate-600 dark:text-slate-300 mt-1">' +
+        kacis(rol.aciklama) + '</div>' +
+    '</div>' +
+
+    ODEME_YONTEMLERI.map(function (yon) {
+      return matrisSatiriHtml(rol, yon, matris[rol.kod][yon.kod]);
+    }).join('') +
+
+    /* Hiçbir yöntem açık değilse bu rol sipariş VEREMEZ — sessizce geçilmez. */
+    (acikSayisi === 0
+      ? '<div class="rounded-xl border-2 border-red-300 dark:border-red-500/40 ' +
+             'bg-red-50 dark:bg-red-500/10 p-4 text-lg font-bold ' +
+             'text-red-800 dark:text-red-200">' +
+          '⚠️ Bu rol için hiçbir ödeme yöntemi açık değil — bu grup sitenizden ' +
+          'sipariş tamamlayamaz.' +
+        '</div>'
+      : '') +
+  '</div>';
+}
+
+/** İki tabloyu da çizer ve önizlemeyi tazeler. */
+function matrisiCiz() {
+  MATRIS_ROLLERI.forEach(matrisTablosuCiz);
+  iskontoOnizlemeCiz();
+}
+
+/** Matrisi belleğe yazıp arayüzü yeniler. */
+function iskontoFormunuDoldur(matris) {
+  const d = ekDurum();
+  if (!d) return;
+
+  d.odemeMatrisi = matrisNormalle(matris || d.odemeMatrisi);
+  matrisiCiz();
+}
+
+/**
+ * Ekrandaki kutuları okur.
+ * @returns {{matris: object, gecerliMi: boolean, hataliAnahtar: string}}
+ */
+function matrisFormunuOku() {
+  const d = ekDurum();
+  const mevcut = (d && d.odemeMatrisi) || varsayilanMatris();
+  const sonuc = { matris: {}, gecerliMi: true, hataliAnahtar: '' };
+
+  MATRIS_ROLLERI.forEach(function (rol) {
+    sonuc.matris[rol.kod] = {};
+
+    ODEME_YONTEMLERI.forEach(function (yon) {
+      const anahtar = rol.kod + '|' + yon.kod;
+      const acik = !!mevcut[rol.kod][yon.kod].enabled;
+      const alan = document.querySelector('[data-matris-oran="' + anahtar + '"]');
+      const ham = alan ? sayiCoz(alan.value) : Number(mevcut[rol.kod][yon.kod].discount);
+
+      /* Kapalı yöntemin oranı doğrulanmaz: kutu devre dışıdır ve o oran
+         sitede hiç kullanılmayacaktır. Kapalı bir satırdaki eski/bozuk değer
+         yüzünden kaydı engellemek kullanıcıyı çıkışsız bırakırdı. */
+      if (!acik) {
+        const eski = Number(mevcut[rol.kod][yon.kod].discount);
+        sonuc.matris[rol.kod][yon.kod] = {
+          enabled: false,
+          discount: (isFinite(eski) && eski >= 0 && eski <= 100) ? eski : 0
+        };
+        return;
+      }
+
+      if (isNaN(ham) || !isFinite(ham) || ham < 0 || ham > 100) {
+        if (sonuc.gecerliMi) { sonuc.gecerliMi = false; sonuc.hataliAnahtar = anahtar; }
+        sonuc.matris[rol.kod][yon.kod] = { enabled: true, discount: 0 };
+        return;
+      }
+
+      sonuc.matris[rol.kod][yon.kod] = { enabled: true, discount: Math.round(ham * 100) / 100 };
+    });
+  });
+
+  return sonuc;
+}
+
+/* Eski ad — dışarıdan çağıran olursa kırılmasın (kurumsal satırı döndürür). */
+function iskontoFormunuOku() {
+  const okunan = matrisFormunuOku();
+  const kurumsal = okunan.matris.corporate;
+  return {
+    cash: kurumsal.cash.discount,
+    card: kurumsal.card.discount,
+    term: kurumsal.term.discount,
+    gecerliMi: okunan.gecerliMi,
+    hataliTip: null
+  };
+}
+
+/** Matrisin okunabilir özeti (bildirimlerde ve durum kutusunda kullanılır). */
+function matrisOzeti(matris) {
+  return MATRIS_ROLLERI.map(function (rol) {
+    const satir = ODEME_YONTEMLERI.map(function (yon) {
+      const h = matris[rol.kod][yon.kod];
+      return yon.simge + ' ' + yon.ad + ': ' +
+             (h.enabled ? '%' + iskontoYazi(h.discount) : 'kapalı');
+    }).join('  ·  ');
+    return rol.simge + ' ' + rol.ad + '\n   ' + satir;
+  }).join('\n');
+}
+
+/** 1.000 TL örnek sepet üzerinden iki rolü yan yana gösteren önizleme. */
 function iskontoOnizlemeCiz() {
   const kap = $('#iskontoOnizleme');
   if (!kap) return;
 
-  const satirlar = ISKONTO_TIPLERI.map(function (tip) {
-    const alan = $(tip.alan);
-    const ham = alan ? sayiCoz(alan.value) : NaN;
-    const gecerliMi = !isNaN(ham) && isFinite(ham) && ham >= 0 && ham <= 100;
-    const oran = gecerliMi ? ham : 0;
-    const indirim = ISKONTO_ORNEK_SEPET * (oran / 100);
-    const odenecek = ISKONTO_ORNEK_SEPET - indirim;
+  const okunan = matrisFormunuOku();
+  const matris = okunan.matris;
+
+  const satirlar = ODEME_YONTEMLERI.map(function (yon) {
+    const hucre = function (rolKod) {
+      const h = matris[rolKod][yon.kod];
+      if (!h.enabled) {
+        return '<td class="py-3 pr-4 text-right text-lg font-bold whitespace-nowrap ' +
+               'text-slate-400 dark:text-slate-500">— kapalı —</td>';
+      }
+      const odenecek = ISKONTO_ORNEK_SEPET - ISKONTO_ORNEK_SEPET * (h.discount / 100);
+      return '<td class="py-3 pr-4 text-right whitespace-nowrap">' +
+        '<div class="text-lg font-black ' + iskontoRenkSinifi(yon.renk) + '">%' +
+          kacis(iskontoYazi(h.discount)) + '</div>' +
+        '<div class="text-base font-bold">' + kacis(para(odenecek)) + '</div>' +
+      '</td>';
+    };
 
     return '' +
     '<tr class="border-b border-slate-200 dark:border-slate-700">' +
       '<td class="py-3 pr-4 text-lg font-extrabold whitespace-nowrap">' +
-        tip.simge + ' ' + kacis(tip.ad) + '</td>' +
-      '<td class="py-3 pr-4 text-right text-lg font-black whitespace-nowrap ' +
-          (gecerliMi ? iskontoRenkSinifi(tip.renk) : 'text-red-600 dark:text-red-400') + '">' +
-        (gecerliMi ? '%' + kacis(iskontoYazi(oran)) : '⚠️ geçersiz') + '</td>' +
-      '<td class="py-3 pr-4 text-right text-lg font-bold whitespace-nowrap text-red-600 dark:text-red-400">' +
-        (indirim > 0 ? '− ' + kacis(para(indirim)) : kacis(para(0))) + '</td>' +
-      '<td class="py-3 text-right text-lg font-black whitespace-nowrap">' + kacis(para(odenecek)) + '</td>' +
+        yon.simge + ' ' + kacis(yon.ad) + '</td>' +
+      hucre('individual') +
+      hucre('corporate') +
     '</tr>';
   }).join('');
 
   kap.innerHTML = '' +
-  '<div class="rounded-2xl border-2 border-slate-200 dark:border-slate-700 ' +
+  '<div class="h-full rounded-2xl border-2 border-slate-200 dark:border-slate-700 ' +
        'bg-white dark:bg-slate-800 p-5">' +
     '<div class="text-lg font-black mb-1">🧮 Örnek Hesap</div>' +
     '<div class="text-base font-semibold text-slate-500 dark:text-slate-400 mb-3">' +
-      'Bayinin sepet tutarı ' + kacis(para(ISKONTO_ORNEK_SEPET)) + ' olsaydı:' +
+      'Sepet tutarı ' + kacis(para(ISKONTO_ORNEK_SEPET)) + ' olsaydı, ödenecek tutar:' +
     '</div>' +
     '<div class="overflow-x-auto">' +
       '<table class="w-full text-left border-collapse">' +
         '<thead>' +
           '<tr class="border-b-2 border-slate-300 dark:border-slate-600 ' +
               'text-base font-black text-slate-500 dark:text-slate-400">' +
-            '<th class="py-2 pr-4">ÖDEME TİPİ</th>' +
-            '<th class="py-2 pr-4 text-right">İSKONTO</th>' +
-            '<th class="py-2 pr-4 text-right">İNDİRİM</th>' +
-            '<th class="py-2 text-right">ÖDENECEK</th>' +
+            '<th class="py-2 pr-4">ÖDEME YÖNTEMİ</th>' +
+            '<th class="py-2 pr-4 text-right">👤 BİREYSEL</th>' +
+            '<th class="py-2 pr-4 text-right">🏢 BAYİ</th>' +
           '</tr>' +
         '</thead>' +
         '<tbody>' + satirlar + '</tbody>' +
       '</table>' +
     '</div>' +
+    (okunan.gecerliMi
+      ? ''
+      : '<div class="mt-3 text-base font-bold text-red-600 dark:text-red-400">' +
+        '⚠️ Bir orana geçersiz değer yazıldı; 0 ile 100 arasında bir sayı olmalı.</div>') +
   '</div>';
 }
 
+/** Bir hücrenin açık/kapalı durumunu değiştirir (siteye kayıt YAPMAZ). */
+function matrisAnahtariniDegistir(anahtar) {
+  const d = ekDurum();
+  if (!d || !d.odemeMatrisi) return;
+
+  const parca = String(anahtar || '').split('|');
+  const rolKod = parca[0];
+  const yonKod = parca[1];
+  if (!d.odemeMatrisi[rolKod] || !d.odemeMatrisi[rolKod][yonKod]) return;
+
+  /* Ekrandaki oranlar önce belleğe alınır; aksi hâlde anahtarı çevirmek
+     kullanıcının henüz kaydetmediği oran değişikliklerini silerdi. */
+  d.odemeMatrisi = matrisFormunuOku().matris;
+
+  d.odemeMatrisi[rolKod][yonKod].enabled = !d.odemeMatrisi[rolKod][yonKod].enabled;
+
+  matrisiCiz();
+}
+
+/* --------------------------------------------------------------------------
+ *  YÜKLEME / KAYDETME
+ * ------------------------------------------------------------------------*/
+
 /**
- * İskonto sekmesini yükler.
+ * Ödeme matrisini yükler.
  * @param {boolean} zorla True ise önbelleğe bakmadan siteden yeniden çeker.
  */
 async function iskontoSekmesiYukle(zorla) {
@@ -247,97 +580,124 @@ async function iskontoSekmesiYukle(zorla) {
   if (d.iskontoYukleniyor) return;
 
   if (d.iskontoYuklendi && !zorla) {
-    iskontoFormunuDoldur(d.iskonto);
+    matrisiCiz();
     return;
   }
 
   d.iskontoYukleniyor = true;
-  iskontoDurumYaz('bilgi', '⏳ İskonto oranları getiriliyor…', 'Lütfen bekleyin.');
+  iskontoDurumYaz('bilgi', '⏳ Ödeme matrisi getiriliyor…', 'Lütfen bekleyin.');
 
   try {
     /* ---------- DEMO ---------- */
     if (ekDemoMu()) {
       await bekle(200);
-      iskontoFormunuDoldur(d.iskonto || { cash: 12, card: 8, term: 0 });
+      d.odemeMatrisi = matrisNormalle(d.odemeMatrisi);
       d.iskontoYuklendi = true;
+      matrisiCiz();
       iskontoDurumYaz(
         'uyari',
         '🎭 Demo Modu',
-        'Gördüğünüz oranlar örnektir. Bu ekranda yapacağınız değişiklikler\n' +
+        'Gördüğünüz matris örnektir. Bu ekranda yapacağınız değişiklikler\n' +
         'sitenize gönderilmez, yalnızca bu pencerede saklanır.'
       );
       return;
     }
 
     /* ---------- CANLI ---------- */
-    const cevap = await b2b('settings/discounts');
-
-    if (!cevap || !cevap.ok) {
-      /* Form DEVRE DIŞI BIRAKILMAZ — kullanıcı yeniden deneyebilsin. */
-      iskontoFormunuDoldur(d.iskonto || { cash: 12, card: 8, term: 0 });
-      iskontoDurumYaz(
-        'hata',
-        '❌ İskonto oranları alınamadı',
-        ekHataMetni(cevap) + '\n\nAşağıdaki kutulara yazıp 💾 KAYDET ile yeniden deneyebilirsiniz.'
-      );
-      bildir('İskonto oranları alınamadı:\n' + ekHataMetni(cevap), 'hata');
+    if (!ekEklentiVarMi()) {
+      d.odemeMatrisi = matrisNormalle(d.odemeMatrisi);
+      d.iskontoYuklendi = true;
+      matrisiCiz();
+      iskontoDurumYaz('hata', '❌ B2B Core eklentisi bulunamadı', EK_EKLENTI_YOK_MESAJI);
       return;
     }
 
-    const veri = cevap.veri || {};
-    const oranlar = veri.rates || veri.discounts || {};
+    const cevap = await b2b('theme-config', { sureAsimi: 30000 });
 
-    d.iskonto = {
-      cash: Number(oranlar.cash || 0),
-      card: Number(oranlar.card || 0),
-      term: Number(oranlar.term || 0)
-    };
+    if (!cevap || !cevap.ok) {
+      /* Form DEVRE DIŞI BIRAKILMAZ — kullanıcı yeniden deneyebilsin. */
+      d.odemeMatrisi = matrisNormalle(d.odemeMatrisi);
+      matrisiCiz();
+      iskontoDurumYaz(
+        'hata',
+        '❌ Ödeme matrisi alınamadı',
+        ekHataMetni(cevap) + '\n\nDeğerleri düzenleyip 💾 KAYDET ile yeniden deneyebilirsiniz.'
+      );
+      bildir('Ödeme matrisi alınamadı:\n' + ekHataMetni(cevap), 'hata');
+      return;
+    }
+
+    const yapilandirma = (cevap.veri && cevap.veri.config) || {};
+    const hamMatris = yapilandirma.payment_matrix || yapilandirma.paymentMatrix || null;
+
+    if (hamMatris) {
+      d.odemeMatrisi = matrisNormalle(hamMatris);
+      d.iskontoYuklendi = true;
+      matrisiCiz();
+      iskontoDurumYaz('basari', '🌐 Sitedeki güncel matris yüklendi', matrisOzeti(d.odemeMatrisi));
+      return;
+    }
+
+    /* Sitede henüz matris yok: eski düz oranlardan başlangıç üretilir ki
+       kullanıcı sıfırdan yazmak zorunda kalmasın. */
+    const eski = await b2b('settings/discounts');
+    const oranlar = (eski && eski.ok && eski.veri && (eski.veri.rates || eski.veri.discounts)) || null;
+
+    d.odemeMatrisi = oranlar ? eskiOranlariMatriseCevir(oranlar) : varsayilanMatris();
     d.iskontoYuklendi = true;
-
-    iskontoFormunuDoldur(d.iskonto);
+    matrisiCiz();
 
     iskontoDurumYaz(
-      'basari',
-      '🌐 Sitedeki güncel oranlar yüklendi',
-      ISKONTO_TIPLERI.map(function (tip) {
-        return tip.simge + ' ' + tip.ad + ': %' + iskontoYazi(d.iskonto[tip.kod]);
-      }).join('\n') +
-      (veri.updated_at ? '\n\nSon güncelleme: ' + tarihYaz(veri.updated_at, true) : '')
+      'uyari',
+      'ℹ️ Sitede henüz rol bazlı matris yok',
+      (oranlar
+        ? 'Mevcut iskonto oranlarınız KURUMSAL BAYİ satırına taşındı.\n'
+        : 'Fabrika ayarları yüklendi.\n') +
+      'Bireysel müşteri satırını gözden geçirip 💾 KAYDET deyin.\n\n' +
+      matrisOzeti(d.odemeMatrisi)
     );
   } catch (e) {
     iskontoDurumYaz('hata', '❌ Beklenmeyen hata', String((e && e.message) || e));
-    bildir('İskonto oranları yüklenirken beklenmeyen bir hata oluştu:\n' +
+    bildir('Ödeme matrisi yüklenirken beklenmeyen bir hata oluştu:\n' +
            String((e && e.message) || e), 'hata');
   } finally {
     d.iskontoYukleniyor = false;
   }
 }
 
-/** Oranları doğrular, onay alır ve siteye gönderir. */
+/** Matrisi doğrular, onay alır ve siteye gönderir. */
 async function iskontoKaydet() {
   const d = ekDurum();
   if (!d) return;
 
-  const okunan = iskontoFormunuOku();
+  const okunan = matrisFormunuOku();
 
   if (!okunan.gecerliMi) {
-    const tip = okunan.hataliTip || ISKONTO_TIPLERI[0];
-    bildir(tip.simge + ' ' + tip.ad + ' için geçerli bir oran yazın.\n' +
-           '0 ile 100 arasında bir sayı olmalıdır.\nÖrnek: 12  ·  8,5  ·  0', 'uyari');
-    const alan = $(tip.alan);
+    const alan = document.querySelector('[data-matris-oran="' + okunan.hataliAnahtar + '"]');
+    bildir('Geçersiz iskonto oranı.\n0 ile 100 arasında bir sayı olmalıdır.\n' +
+           'Örnek: 12  ·  8,5  ·  0', 'uyari');
     if (alan) { alan.focus(); if (alan.select) alan.select(); }
     return;
   }
 
-  const ozet = ISKONTO_TIPLERI.map(function (tip) {
-    return tip.simge + ' ' + tip.ad + ': %' + iskontoYazi(okunan[tip.kod]);
-  }).join('\n');
+  const matris = okunan.matris;
+  const ozet = matrisOzeti(matris);
+
+  /* Bir rolün bütün yöntemleri kapalıysa o rol sipariş veremez; kullanıcı bunu
+     bilerek yapıyor olabilir (ör. siteyi geçici olarak bayiye kapatmak) ama
+     kaza eseri de olabileceği için onay metninde AÇIKÇA söylenir. */
+  const kapaliRoller = MATRIS_ROLLERI.filter(function (rol) {
+    return ODEME_YONTEMLERI.every(function (yon) { return !matris[rol.kod][yon.kod].enabled; });
+  });
 
   const eminMi = await onayla(
-    '💸 İskonto Oranlarını Kaydet',
-    'Yeni oranlar:\n' + ozet + '\n\n' +
-    'Bu oranlar kaydedildiği anda web sitenizde geçerli olur ve\n' +
-    'bayilerin sepet tutarlarını anında etkiler.' +
+    '💸 Ödeme Matrisini Kaydet',
+    'Yeni ayarlar:\n' + ozet + '\n\n' +
+    (kapaliRoller.length
+      ? '⚠️ DİKKAT: ' + kapaliRoller.map(function (r) { return r.ad; }).join(' ve ') +
+        ' için hiçbir ödeme yöntemi açık değil.\nBu grup sitenizden sipariş TAMAMLAYAMAZ.\n\n'
+      : '') +
+    'Bu ayarlar kaydedildiği anda web sitenizde geçerli olur.' +
     (ekDemoMu() ? '\n\n🎭 DEMO MODU: sitenizde hiçbir değişiklik yapılmaz.' : ''),
     '💾 EVET, KAYDET',
     false
@@ -352,55 +712,74 @@ async function iskontoKaydet() {
     /* ---------- DEMO ---------- */
     if (ekDemoMu()) {
       await bekle(300);
-      d.iskonto = { cash: okunan.cash, card: okunan.card, term: okunan.term };
+      d.odemeMatrisi = matris;
       d.iskontoYuklendi = true;
-      iskontoFormunuDoldur(d.iskonto);
+      matrisiCiz();
       iskontoDurumYaz('uyari', '🎭 Demo Modu — kaydedildi (yalnızca bu pencerede)', ozet);
-      bildir('İskonto oranları güncellendi:\n' + ozet +
-             '\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
+      bildir('Ödeme matrisi güncellendi.\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
       return;
     }
 
-    /* ---------- CANLI ---------- */
-    const cevap = await b2b('settings/discounts', {
+    if (!ekEklentiVarMi()) {
+      iskontoDurumYaz('hata', '❌ Kaydedilemedi', EK_EKLENTI_YOK_MESAJI);
+      bildir(EK_EKLENTI_YOK_MESAJI, 'hata');
+      return;
+    }
+
+    /* ---------- CANLI: asıl kayıt (theme-config → payment_matrix) ---------- */
+    const cevap = await b2b('theme-config', {
       metod: 'POST',
       sureAsimi: 45000,
-      govde: { cash: okunan.cash, card: okunan.card, term: okunan.term }
+      govde: { config: { payment_matrix: matris } }
     });
 
     if (!cevap || !cevap.ok) {
       iskontoDurumYaz('hata', '❌ Kaydedilemedi', ekHataMetni(cevap));
-      bildir('İskonto oranları kaydedilemedi:\n' + ekHataMetni(cevap), 'hata');
+      bildir('Ödeme matrisi kaydedilemedi:\n' + ekHataMetni(cevap), 'hata');
       return;
     }
 
-    const veri = cevap.veri || {};
-    const donen = veri.rates || veri.discounts || {};
+    /* Sunucu düzeltilmiş matrisi geri döndürdüyse onu kullan. */
+    const donen = (cevap.veri && cevap.veri.config &&
+                   (cevap.veri.config.payment_matrix || cevap.veri.config.paymentMatrix)) || null;
 
-    d.iskonto = {
-      cash: donen.cash === undefined ? okunan.cash : Number(donen.cash),
-      card: donen.card === undefined ? okunan.card : Number(donen.card),
-      term: donen.term === undefined ? okunan.term : Number(donen.term)
-    };
+    d.odemeMatrisi = donen ? matrisNormalle(donen) : matris;
     d.iskontoYuklendi = true;
+    matrisiCiz();
 
-    iskontoFormunuDoldur(d.iskonto);
+    /* ---------- CANLI: eski uca yansıma (geriye dönük uyum) ---------- */
+    const eskiCevap = await b2b('settings/discounts', {
+      metod: 'POST',
+      sureAsimi: 30000,
+      govde: {
+        cash: matris.corporate.cash.enabled ? matris.corporate.cash.discount : 0,
+        card: matris.corporate.card.enabled ? matris.corporate.card.discount : 0,
+        term: matris.corporate.term.enabled ? matris.corporate.term.discount : 0
+      }
+    });
 
-    const yeniOzet = ISKONTO_TIPLERI.map(function (tip) {
-      return tip.simge + ' ' + tip.ad + ': %' + iskontoYazi(d.iskonto[tip.kod]);
-    }).join('\n');
+    const yeniOzet = matrisOzeti(d.odemeMatrisi);
 
-    iskontoDurumYaz('basari', '✅ Oranlar sitenize kaydedildi', yeniOzet);
-    bildir('İskonto oranları güncellendi:\n' + yeniOzet + '\nSitenizde anında geçerli.', 'basari');
+    if (!eskiCevap || !eskiCevap.ok) {
+      iskontoDurumYaz('uyari', '⚠️ Matris kaydedildi, eski oran ucu güncellenemedi',
+        yeniOzet + '\n\nEski uç hatası: ' + ekHataMetni(eskiCevap) +
+        '\nSitenizin teması matrisi okuyorsa sorun yoktur.');
+      bildir('Ödeme matrisi kaydedildi.\n' +
+             '⚠️ Eski iskonto ucu güncellenemedi; teması eski uca bakan siteler\n' +
+             'değişikliği görmeyebilir.', 'uyari');
+      return;
+    }
+
+    iskontoDurumYaz('basari', '✅ Ödeme matrisi sitenize kaydedildi', yeniOzet);
+    bildir('Ödeme matrisi güncellendi.\nSitenizde anında geçerli.', 'basari');
   } catch (e) {
     iskontoDurumYaz('hata', '❌ Beklenmeyen hata', String((e && e.message) || e));
-    bildir('İskonto oranları kaydedilirken beklenmeyen bir hata oluştu:\n' +
+    bildir('Ödeme matrisi kaydedilirken beklenmeyen bir hata oluştu:\n' +
            String((e && e.message) || e), 'hata');
   } finally {
     geriAl();
   }
 }
-
 /* ==========================================================================
  *  BÖLÜM B — 🧾 SİPARİŞ KARTI ÖDEME ROZETİ
  * ========================================================================*/
@@ -2042,14 +2421,173 @@ async function urunSil(id, buton) {
 }
 
 /* ==========================================================================
- *  BÖLÜM F — 🚫 SİPARİŞ İPTALİ
+ *  BÖLÜM F — 🚫 SİPARİŞ İPTALİ (GEREKÇELİ)
  *  ---------------------------------------------------------------------------
  *  Sipariş SİLİNMEZ; durumu "cancelled" (Sipariş İptal Edildi) yapılır.
  *  Sebep: siparişin veritabanından silinmesi muhasebe/stok geçmişini de
  *  yok eder ve müşteri "Hesabım > Siparişler" sayfasında siparişin ne
  *  olduğunu göremez. İptal durumunda ise müşteri "Sipariş İptal Edildi"
  *  yazısını görür ve WooCommerce stokları geri yükler.
+ *
+ *  GEREKÇE ZORUNLUDUR. Depo ile muhasebe arasındaki en sık anlaşmazlık
+ *  "bu sipariş neden iptal olmuş?" sorusudur; gerekçesiz iptal, aylar sonra
+ *  kimsenin cevaplayamadığı bir boşluk bırakır. Girilen metin siparişe NOT
+ *  olarak işlenir, sonra durum değiştirilir — sıra önemlidir: durum önce
+ *  değiştirilip not sonra düşseydi, not isteği hata verdiğinde sipariş
+ *  gerekçesiz iptal edilmiş olarak kalırdı.
  * ========================================================================*/
+
+/**
+ * Hazır iptal gerekçeleri.
+ *
+ * Depocu/kasiyer klavyeye hiç dokunmadan en sık üç dört sebebi seçebilsin
+ * diye buradalar; hepsi seçildikten sonra da düzenlenebilir (metin kutusuna
+ * yazılır, kilitlenmez).
+ */
+const IPTAL_SEBEPLERI = [
+  'Minimum sepet tutarı karşılanmadı',
+  'Stok tükendi',
+  'Müşteri vazgeçti',
+  'Ödeme alınamadı / provizyon geçmedi',
+  'Yanlış / mükerrer sipariş',
+  'Teslimat bölgesi dışında',
+  'Fiyat hatası'
+];
+
+/** Hazır gerekçe düğmelerini çizer. */
+function iptalSebepleriCiz() {
+  const kap = $('#iptalSebepleri');
+  if (!kap) return;
+
+  kap.innerHTML = IPTAL_SEBEPLERI.map(function (sebep) {
+    return '<button type="button" data-iptal-sebep="' + kacis(sebep) + '" ' +
+      'class="h-12 px-4 rounded-xl border-2 border-slate-300 dark:border-slate-600 ' +
+             'bg-slate-50 hover:bg-marka-50 hover:border-marka-400 ' +
+             'dark:bg-slate-900 dark:hover:bg-slate-700 ' +
+             'text-base font-bold transition active:scale-95">' +
+      kacis(sebep) + '</button>';
+  }).join('');
+}
+
+/** İptal penceresindeki uyarı kutusu. */
+function iptalUyar(mesaj) {
+  const kutu = $('#iptalUyari');
+  if (!kutu) return;
+
+  if (!mesaj) { kutu.classList.add('hidden'); kutu.textContent = ''; return; }
+  kutu.textContent = mesaj;
+  kutu.classList.remove('hidden');
+}
+
+function iptalModaliKapat() {
+  const katman = $('#iptalModalKatman');
+  if (katman) katman.classList.add('hidden');
+  iptalUyar('');
+}
+
+/**
+ * İptal gerekçesi penceresini açar.
+ *
+ * @param {object} s Sipariş.
+ * @returns {Promise<{sebep: string, bildir: boolean}|null>} Vazgeçilirse null.
+ */
+function iptalSebebiSor(s) {
+  const katman = $('#iptalModalKatman');
+  const metin = $('#iptalSebepMetni');
+  const onayBtn = $('#iptalOnay');
+  const vazgecBtn = $('#iptalVazgec');
+  const kapatBtn = $('#iptalModalKapat');
+  const sebepKap = $('#iptalSebepleri');
+  const bildirKutu = $('#iptalBildir');
+  const aciklama = $('#iptalModalAciklama');
+
+  /* Pencere index.html'de yoksa (ör. eski bir sürümün arayüzü) eski basit
+     onay akışına düşülür; özellik kaybolur ama iptal yine de yapılabilir. */
+  if (!katman || !metin || !onayBtn || !vazgecBtn) {
+    return onayla(
+      '🚫 Siparişi İptal Et',
+      'Bu siparişi iptal etmek istediğinize emin misiniz?',
+      'EVET, İPTAL ET',
+      true
+    ).then(function (evet) {
+      return evet ? { sebep: 'Sipariş masaüstü yönetim panelinden iptal edildi.', bildir: true } : null;
+    });
+  }
+
+  const d = ekDurum();
+
+  iptalSebepleriCiz();
+  iptalUyar('');
+  metin.value = '';
+
+  if (aciklama) {
+    aciklama.textContent = '#' + s.numara + '  ·  ' + (s.firma || s.musteri) + '  ·  ' + para(s.tutar);
+  }
+  if (bildirKutu) {
+    bildirKutu.checked = !(d && d.ayarlar && d.ayarlar.durumEpostasi === false);
+  }
+
+  katman.classList.remove('hidden');
+  setTimeout(function () { metin.focus(); }, 40);
+
+  return new Promise(function (cozumle) {
+    const bitir = function (sonuc) {
+      onayBtn.removeEventListener('click', tamam);
+      vazgecBtn.removeEventListener('click', vazgec);
+      if (kapatBtn) kapatBtn.removeEventListener('click', vazgec);
+      if (sebepKap) sebepKap.removeEventListener('click', sebepSec);
+      katman.removeEventListener('mousedown', disaTikla);
+      katman.removeEventListener('keydown', tusla);
+      iptalModaliKapat();
+      cozumle(sonuc);
+    };
+
+    function sebepSec(o) {
+      const btn = ekEnYakin(o.target, '[data-iptal-sebep]');
+      if (!btn) return;
+
+      /* Seçim metin kutusuna YAZILIR, doğrudan gönderilmez: kullanıcı
+         "Stok tükendi — 3 kalem eksik" gibi ekleme yapabilsin. */
+      metin.value = btn.dataset.iptalSebep;
+      iptalUyar('');
+      metin.focus();
+      /* İmleç metnin sonuna gitsin ki yazmaya devam edilebilsin. */
+      const son = metin.value.length;
+      if (metin.setSelectionRange) metin.setSelectionRange(son, son);
+    }
+
+    function tamam() {
+      const sebep = String(metin.value || '').trim();
+
+      if (!sebep) {
+        iptalUyar('İptal gerekçesi zorunludur.\nYukarıdaki hazır seçeneklerden birine basabilir ' +
+                  'veya kendi gerekçenizi yazabilirsiniz.');
+        metin.focus();
+        return;
+      }
+
+      bitir({ sebep: sebep, bildir: !!(bildirKutu && bildirKutu.checked) });
+    }
+
+    function vazgec() { bitir(null); }
+
+    function disaTikla(o) { if (o.target === katman) bitir(null); }
+
+    function tusla(o) {
+      if (o.key === 'Escape') { bitir(null); return; }
+      /* Ctrl+Enter ile onayla: gerekçe çok satırlı olabilir, düz Enter
+         satır atlamalı. */
+      if (o.key === 'Enter' && (o.ctrlKey || o.metaKey)) { o.preventDefault(); tamam(); }
+    }
+
+    onayBtn.addEventListener('click', tamam);
+    vazgecBtn.addEventListener('click', vazgec);
+    if (kapatBtn) kapatBtn.addEventListener('click', vazgec);
+    if (sebepKap) sebepKap.addEventListener('click', sebepSec);
+    katman.addEventListener('mousedown', disaTikla);
+    katman.addEventListener('keydown', tusla);
+  });
+}
 
 async function siparisIptalEt(id, buton) {
   const d = ekDurum();
@@ -2063,22 +2601,17 @@ async function siparisIptalEt(id, buton) {
     return;
   }
 
-  const eminMi = await onayla(
-    '🚫 Siparişi İptal Et',
-    'Bu siparişi silmek istediğinize emin misiniz?\n\n' +
-    '#' + s.numara + '  ·  ' + (s.firma || s.musteri) + '  ·  ' + para(s.tutar) + '\n\n' +
-    (ekDemoMu()
-      ? '(Demo Modu: sipariş yalnızca bu ekranda iptal görünür, sitenizde bir şey değişmez.)'
-      : 'Sipariş "Sipariş İptal Edildi" durumuna alınacak ve müşteri bunu\n' +
-        '"Hesabım > Siparişler" sayfasında görecek.\n' +
-        'Kayıt geçmişte kalır (silinmez); stoklar WooCommerce tarafından iade edilir.'),
-    'EVET, İPTAL ET',
-    true
-  );
-  if (!eminMi) return;
+  const karar = await iptalSebebiSor(s);
+  if (!karar) return;
+
+  const sebep = karar.sebep;
+  const bilgilendir = !!karar.bildir;
+
+  /* Sipariş notuna hem gerekçe hem kaynağı yazılır: aylar sonra nota bakan
+     kişi bunun panelden mi yoksa site üzerinden mi yapıldığını görebilsin. */
+  const notMetni = 'İPTAL GEREKÇESİ: ' + sebep + '\n(Masaüstü yönetim panelinden iptal edildi.)';
 
   const geriAl = butonuMesgulEt(buton, 'İPTAL EDİLİYOR…');
-  const bilgilendir = !(d.ayarlar && d.ayarlar.durumEpostasi === false);
 
   try {
     /* ---------- DEMO ---------- */
@@ -2087,11 +2620,15 @@ async function siparisIptalEt(id, buton) {
 
       if (typeof DEMO_SIPARISLER !== 'undefined') {
         const kaynak = DEMO_SIPARISLER.filter(function (x) { return String(x.id) === String(id); })[0];
-        if (kaynak) kaynak.durum = 'cancelled';
+        if (kaynak) {
+          kaynak.durum = 'cancelled';
+          kaynak.notlar = notMetni;
+        }
       }
 
       s.durum = 'cancelled';
       s.durumEtiketi = '';
+      s.notlar = notMetni;
 
     /* ---------- CANLI (b2b-core) ---------- */
     } else if (ekEklentiVarMi()) {
@@ -2099,7 +2636,7 @@ async function siparisIptalEt(id, buton) {
         metod: 'POST',
         govde: {
           status: 'cancelled',
-          note: 'Sipariş masaüstü yönetim panelinden iptal edildi.',
+          note: notMetni,
           notify: bilgilendir
         },
         sureAsimi: 45000
@@ -2118,10 +2655,25 @@ async function siparisIptalEt(id, buton) {
       } else {
         s.durum = 'cancelled';
         s.durumEtiketi = '';
+        s.notlar = notMetni;
       }
 
     /* ---------- CANLI (eklenti yok) ---------- */
     } else {
+      /* Gerekçe ÖNCE not olarak düşer: durum değişip not isteği hata verirse
+         sipariş gerekçesiz iptal edilmiş olarak kalırdı. */
+      const notCevap = await woo('orders/' + id + '/notes', {
+        metod: 'POST',
+        govde: { note: notMetni, customer_note: bilgilendir },
+        sureAsimi: 45000
+      });
+
+      if (!notCevap || !notCevap.ok) {
+        bildir('İptal gerekçesi siparişe yazılamadı, iptal YAPILMADI:\n' +
+               ekHataMetni(notCevap), 'hata');
+        return;
+      }
+
       const cevap = await woo('orders/' + id, {
         metod: 'PUT',
         govde: { status: 'cancelled' },
@@ -2129,12 +2681,14 @@ async function siparisIptalEt(id, buton) {
       });
 
       if (!cevap || !cevap.ok) {
-        bildir('Sipariş iptal edilemedi:\n' + ekHataMetni(cevap), 'hata');
+        bildir('Sipariş iptal edilemedi:\n' + ekHataMetni(cevap) +
+               '\n\nNot: iptal gerekçesi siparişe zaten yazıldı.', 'hata');
         return;
       }
 
       s.durum = 'cancelled';
       s.durumEtiketi = '';
+      s.notlar = notMetni;
     }
 
     /* Durum süzgeci açıksa iptal edilen sipariş artık o süzgece uymaz. */
@@ -2144,10 +2698,11 @@ async function siparisIptalEt(id, buton) {
 
     siparisleriCiz();
 
-    bildir('🚫 #' + s.numara + ' iptal edildi.\nDurum: Sipariş İptal Edildi' +
+    bildir('🚫 #' + s.numara + ' iptal edildi.\nGerekçe: ' + sebep +
            (ekDemoMu()
              ? '\n(Demo Modu — sitenizde değişiklik yapılmadı)'
-             : '\nMüşteri "Hesabım > Siparişler" sayfasında bu durumu görecek.'), 'basari');
+             : '\nGerekçe sipariş notuna işlendi.' +
+               (bilgilendir ? '\n📧 Müşteriye bilgilendirme gönderildi.' : '')), 'basari');
   } catch (e) {
     bildir('Sipariş iptal edilirken beklenmeyen bir hata oluştu:\n' +
            String((e && e.message) || e), 'hata');
@@ -2155,7 +2710,6 @@ async function siparisIptalEt(id, buton) {
     geriAl();
   }
 }
-
 /* ==========================================================================
  *  BÖLÜM F2 — 🗑️ SİPARİŞ KALICI SİLME
  *  ---------------------------------------------------------------------------
@@ -2713,11 +3267,19 @@ async function vitrinGonder() {
     return;
   }
 
+  const ayarlar = d.ayarlar || {};
+  const logo = String(ayarlar.yerelLogo || '').trim();
+  const favicon = String(ayarlar.yerelFavicon || '').trim();
+
   const eminMi = await onayla(
     '🚀 Vitrini Web Sitesine Gönder',
     d.vitrin.featured.length + ' öne çıkan ürün ve ' + d.vitrin.banners.length + ' banner ' +
-    'sitenizin yapılandırmasına kaydedilecek.\n\n' +
-    'Bu verinin ana sayfada GÖRÜNMESİ, sitenizin temasının bu alanları\n' +
+    'sitenizin yapılandırmasına kaydedilecek.' +
+    ((logo || favicon)
+      ? '\n\nMarka görselleri de gönderilecek: ' +
+        [logo ? '🖼️ logo' : '', favicon ? '🔖 favicon' : ''].filter(Boolean).join(' + ') + '.'
+      : '') +
+    '\n\nBu verinin ana sayfada GÖRÜNMESİ, sitenizin temasının bu alanları\n' +
     'okuyacak şekilde güncellenmiş olmasına bağlıdır.',
     '🚀 EVET, GÖNDER',
     false
@@ -2752,6 +3314,20 @@ async function vitrinGonder() {
       }
     };
 
+    /*
+     * MARKA GÖRSELLERİ (logo + favicon)
+     * ---------------------------------
+     * Yalnızca DOLU olanlar gönderilir. Boş dize göndermek theme-config'in
+     * deep_merge'ünde sitedeki mevcut logoyu SİLERDİ: kullanıcı vitrini
+     * güncellediği anda sitenin logosu kaybolurdu. Silmek isteyen kullanıcı
+     * bunu ✕ KALDIR ile yapar; o zaman alan gönderilmez ve site kendi
+     * ayarında kalır — panelden site logosu SİLİNMEZ, yalnızca değiştirilir.
+     */
+    const marka = {};
+    if (logo) marka.logo = logo;
+    if (favicon) marka.favicon = favicon;
+    if (Object.keys(marka).length) govde.config.branding = marka;
+
     const cevap = await b2b('theme-config', { metod: 'POST', govde: govde, sureAsimi: 30000 });
 
     if (!cevap || !cevap.ok) {
@@ -2760,7 +3336,9 @@ async function vitrinGonder() {
       return;
     }
 
-    vitrinDurumYaz('basari', '✅ Gönderildi', 'Vitrin verisi sitenizin yapılandırmasına kaydedildi.');
+    vitrinDurumYaz('basari', '✅ Gönderildi',
+      'Vitrin verisi sitenizin yapılandırmasına kaydedildi.' +
+      ((logo || favicon) ? '\nMarka görselleri de gönderildi.' : ''));
     bildir('🚀 Vitrin sitenize gönderildi.', 'basari');
   } catch (e) {
     vitrinDurumYaz('hata', '❌ Beklenmeyen hata', String((e && e.message) || e));
@@ -2783,7 +3361,7 @@ function ekOlaylariBagla() {
   }
 
   /* --------------------------------------------------------------
-   *  A) İSKONTO ORANLARI
+   *  A) ROL BAZLI ÖDEME MATRİSİ
    * ------------------------------------------------------------*/
   const iskontoKaydetBtn = $('#iskontoKaydetBtn');
   if (iskontoKaydetBtn) {
@@ -2795,11 +3373,28 @@ function ekOlaylariBagla() {
     iskontoYenileBtn.addEventListener('click', function () { iskontoSekmesiYukle(true); });
   }
 
-  ISKONTO_TIPLERI.forEach(function (tip) {
-    const alan = $(tip.alan);
-    if (!alan) return;
-    alan.addEventListener('input', function () { iskontoOnizlemeCiz(); });
-    alan.addEventListener('change', function () { iskontoOnizlemeCiz(); });
+  /* Tablolar yeniden çizildiği için tek tek kutulara değil, SABİT kaplara
+     dinleyici bağlanır (olay yetkilendirme). */
+  ['#matrisBireysel', '#matrisKurumsal'].forEach(function (secici) {
+    const kap = $(secici);
+    if (!kap) return;
+
+    kap.addEventListener('click', function (o) {
+      const anahtarBtn = ekEnYakin(o.target, '[data-matris-anahtar]');
+      if (anahtarBtn) matrisAnahtariniDegistir(anahtarBtn.dataset.matrisAnahtar);
+    });
+
+    /* Yazarken önizleme tazelenir; tabloyu yeniden ÇİZMEZ (odak kaybolmasın). */
+    kap.addEventListener('input', function (o) {
+      if (o.target && o.target.matches('[data-matris-oran]')) iskontoOnizlemeCiz();
+    });
+
+    kap.addEventListener('keydown', function (o) {
+      if (o.key !== 'Enter') return;
+      if (!o.target || !o.target.matches('[data-matris-oran]')) return;
+      o.preventDefault();
+      iskontoKaydet();
+    });
   });
 
   /* İskonto sekmesine ilk girişte veriyi getir (sekmeAc de çağırsa sorun olmaz:
@@ -2809,8 +3404,8 @@ function ekOlaylariBagla() {
     iskontoMenuBtn.addEventListener('click', function () { iskontoSekmesiYukle(false); });
   }
 
-  /* İlk önizleme (kutular varsayılan değerlerle dolu olabilir) */
-  iskontoOnizlemeCiz();
+  /* İlk çizim: sekmeye hiç girilmeden de tablolar hazır dursun. */
+  matrisiCiz();
 
   /* --------------------------------------------------------------
    *  C) ÜRÜN DÜZENLE PENCERESİ
@@ -3041,10 +3636,18 @@ function ekDurumBaslangici() {
   const d = ekDurum();
   if (!d) return;
 
-  /* A) İskonto */
-  d.iskonto = { cash: 12, card: 8, term: 0 };
+  /* A) Rol bazlı ödeme matrisi (bkz. BÖLÜM A) */
+  d.odemeMatrisi = varsayilanMatris();
   d.iskontoYuklendi = false;
   d.iskontoYukleniyor = false;
+
+  /* Eski düz oran nesnesi — sitedeki eski uca yansıtılan değerlerin
+     bellekteki karşılığı; dışarıdan okuyan kod kırılmasın diye korunuyor. */
+  d.iskonto = {
+    cash: d.odemeMatrisi.corporate.cash.discount,
+    card: d.odemeMatrisi.corporate.card.discount,
+    term: d.odemeMatrisi.corporate.term.discount
+  };
 
   /* C) Ürün düzenleme */
   d.duzenlenenUrun = null;
@@ -3087,6 +3690,17 @@ window.ISKONTO_TIPLERI = ISKONTO_TIPLERI;
 window.ISKONTO_ORNEK_SEPET = ISKONTO_ORNEK_SEPET;
 window.ODEME_TIPI_BILGISI = ODEME_TIPI_BILGISI;
 
+window.MATRIS_ROLLERI = MATRIS_ROLLERI;
+window.ODEME_YONTEMLERI = ODEME_YONTEMLERI;
+window.varsayilanMatris = varsayilanMatris;
+window.matrisNormalle = matrisNormalle;
+window.matrisiCiz = matrisiCiz;
+window.matrisTablosuCiz = matrisTablosuCiz;
+window.matrisFormunuOku = matrisFormunuOku;
+window.matrisAnahtariniDegistir = matrisAnahtariniDegistir;
+window.matrisOzeti = matrisOzeti;
+window.eskiOranlariMatriseCevir = eskiOranlariMatriseCevir;
+
 window.iskontoSekmesiYukle = iskontoSekmesiYukle;
 window.iskontoFormunuDoldur = iskontoFormunuDoldur;
 window.iskontoFormunuOku = iskontoFormunuOku;
@@ -3120,6 +3734,10 @@ window.urunTasimasiniUygula = urunTasimasiniUygula;
 window.urunuKomsuylaTasi = urunuKomsuylaTasi;
 
 window.urunSil = urunSil;
+window.IPTAL_SEBEPLERI = IPTAL_SEBEPLERI;
+window.iptalSebepleriCiz = iptalSebepleriCiz;
+window.iptalSebebiSor = iptalSebebiSor;
+window.iptalModaliKapat = iptalModaliKapat;
 window.siparisIptalEt = siparisIptalEt;
 window.siparisSil = siparisSil;
 window.uyeSil = uyeSil;

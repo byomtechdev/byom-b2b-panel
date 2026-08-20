@@ -105,9 +105,12 @@ function varsayilanAyarlar() {
     // Bağlantı kurulduğunda sitenin b2b-core theme-config'inden çekilen logo
     // adresi (bkz. siteLogosunuGetir). Sitede/eklentide logo yoksa boş kalır.
     siteLogosu: '',
-    // Site logosu yoksa/çekilemezse Ayarlar sekmesinden yüklenen yerel logo
-    // (data:image/... base64) — bkz. yerelLogoYukle.
+    // Site logosu yoksa/çekilemezse "🖼️ Web Vitrini" sekmesinden yüklenen
+    // yerel logo (data:image/... base64) — bkz. yerelLogoYukle.
     yerelLogo: '',
+    // Sitenin tarayıcı sekmesi simgesi (favicon). Yine Web Vitrini sekmesinden
+    // yüklenir ve theme-config'in branding.favicon alanına gönderilir.
+    yerelFavicon: '',
     lisansBitis: bitis.toISOString().slice(0, 10),
     tema: 'acik',
     // Canlı sipariş kontrolü: sipariş sekmesi açıkken kaç saniyede bir tazelensin.
@@ -244,7 +247,20 @@ function httpHatasiTurkce(durum, veri) {
 /** Desteklenen API alanları (namespace). İkisi de aynı anahtarlarla çalışır. */
 const API_ALANLARI = {
   woo: 'wc/v3',        // WooCommerce çekirdek
-  b2b: 'wc-b2b/v1'     // b2b-core eklentisi
+  b2b: 'wc-b2b/v1',    // b2b-core eklentisi
+  /*
+   * b2b-core'un ESKİ ad alanı. Bazı kurulumlarda (ve bazı tema paketlerinde)
+   * kurumsal başvuru uçları "wc-b2b/v1" yerine yalnızca "b2b/v1" altında
+   * yayınlanıyor. Panel önce kanonik ad alanını dener, "rest_no_route"
+   * alırsa buraya düşer (bkz. renderer.js → bekleyenBasvurulariGetir).
+   *
+   * NOT: WooCommerce'in Consumer Key/Secret doğrulaması yalnızca "wc/" ve
+   * "wc-" ile başlayan ad alanlarında devreye girer; "b2b/v1" bunların
+   * dışındadır. Bu yüzden yedek ad alanı ancak sitede kimlik doğrulamayı
+   * kendisi çözen bir eklenti varsa yanıt verir — dönmezse kanonik uçtan
+   * gelen sonuç kullanılır, kullanıcıya ekstra bir hata gösterilmez.
+   */
+  b2bAlt: 'b2b/v1'
 };
 
 /** Kullanıcının yazdığı adresi temizler: boşluk, /wp-json eki, sondaki / ve eksik protokol. */

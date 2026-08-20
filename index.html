@@ -228,11 +228,6 @@
         <span class="align-middle">Web<br><span class="ml-10">Vitrini</span></span>
       </button>
 
-      <button data-sekme="ayarlar" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
-        <span class="text-3xl align-middle mr-2">⚙️</span>
-        <span class="align-middle">API &<br><span class="ml-10">Site Ayarları</span></span>
-      </button>
-
       <!-- BYOM Brain destek masası: talepler doğrudan merkezî sisteme düşer -->
       <button data-sekme="destek" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
         <span class="text-3xl align-middle mr-2">🎧</span>
@@ -242,9 +237,22 @@
                      text-base font-black grid place-items-center shadow-lg">0</span>
       </button>
 
-      <div class="mt-auto pt-4 text-center text-sm text-slate-400 dark:text-slate-500 leading-relaxed">
-        Yardım için<br><span class="font-bold text-slate-500 dark:text-slate-400">0850 000 00 00</span>
-      </div>
+      <!-- ============================================================
+           GELİŞTİRİCİ KİLİDİ (MASTER LOCK)
+           Bu sekme bilerek menünün EN ALTINDADIR ve kilit ikonu taşır:
+           API anahtarları ve çekirdek ayarlar günlük işin parçası değildir,
+           yalnızca kurulumu yapan geliştirici/bayi sahibi açmalıdır.
+           Tıklanınca renderer.js'teki `masterKilidiSor` şifre penceresini
+           açar; SHA-256 doğrulaması geçilmeden sekmenin içi çizilmez.
+           ============================================================ -->
+      <button data-sekme="ayarlar" data-kilitli="1"
+              class="menu-btn mt-auto text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+        <span class="text-3xl align-middle mr-2">⚙️</span>
+        <span class="align-middle">API &<br><span class="ml-10">Sistem Ayarları</span></span>
+        <span id="ayarKilitSimgesi"
+              class="absolute top-3 right-3 text-2xl leading-none"
+              title="Geliştirici kilidi — şifre gerekir">🔒</span>
+      </button>
     </nav>
 
     <!-- ==================================================================
@@ -353,7 +361,7 @@
       <section id="sekme-uyeler" class="sekme-govde">
 
         <div class="flex flex-wrap items-center gap-4 mb-4">
-          <h1 class="text-3xl font-black">👥 B2B Üye Onayları</h1>
+          <h1 class="text-3xl font-black">👥 Bayiler / Müşteriler</h1>
           <button id="uyeYenileBtn"
                   class="ml-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
                          text-white text-xl font-extrabold shadow-lg transition">
@@ -363,9 +371,11 @@
 
         <p class="mb-5 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
                   border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4">
-          ℹ️ Aşağıdaki firmalar sitenizden <b>toptan fiyatları görebilmek</b> için başvurdu.
-          <b>Onayladığınız</b> müşteriler toptan fiyat listesine erişebilir.
-          Bir bayi kartına tıklayarak <b>geçmiş siparişlerinin dökümünü</b> görebilirsiniz.
+          ℹ️ <b>Tüm Müşteriler</b> sitenize kayıtlı herkesi, <b>Onaylı Bayiler</b> toptan fiyat gören
+          kurumsal hesapları, <b>Onay Bekleyenler</b> ise henüz karara bağlanmamış
+          <b>kurumsal bayilik başvurularını</b> listeler.
+          Onayladığınız başvurunun rolü <code>b2b_customer</code> yapılır ve firma toptan fiyat
+          listesine erişir. Bir kayda tıklayarak <b>geçmiş siparişlerinin dökümünü</b> görebilirsiniz.
         </p>
 
         <div class="flex flex-col lg:flex-row gap-4 mb-6">
@@ -382,17 +392,34 @@
 
         <div id="uyeListesi" class="grid grid-cols-1 xl:grid-cols-2 gap-4"></div>
       </section>
-
       <!-- ============================================================
-           SEKME 4 — 🏷️ İSKONTO ORANLARI
-           Nakit / Kredi Kartı / Vadeli sipariş iskontoları.
-           Kaydedilen oranlar POST /wp-json/b2b/v1/settings/discounts ucuna
-           gönderilir ve web sitesindeki sepet hesabında anında geçerli olur.
+           SEKME 4 — 🏷️ İSKONTO / FİYAT AYARLARI (ROL BAZLI ÖDEME MATRİSİ)
+
+           Artık TEK bir oran listesi değil, İKİ BAĞIMSIZ TABLO vardır:
+
+             · Bireysel Müşteriler  (WooCommerce "customer" rolü)
+             · Kurumsal Bayiler     (b2b_customer / approved_dealer rolü)
+
+           Her tablo Nakit / Kredi Kartı / Vadeli satırlarından oluşur ve her
+           satırda bir AÇIK-KAPALI anahtarı ile bir İSKONTO % kutusu bulunur.
+           Anahtar kapalıysa o ödeme yöntemi ilgili role sitede HİÇ
+           gösterilmez; açıksa yazılan oran sepet toplamına uygulanır.
+
+           Kaydedilen yapı sunucudaki theme-config.json içine `payment_matrix`
+           anahtarıyla yazılır (POST /wp-json/wc-b2b/v1/theme-config):
+
+             payment_matrix: {
+               individual: { cash: {enabled, discount}, card: {...}, term: {...} },
+               corporate:  { cash: {enabled, discount}, card: {...}, term: {...} }
+             }
+
+           Tablolar renderer-ek.js içindeki `matrisTablosuCiz` tarafından
+           çizilir; buradaki iki kap yalnızca yerleşimi belirler.
            ============================================================ -->
       <section id="sekme-iskonto" class="sekme-govde">
 
         <div class="flex flex-wrap items-center gap-4 mb-5">
-          <h1 class="text-3xl font-black">🏷️ İskonto Oranları</h1>
+          <h1 class="text-3xl font-black">🏷️ İskonto / Fiyat Ayarları</h1>
           <button id="iskontoYenileBtn"
                   class="ml-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
                          text-white text-xl font-extrabold shadow-lg transition">
@@ -402,98 +429,47 @@
 
         <p class="mb-6 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
                   border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4 leading-relaxed">
-          ℹ️ Bayileriniz sipariş oluştururken <b>Nakit</b>, <b>Kredi Kartı</b> veya <b>Vadeli</b>
-          seçeneklerinden birini seçmek zorundadır. Aşağıda belirlediğiniz oran, seçilen türe göre
-          <b>sepet toplamına anında</b> uygulanır ve siparişin üzerine not olarak işlenir.
+          ℹ️ Aşağıdaki iki tablo <b>birbirinden bağımsızdır</b>: bireysel müşterilerinize ayrı,
+          kurumsal bayilerinize ayrı ödeme yöntemi ve iskonto tanımlarsınız.
+          <b>Anahtarı kapattığınız</b> ödeme yöntemi o rol için sitede <b>hiç görünmez</b>;
+          açık bıraktığınız yöntemin oranı sepet toplamına <b>anında</b> uygulanır ve
+          siparişin üzerine not olarak işlenir.
           <br>Vadeli siparişlerde genellikle iskonto uygulanmaz (%0 = sabit fiyat).
         </p>
 
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <!-- Sol: 👤 Bireysel Müşteriler tablosu -->
+          <div id="matrisBireysel"></div>
+          <!-- Sağ: 🏢 Kurumsal Bayiler tablosu -->
+          <div id="matrisKurumsal"></div>
+        </div>
 
-          <!-- Sol: oran formu -->
-          <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700
-                      shadow-sm flex flex-col gap-6">
+        <div class="mt-6 flex flex-wrap items-center gap-4">
+          <button id="iskontoKaydetBtn"
+                  class="h-16 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            💾 ÖDEME MATRİSİNİ KAYDET
+          </button>
+          <div id="iskontoDurum" class="text-lg font-bold whitespace-pre-line flex-1 min-w-72"></div>
+        </div>
 
-            <div class="rounded-2xl border-2 border-emerald-300 dark:border-emerald-500/40
-                        bg-emerald-50 dark:bg-emerald-500/10 p-5">
-              <label for="iskontoNakit" class="block text-xl font-black mb-1 text-emerald-800 dark:text-emerald-300">
-                💵 Nakit Sipariş
-              </label>
-              <p class="text-base text-emerald-700 dark:text-emerald-400 mb-3">
-                Sipariş bedeli nakit veya havale ile peşin ödenir.
-              </p>
-              <div class="flex items-center gap-3">
-                <input id="iskontoNakit" type="text" inputmode="decimal" placeholder="12"
-                       class="w-40 h-16 px-4 rounded-xl text-3xl font-black text-right
-                              bg-white dark:bg-slate-900 border-2 border-emerald-400 dark:border-emerald-500/50
-                              focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/20 outline-none transition" />
-                <span class="text-3xl font-black text-emerald-700 dark:text-emerald-400">% İskonto</span>
-              </div>
-            </div>
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
+          <!-- Canlı örnek hesap tablosu renderer-ek.js tarafından çizilir -->
+          <div id="iskontoOnizleme"></div>
 
-            <div class="rounded-2xl border-2 border-sky-300 dark:border-sky-500/40
-                        bg-sky-50 dark:bg-sky-500/10 p-5">
-              <label for="iskontoKart" class="block text-xl font-black mb-1 text-sky-800 dark:text-sky-300">
-                💳 Kredi Kartı Sipariş
-              </label>
-              <p class="text-base text-sky-700 dark:text-sky-400 mb-3">
-                Ödeme kredi kartı ile tahsil edilir.
-              </p>
-              <div class="flex items-center gap-3">
-                <input id="iskontoKart" type="text" inputmode="decimal" placeholder="8"
-                       class="w-40 h-16 px-4 rounded-xl text-3xl font-black text-right
-                              bg-white dark:bg-slate-900 border-2 border-sky-400 dark:border-sky-500/50
-                              focus:border-sky-600 focus:ring-4 focus:ring-sky-600/20 outline-none transition" />
-                <span class="text-3xl font-black text-sky-700 dark:text-sky-400">% İskonto</span>
-              </div>
-            </div>
-
-            <div class="rounded-2xl border-2 border-amber-300 dark:border-amber-500/40
-                        bg-amber-50 dark:bg-amber-500/10 p-5">
-              <label for="iskontoVadeli" class="block text-xl font-black mb-1 text-amber-800 dark:text-amber-300">
-                🗓️ Vadeli Sipariş
-              </label>
-              <p class="text-base text-amber-700 dark:text-amber-400 mb-3">
-                Sipariş cari hesaba vadeli işlenir. %0 girilirse sabit fiyat uygulanır.
-              </p>
-              <div class="flex items-center gap-3">
-                <input id="iskontoVadeli" type="text" inputmode="decimal" placeholder="0"
-                       class="w-40 h-16 px-4 rounded-xl text-3xl font-black text-right
-                              bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-500/50
-                              focus:border-amber-600 focus:ring-4 focus:ring-amber-600/20 outline-none transition" />
-                <span class="text-3xl font-black text-amber-700 dark:text-amber-400">% İskonto</span>
-              </div>
-            </div>
-
-            <button id="iskontoKaydetBtn"
-                    class="h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
-                           text-white text-xl font-extrabold shadow-lg transition">
-              💾 ORANLARI KAYDET
-            </button>
-
-            <div id="iskontoDurum" class="text-lg font-bold whitespace-pre-line"></div>
+          <div class="bg-marka-50 dark:bg-marka-900/20 rounded-2xl p-6 border-2 border-marka-200 dark:border-marka-800">
+            <div class="text-xl font-black mb-3 text-marka-800 dark:text-marka-200">📘 Nasıl Çalışır?</div>
+            <ol class="list-decimal ml-6 space-y-2 text-lg leading-relaxed text-slate-700 dark:text-slate-200">
+              <li>Alıcı sepetini doldurup <b>Sipariş Oluştur</b> ekranına gelir.</li>
+              <li>Site, alıcının <b>rolüne</b> bakar: bireysel müşteri mi, kurumsal bayi mi?</li>
+              <li>O role ait tabloda <b>açık</b> olan ödeme yöntemleri listelenir.</li>
+              <li>Seçtiği yöntemin iskontosu sepet toplamına <b>anında</b> yansır.</li>
+              <li>Sipariş kaydında rol, yöntem ve oran saklanır; bu ekranın
+                  <b>📦 Siparişler</b> sekmesinde rozet olarak görünür.</li>
+            </ol>
           </div>
-
-          <!-- Sağ: canlı önizleme -->
-          <div class="flex flex-col gap-6">
-            <!-- Canlı örnek hesap tablosu renderer-ek.js tarafından çizilir -->
-            <div id="iskontoOnizleme"></div>
-
-            <div class="bg-marka-50 dark:bg-marka-900/20 rounded-2xl p-6 border-2 border-marka-200 dark:border-marka-800">
-              <div class="text-xl font-black mb-3 text-marka-800 dark:text-marka-200">📘 Nasıl Çalışır?</div>
-              <ol class="list-decimal ml-6 space-y-2 text-lg leading-relaxed text-slate-700 dark:text-slate-200">
-                <li>Bayi sepetini doldurup <b>Sipariş Oluştur</b> ekranına gelir.</li>
-                <li>Üç seçenekten birini işaretlemeden siparişi tamamlayamaz.</li>
-                <li>Seçtiği türün iskontosu sepet toplamına <b>anında</b> yansır.</li>
-                <li>Sipariş kaydında tür ve oran saklanır; bu ekranın
-                    <b>📦 Siparişler</b> sekmesinde rozet olarak görünür.</li>
-              </ol>
-            </div>
-          </div>
-
         </div>
       </section>
-
       <!-- ============================================================
            SEKME — 🖼️ WEB VİTRİNİ (kampanyalı ürünler + banner/slider)
            İçerik renderer-ek.js tarafından doldurulur.
@@ -566,6 +542,88 @@
 
         </div>
 
+        <!-- ============================================================
+             🎨 MARKA GÖRSELLERİ — LOGO & FAVICON
+             Eskiden "⚙️ API & Site Ayarları" sekmesindeydi; oraya yalnızca
+             geliştirici girebildiği için mağaza sahibi kendi logosunu
+             değiştiremiyordu. Vitrin yönetimiyle aynı yere alındı.
+
+             Logo ve favicon HEM yerelde (ayarlar.json) saklanır — üst çubuk
+             ve uygulama simgesi internetsiz de doğru görünsün diye — HEM de
+             "🚀 GÖNDER" ile theme-config'in `branding` anahtarına yazılır.
+             ============================================================ -->
+        <div id="markaLogoKutusu"
+             class="mt-6 bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700
+                    shadow-sm grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+          <!-- Firma logosu -->
+          <div>
+            <div class="text-xl font-black mb-1">🖼️ Firma Logosu</div>
+            <p class="text-base text-slate-500 dark:text-slate-400 mb-4">
+              Üst çubukta ve depo fişlerinin başlığında görünür.
+              Sitenize bağlandığınızda logo otomatik çekilir; site logosu yoksa
+              veya çekilemezse burada yüklediğiniz yerel logo kullanılır.
+            </p>
+            <div class="flex items-center gap-4">
+              <div id="logoOnizlemeKutu" class="hidden w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
+                          border-2 border-slate-300 dark:border-slate-600 overflow-hidden shrink-0 grid place-items-center">
+                <img id="logoOnizleme" alt="Logo önizleme" class="max-w-full max-h-full object-contain" />
+              </div>
+              <div id="logoYokKutu" class="w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
+                          border-2 border-dashed border-slate-300 dark:border-slate-600 shrink-0 grid place-items-center text-3xl text-slate-400">
+                🖼️
+              </div>
+              <div class="flex-1 flex flex-wrap gap-2">
+                <button id="logoYukleBtn" type="button"
+                        class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                               text-base font-extrabold transition">📤 LOGO YÜKLE</button>
+                <button id="logoKaldirBtn" type="button"
+                        class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
+                               dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
+                               text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
+              </div>
+              <input id="logoDosyaSec" type="file" accept="image/*" class="hidden" />
+            </div>
+            <p id="logoAciklama" class="mt-2 text-sm text-slate-500">
+              En fazla 3 MB · PNG, JPG, WEBP veya SVG.
+            </p>
+          </div>
+
+          <!-- Site favicon'u -->
+          <div>
+            <div class="text-xl font-black mb-1">🔖 Site Favicon'u</div>
+            <p class="text-base text-slate-500 dark:text-slate-400 mb-4">
+              Tarayıcı sekmesinde ve yer imlerinde görünen küçük simge.
+              Kare bir görsel seçin (önerilen: 512×512 PNG).
+            </p>
+            <div class="flex items-center gap-4">
+              <div id="faviconOnizlemeKutu" class="hidden w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
+                          border-2 border-slate-300 dark:border-slate-600 overflow-hidden shrink-0 grid place-items-center">
+                <img id="faviconOnizleme" alt="Favicon önizleme" class="max-w-full max-h-full object-contain" />
+              </div>
+              <div id="faviconYokKutu" class="w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
+                          border-2 border-dashed border-slate-300 dark:border-slate-600 shrink-0 grid place-items-center text-3xl text-slate-400">
+                🔖
+              </div>
+              <div class="flex-1 flex flex-wrap gap-2">
+                <button id="faviconYukleBtn" type="button"
+                        class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                               text-base font-extrabold transition">📤 FAVICON YÜKLE</button>
+                <button id="faviconKaldirBtn" type="button"
+                        class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
+                               dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
+                               text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
+              </div>
+              <input id="faviconDosyaSec" type="file" accept="image/*" class="hidden" />
+            </div>
+            <p class="mt-2 text-sm text-slate-500">
+              En fazla 1 MB · PNG, ICO, SVG veya WEBP.
+            </p>
+          </div>
+        </div>
+
         <div class="mt-6 flex flex-wrap items-center gap-4">
           <button id="vitrinGonderBtn"
                   class="h-16 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
@@ -581,8 +639,38 @@
            ============================================================ -->
       <section id="sekme-ayarlar" class="sekme-govde">
 
-        <h1 class="text-3xl font-black mb-6">⚙️ API & Site Ayarları</h1>
+        <h1 class="text-3xl font-black mb-6">🔒 API &amp; Sistem Ayarları</h1>
 
+        <!-- ============================================================
+             GELİŞTİRİCİ KİLİDİ PERDESİ
+             Şifre doğrulanana kadar GÖRÜNEN tek şey budur; asıl içerik
+             (#ayarlarIcerik) DOM'da hidden durur ve renderer.js'teki
+             `masterKilidiUygula` tarafından açılır. Böylece API anahtarları
+             ekrana hiç basılmaz — perde CSS ile "üstünü örtmek" değildir.
+             ============================================================ -->
+        <div id="ayarKilitPerdesi"
+             class="rounded-3xl border-2 border-dashed border-amber-300 dark:border-amber-500/40
+                    bg-amber-50 dark:bg-amber-500/10 p-10 text-center flex flex-col items-center gap-4">
+          <div class="text-6xl">🔒</div>
+          <div class="text-2xl font-black text-amber-900 dark:text-amber-200">
+            Bu bölüm geliştirici şifresiyle korunuyor
+          </div>
+          <p class="max-w-2xl text-lg leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+            API anahtarları, çalışma modu ve lisans ayarları yalnızca kurulumu yapan
+            <b>geliştirici / bayi sahibi</b> tarafından değiştirilmelidir. Yanlış bir
+            değişiklik sitenizle olan bağlantıyı tamamen kesebilir.
+          </p>
+          <button id="ayarKilitAcModalBtn" type="button"
+                  class="h-16 px-8 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+            🔑 ŞİFREYİ GİR VE AÇ
+          </button>
+        </div>
+
+        <!-- Kilit açılana kadar `hidden`. Izgara sınıfları İÇ kapta durur:
+             tek elemanda hem `hidden` hem `grid` bulunması iki display
+             kuralını yarıştırır ve Tailwind sürümüne göre sonuç değişirdi. -->
+        <div id="ayarlarIcerik" class="hidden">
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
           <!-- Sol sütun: form -->
@@ -641,35 +729,10 @@
                               focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
                 <p class="mt-1 text-sm text-slate-500">Depo fişlerinin başlığında ve üst çubukta görünür.</p>
               </div>
-
-              <div>
-                <label class="block text-lg font-extrabold mb-2">🖼️ Firma Logosu</label>
-                <div class="flex items-center gap-4">
-                  <div id="logoOnizlemeKutu" class="hidden w-16 h-16 rounded-xl bg-slate-50 dark:bg-slate-900
-                              border-2 border-slate-300 dark:border-slate-600 overflow-hidden shrink-0 grid place-items-center">
-                    <img id="logoOnizleme" alt="Logo önizleme" class="max-w-full max-h-full object-contain" />
-                  </div>
-                  <div id="logoYokKutu" class="w-16 h-16 rounded-xl bg-slate-50 dark:bg-slate-900
-                              border-2 border-dashed border-slate-300 dark:border-slate-600 shrink-0 grid place-items-center text-2xl text-slate-400">
-                    🖼️
-                  </div>
-                  <div class="flex-1 flex flex-wrap gap-2">
-                    <button id="logoYukleBtn" type="button"
-                            class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                                   dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                                   text-base font-extrabold transition">📤 YEREL LOGO YÜKLE</button>
-                    <button id="logoKaldirBtn" type="button"
-                            class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
-                                   dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
-                                   text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
-                  </div>
-                  <input id="logoDosyaSec" type="file" accept="image/*" class="hidden" />
-                </div>
-                <p id="logoAciklama" class="mt-2 text-sm text-slate-500">
-                  Sitenize bağlandığınızda logo otomatik çekilir. Site logosu yoksa veya
-                  çekilemezse burada yüklediğiniz yerel logo üst çubukta gösterilir.
-                </p>
-              </div>
+              <!-- 🖼️ Firma Logosu / Favicon alanları buradan KALDIRILDI:
+                   marka görselleri artık "🖼️ Web Vitrini" sekmesinde, banner
+                   yönetiminin yanında toplanıyor (bkz. #markaLogoKutusu).
+                   Bu sekme yalnızca API anahtarları ve çekirdek ayarlar için. -->
 
               <div>
                 <label for="girdiUrl" class="block text-lg font-extrabold mb-2">🌐 WooCommerce Site Adresi</label>
@@ -892,6 +955,7 @@
           </div>
 
         </div>
+        </div><!-- /#ayarlarIcerik -->
       </section>
 
       <!-- ============================================================
@@ -1531,6 +1595,127 @@
       <button id="metinModalTamam"
               class="flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-red-600 hover:bg-red-700
                      transition active:scale-95">DEVAM ET</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     GELİŞTİRİCİ KİLİDİ (MASTER LOCK) — ŞİFRE PENCERESİ
+     Girilen şifre renderer.js içindeki `masterHash` ile SHA-256'ya
+     çevrilip sabit özetle karşılaştırılır; düz şifre HİÇBİR yerde
+     saklanmaz ve DOM'da tutulmaz.
+     ================================================================== -->
+<div id="kilitModalKatman" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
+    <div class="p-7">
+      <div class="flex items-center gap-4 mb-3">
+        <span class="text-4xl">🔒</span>
+        <div>
+          <div class="text-2xl font-black">Geliştirici Kilidi</div>
+          <div class="text-base font-bold text-slate-500 dark:text-slate-400">API &amp; Sistem Ayarları</div>
+        </div>
+      </div>
+
+      <p class="text-lg leading-relaxed text-slate-600 dark:text-slate-300 mb-4">
+        Bu bölümde <b>API anahtarları</b> ve <b>çekirdek ayarlar</b> bulunur.
+        Devam etmek için geliştirici şifresini girin.
+      </p>
+
+      <div class="flex gap-2">
+        <input id="kilitSifre" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Geliştirici şifresi"
+               class="flex-1 h-16 px-5 rounded-2xl text-xl font-bold tracking-widest
+                      bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                      focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <button id="kilitSifreGosterBtn" type="button" title="Göster / Gizle"
+                class="w-16 h-16 rounded-2xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                       dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition">👁️</button>
+      </div>
+
+      <div id="kilitUyari" class="hidden mt-4 rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                  bg-red-50 text-red-800 border-2 border-red-300
+                                  dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
+    </div>
+
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
+      <button id="kilitVazgec"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="kilitTamam"
+              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-marka-700 hover:bg-marka-800
+                     transition active:scale-95 shadow-lg">🔓 KİLİDİ AÇ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     SİPARİŞ İPTAL SEBEBİ PENCERESİ
+     "🚫 SİPARİŞİ İPTAL ET" tıklandığında açılır. Seçilen/yazılan gerekçe
+     siparişe NOT olarak işlenir, ardından durum 'cancelled' yapılır.
+     Gerekçesiz iptal kabul edilmez: depo ile muhasebe arasındaki en sık
+     anlaşmazlık "bu sipariş neden iptal olmuş?" sorusudur.
+     ================================================================== -->
+<div id="iptalModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-2xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700">
+
+    <div class="flex items-start gap-4 p-6 border-b-2 border-slate-200 dark:border-slate-700">
+      <span class="text-4xl">🚫</span>
+      <div class="min-w-0">
+        <div class="text-2xl font-black">Siparişi İptal Et</div>
+        <div id="iptalModalAciklama" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
+      </div>
+      <button id="iptalModalKapat" title="Kapat"
+              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0">✖</button>
+    </div>
+
+    <div class="p-6 flex flex-col gap-5">
+
+      <div class="rounded-2xl border-2 border-dashed border-amber-300 dark:border-amber-500/40
+                  bg-amber-50 dark:bg-amber-500/10 p-4 text-lg leading-relaxed">
+        ℹ️ Sipariş <b>silinmez</b>; <b>"Sipariş İptal Edildi"</b> durumuna alınır ve stoklar
+        WooCommerce tarafından iade edilir. Yazdığınız gerekçe siparişe <b>not</b> olarak işlenir,
+        müşteri "Hesabım &gt; Siparişler" sayfasında görebilir.
+      </div>
+
+      <div>
+        <div class="text-lg font-extrabold mb-2">📋 Hazır Gerekçeler</div>
+        <!-- Butonlar renderer-ek.js içindeki IPTAL_SEBEPLERI listesinden çizilir -->
+        <div id="iptalSebepleri" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <div>
+        <label for="iptalSebepMetni" class="block text-lg font-extrabold mb-2">
+          ✍️ İptal Gerekçesi <span class="text-red-600">*</span>
+        </label>
+        <textarea id="iptalSebepMetni" rows="3"
+                  placeholder="Örn: Minimum sepet tutarı karşılanmadı."
+                  class="w-full p-4 rounded-xl text-lg bg-slate-50 dark:bg-slate-900 resize-y
+                         border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                         focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
+      </div>
+
+      <label class="flex items-start gap-3 cursor-pointer select-none">
+        <input id="iptalBildir" type="checkbox" class="w-6 h-6 mt-1 accent-emerald-600 shrink-0" />
+        <span class="text-lg leading-relaxed">
+          Müşteriye <b>iptal bilgilendirme e-postası</b> gönderilsin.
+        </span>
+      </label>
+
+      <div id="iptalUyari" class="hidden rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                  bg-red-50 text-red-800 border-2 border-red-300
+                                  dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
+    </div>
+
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
+      <button id="iptalVazgec"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="iptalOnay"
+              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-red-600 hover:bg-red-700
+                     transition active:scale-95 shadow-lg">🚫 EVET, İPTAL ET</button>
     </div>
   </div>
 </div>

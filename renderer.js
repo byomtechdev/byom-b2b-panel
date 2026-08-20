@@ -323,7 +323,7 @@ function demoKalem(kod, adet) {
 
 const DEMO_SIPARISLER = [
   {
-    id: 10248, numara: '10248', odemeTipi: 'cash', bayiId: 506, musteri: 'Ahmet Yılmaz', firma: 'Yılmaz Hırdavat Ltd. Şti.',
+    id: 10248, numara: '10248', aliciTipi: 'corporate', odemeTipi: 'cash', bayiId: 506, musteri: 'Ahmet Yılmaz', firma: 'Yılmaz Hırdavat Ltd. Şti.',
     telefon: '0532 415 22 78', adres: 'Karaköy Mah. Tersane Cad. No:14/A, Beyoğlu / İSTANBUL',
     tarih: '2026-08-05T09:12:00', durum: 'b2b-received', kargo: '', takip: '',
     notlar: 'Kargoya vermeden önce lütfen arayın, elden teslim alacağız.',
@@ -333,20 +333,20 @@ const DEMO_SIPARISLER = [
     ]
   },
   {
-    id: 10247, numara: '10247', odemeTipi: 'card', bayiId: 507, musteri: 'Fatma Demir', firma: 'Demir Yapı Market',
+    id: 10247, numara: '10247', aliciTipi: 'corporate', odemeTipi: 'card', provizyon: 'PRV-8842-119037', bayiId: 507, musteri: 'Fatma Demir', firma: 'Demir Yapı Market',
     telefon: '0555 908 61 30', adres: 'Cumhuriyet Mah. 1512 Sok. No:3, Bornova / İZMİR',
     tarih: '2026-08-04T16:40:00', durum: 'b2b-preparing', notlar: '', kargo: '', takip: '',
     kalemler: [demoKalem('KBL-NYA25-100', 2), demoKalem('LED-E27-12-10', 5), demoKalem('AKF-100E', 12)]
   },
   {
-    id: 10246, numara: '10246', odemeTipi: 'term', bayiId: 508, musteri: 'Mustafa Kaya', firma: 'Kaya İnşaat Malzemeleri',
+    id: 10246, numara: '10246', aliciTipi: 'corporate', odemeTipi: 'term', bayiId: 508, musteri: 'Mustafa Kaya', firma: 'Kaya İnşaat Malzemeleri',
     telefon: '0542 771 04 96', adres: 'Ostim OSB 1234. Cad. No:57, Yenimahalle / ANKARA',
     tarih: '2026-08-04T11:05:00', durum: 'b2b-ready', kargo: '', takip: '',
     notlar: 'Fatura firma adına kesilecek. Vergi No: 7734009812',
     kalemler: [demoKalem('MRD-ALM8', 6), demoKalem('TRK-SET8', 4), demoKalem('ELD-NTR-12', 10)]
   },
   {
-    id: 10245, numara: '10245', odemeTipi: 'cash', bayiId: 509, musteri: 'Hüseyin Şahin', firma: 'Şahin Nalburiye',
+    id: 10245, numara: '10245', aliciTipi: 'corporate', odemeTipi: 'cash', bayiId: 509, musteri: 'Hüseyin Şahin', firma: 'Şahin Nalburiye',
     telefon: '0533 220 18 45', adres: 'Merkez Mah. Atatürk Bulvarı No:88, Şehitkamil / GAZİANTEP',
     tarih: '2026-08-03T14:22:00', durum: 'completed', notlar: '',
     kargo: 'Aras Kargo', takip: '7812340091223',
@@ -355,14 +355,14 @@ const DEMO_SIPARISLER = [
     kalemler: [demoKalem('SLK-TBC-PRO', 8), demoKalem('AKF-100E', 24), demoKalem('STN-SM5', 2)]
   },
   {
-    id: 10244, numara: '10244', odemeTipi: 'card', bayiId: 510, musteri: 'Zeynep Aydın', firma: 'Aydın Elektrik Toptan',
+    id: 10244, numara: '10244', aliciTipi: 'corporate', odemeTipi: 'card', provizyon: 'PRV-8842-118455', bayiId: 510, musteri: 'Zeynep Aydın', firma: 'Aydın Elektrik Toptan',
     telefon: '0544 662 37 12', adres: 'Sanayi Mah. 5. Sokak No:21, Nilüfer / BURSA',
     tarih: '2026-08-03T09:48:00', durum: 'b2b-received', kargo: '', takip: '',
     notlar: 'Ödeme havale ile yapılacak, dekont bekleniyor.',
     kalemler: [demoKalem('KBL-NYA25-100', 3), demoKalem('LED-E27-12-10', 6), demoKalem('KLK-CK3', 1)]
   },
   {
-    id: 10243, numara: '10243', odemeTipi: 'cash', bayiId: 506, musteri: 'Osman Çelik', firma: 'Yılmaz Hırdavat Ltd. Şti.',
+    id: 10243, numara: '10243', aliciTipi: 'corporate', odemeTipi: 'cash', bayiId: 506, musteri: 'Osman Çelik', firma: 'Yılmaz Hırdavat Ltd. Şti.',
     telefon: '0537 118 90 04', adres: 'Karaköy Mah. Tersane Cad. No:14/A, Beyoğlu / İSTANBUL',
     tarih: '2026-08-02T17:30:00', durum: 'b2b-shipped',
     notlar: 'Palet üstünde streçlenerek gönderilsin.',
@@ -370,7 +370,7 @@ const DEMO_SIPARISLER = [
     kalemler: [demoKalem('MKT-HP1630', 2), demoKalem('ELD-NTR-12', 3), demoKalem('DBL-8-500', 2)]
   },
   {
-    id: 10242, numara: '10242', odemeTipi: 'term', bayiId: 507, musteri: 'Emine Koç', firma: 'Demir Yapı Market',
+    id: 10242, numara: '10242', aliciTipi: 'corporate', odemeTipi: 'term', bayiId: 507, musteri: 'Emine Koç', firma: 'Demir Yapı Market',
     telefon: '0546 300 55 71', adres: 'Cumhuriyet Mah. 1512 Sok. No:3, Bornova / İZMİR',
     tarih: '2026-08-02T10:15:00', durum: 'completed', notlar: '',
     kargo: 'MNG Kargo', takip: '9920014457781',
@@ -379,11 +379,32 @@ const DEMO_SIPARISLER = [
     kalemler: [demoKalem('IZL-KRG180', 4), demoKalem('STN-SM5', 3), demoKalem('AKF-100E', 6)]
   },
   {
-    id: 10241, numara: '10241', odemeTipi: 'card', bayiId: 508, musteri: 'Kemal Arslan', firma: 'Kaya İnşaat Malzemeleri',
+    id: 10241, numara: '10241', aliciTipi: 'corporate', odemeTipi: 'card', provizyon: 'PRV-8842-117980', bayiId: 508, musteri: 'Kemal Arslan', firma: 'Kaya İnşaat Malzemeleri',
     telefon: '0532 007 44 19', adres: 'Ostim OSB 1234. Cad. No:57, Yenimahalle / ANKARA',
     tarih: '2026-08-01T13:02:00', durum: 'cancelled', kargo: '', takip: '',
     notlar: 'Müşteri sipariş iptali talep etti.',
     kalemler: [demoKalem('LED-E27-12-10', 4), demoKalem('DBL-8-500', 3)]
+  },
+
+  /* --- BİREYSEL MÜŞTERİ SİPARİŞLERİ ---
+     Firma unvanı ve vergi künyesi YOKTUR; depo fişinde Ad-Soyad / T.C. Kimlik /
+     Teslimat Adresi basılır ve kartta mavi [MÜŞTERİ] rozeti görünür. */
+  {
+    id: 10240, numara: '10240', aliciTipi: 'individual', odemeTipi: 'card', provizyon: 'PRV-8842-117204',
+    bayiId: 0, musteri: 'Elif Tanrıkulu', firma: '', tcKimlik: '17845620394',
+    telefon: '0533 471 66 08', adres: 'Bahçelievler Mah. Papatya Sok. No:7 D:4, Çankaya / ANKARA',
+    tarih: '2026-08-05T13:55:00', durum: 'b2b-received', kargo: '', takip: '',
+    notlar: 'Kapıda kimlik ibrazı ile teslim alınacak.',
+    kalemler: [demoKalem('STN-SM5', 1), demoKalem('IZL-KRG180', 2), demoKalem('LED-E27-12-10', 1)]
+  },
+  {
+    id: 10239, numara: '10239', aliciTipi: 'individual', odemeTipi: 'cash',
+    bayiId: 0, musteri: 'Ramazan Duran', firma: '', tcKimlik: '',
+    telefon: '0505 902 13 77', adres: 'Yeşilyurt Mah. 4021 Sok. No:12, Karşıyaka / İZMİR',
+    tarih: '2026-08-04T08:30:00', durum: 'b2b-shipped',
+    notlar: '',
+    kargo: 'Sürat Kargo', takip: '3391077452210',
+    kalemler: [demoKalem('AKF-100E', 2), demoKalem('SLK-TBC-PRO', 1)]
   }
 ];
 
@@ -402,21 +423,29 @@ DEMO_SIPARISLER.forEach(function (s) {
 });
 
 const DEMO_UYELER = [
-  /* --- Onay bekleyen başvurular --- */
-  { id: 501, durum: 'pending', ad: 'Serkan Öztürk', firma: 'Öztürk Yapı Market San. Tic. Ltd. Şti.', vergiNo: '6540218793',
+  /* --- Onay bekleyen kurumsal başvurular ---
+     kaynak:'pending-users' → gerçek kurulumda bu kayıtlar /pending-users
+     ucundan gelir ve onayları "approve-user" ucuna gider (bkz. uyeKarar).
+     il / ilce alanları başvuru künyesindeki "İl / İlçe" satırını besler. */
+  { id: 501, durum: 'pending', kaynak: 'pending-users', ad: 'Serkan Öztürk', firma: 'Öztürk Yapı Market San. Tic. Ltd. Şti.', vergiNo: '6540218793',
     vergiDairesi: 'Kadıköy', telefon: '0532 884 12 07', eposta: 'serkan@ozturkyapi.com.tr',
+    il: 'İSTANBUL', ilce: 'Kadıköy',
     adres: 'Bostancı Mah. Ankara Cad. No:112, Kadıköy / İSTANBUL', tarih: '2026-08-05T08:20:00' },
-  { id: 502, durum: 'pending', ad: 'Ayşe Korkmaz', firma: 'Korkmaz Nalburiye', vergiNo: '3320984561',
+  { id: 502, durum: 'pending', kaynak: 'pending-users', ad: 'Ayşe Korkmaz', firma: 'Korkmaz Nalburiye', vergiNo: '3320984561',
     vergiDairesi: 'Çankaya', telefon: '0555 210 76 33', eposta: 'ayse.korkmaz@gmail.com',
+    il: 'ANKARA', ilce: 'Çankaya',
     adres: 'Kızılay Mah. 12. Sok. No:8, Çankaya / ANKARA', tarih: '2026-08-04T19:05:00' },
-  { id: 503, durum: 'pending', ad: 'Bülent Yıldırım', firma: 'Yıldırım Elektrik Malzemeleri', vergiNo: '8871203954',
+  { id: 503, durum: 'pending', kaynak: 'pending-users', ad: 'Bülent Yıldırım', firma: 'Yıldırım Elektrik Malzemeleri', vergiNo: '8871203954',
     vergiDairesi: 'Konak', telefon: '0542 619 08 24', eposta: 'info@yildirimelektrik.com',
+    il: 'İZMİR', ilce: 'Konak',
     adres: 'Alsancak Mah. 1476 Sok. No:5, Konak / İZMİR', tarih: '2026-08-04T12:44:00' },
-  { id: 504, durum: 'pending', ad: 'Hatice Polat', firma: 'Polat İnşaat Hırdavat', vergiNo: '1129873460',
+  { id: 504, durum: 'pending', kaynak: 'pending-users', ad: 'Hatice Polat', firma: 'Polat İnşaat Hırdavat', vergiNo: '1129873460',
     vergiDairesi: 'Osmangazi', telefon: '0537 452 91 66', eposta: 'polat.hirdavat@hotmail.com',
+    il: 'BURSA', ilce: 'Osmangazi',
     adres: 'Demirtaş OSB 4. Cad. No:19, Osmangazi / BURSA', tarih: '2026-08-03T15:31:00' },
-  { id: 505, durum: 'pending', ad: 'Murat Şen', firma: 'Şen Kardeşler Toptan Hırdavat', vergiNo: '4408125577',
+  { id: 505, durum: 'pending', kaynak: 'pending-users', ad: 'Murat Şen', firma: 'Şen Kardeşler Toptan Hırdavat', vergiNo: '4408125577',
     vergiDairesi: 'Seyhan', telefon: '0544 703 28 90', eposta: 'muratsen@senkardesler.com.tr',
+    il: 'ADANA', ilce: 'Seyhan',
     adres: 'Yeni Sanayi Sitesi 7. Blok No:34, Seyhan / ADANA', tarih: '2026-08-02T10:09:00' },
 
   /* --- Onaylı bayiler (sipariş geçmişi ekranını denemek için) --- */
@@ -493,9 +522,22 @@ const durum = {
   /* Teslim durumu süzgeci — sunucuda değil, yüklenen listede yerel olarak uygulanır
      (REST ucu meta alanına göre süzme desteklemiyor). */
   teslimSuzgec: '',
+  /* Bayiler / Müşteriler sekmesi hangi filtreyle açılıyor.
+     Varsayılan 'pending': panel açıldığında ilk görülmesi gereken şey karar
+     bekleyen kurumsal başvurulardır. */
   uyeSuzgec: 'pending',
   urunDurumSuzgec: '',
   bekleyenUyeSayisi: 0,
+
+  /* --- Geliştirici kilidi (master lock) ---
+     Oturumluktur: diske YAZILMAZ, uygulama her açıldığında şifre yeniden
+     sorulur (bkz. GELİŞTİRİCİ KİLİDİ bölümü). */
+  masterKilitAcik: false,
+  kilitPenceresiAcik: false,
+
+  /* Sitede /pending-users ucu bulunamadıysa true olur; boşa istek atmamak
+     için oturum boyunca hatırlanır (bkz. bekleyenBasvurulariGetir). */
+  basvuruUcuYok: false,
   otoYenileZaman: null,
   siparisYukleniyor: false,
   sonKontrol: null,
@@ -742,6 +784,128 @@ const TESLIM_SUZGECLERI = [
   { kod: 'not_delivered', simge: '⛔', etiket: 'Teslim Edilemedi' }
 ];
 
+/* ==========================================================================
+ *  ALICI TİPİ (BİREYSEL MÜŞTERİ / KURUMSAL BAYİ)
+ *  ---------------------------------------------------------------------------
+ *  Aynı mağazadan hem son kullanıcı hem bayi alışveriş yapabilir; depoya inen
+ *  fiş ile muhasebeye giden bilgi ise BİRBİRİNDEN FARKLIDIR (bireyselde T.C.
+ *  kimlik + teslimat adresi, kurumsalda vergi dairesi + vergi no + cari adres).
+ *  Bu yüzden alıcı tipi sipariş kartında rozet, depo fişinde ise ayrı bir
+ *  künye bloğu olarak gösterilir.
+ *
+ *  Değer sunucudan üç ayrı yoldan gelebilir:
+ *    · b2b-core uçları        →  order.buyer_type
+ *    · WooCommerce wc/v3      →  meta_data._b2b_buyer_type  (alt çizgili)
+ *    · hiçbiri yoksa          →  firma/vergi bilgisinden ÇIKARIM yapılır
+ *
+ *  Çıkarım bilinçli olarak "vergi no VEYA firma unvanı varsa kurumsal" der:
+ *  eski siparişlerde buyer_type alanı hiç yazılmamıştır ve hepsini bireysel
+ *  göstermek, bayi siparişlerinin fişine yanlış künye basardı.
+ * ========================================================================*/
+
+const ALICI_TIPLERI = {
+  individual: {
+    kod: 'individual', etiket: 'MÜŞTERİ', simge: '👤',
+    sinif: 'bg-sky-100 text-sky-800 border-sky-400 ' +
+           'dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/40'
+  },
+  corporate: {
+    kod: 'corporate', etiket: 'BAYİ', simge: '🏢',
+    sinif: 'bg-emerald-100 text-emerald-800 border-emerald-400 ' +
+           'dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40'
+  }
+};
+
+/** Sunucudan gelen ham alıcı tipi / rol adını 'individual' | 'corporate' | '' yapar. */
+function aliciTipiCoz(ham) {
+  const s = String(ham === null || ham === undefined ? '' : ham)
+    .trim().toLocaleLowerCase('tr-TR');
+  if (!s) return '';
+
+  if (['corporate', 'kurumsal', 'dealer', 'bayi', 'b2b', 'b2b_customer', 'approved_dealer',
+       'wholesale', 'wholesale_customer', 'company', 'firma'].indexOf(s) !== -1) {
+    return 'corporate';
+  }
+  if (['individual', 'bireysel', 'customer', 'musteri', 'müşteri', 'b2c',
+       'retail', 'personal', 'sahis', 'şahıs'].indexOf(s) !== -1) {
+    return 'individual';
+  }
+  return '';
+}
+
+/** Siparişin alıcı tipi: 'individual' | 'corporate'. Alan yoksa künyeden çıkarılır. */
+function aliciTipiKodu(s) {
+  if (!s) return 'individual';
+
+  const acik = aliciTipiCoz(s.aliciTipi);
+  if (acik) return acik;
+
+  /* Alan hiç yazılmamış (eski sipariş): vergi no ya da firma unvanı varsa kurumsal. */
+  const vergi = String(s.vergiNo || '').replace(/[^0-9]/g, '');
+  if (vergi.length >= 10) return 'corporate';
+  if (String(s.firma || '').trim()) return 'corporate';
+  if (Number(s.bayiId || 0) > 0 && String(s.vergiDairesi || '').trim()) return 'corporate';
+
+  return 'individual';
+}
+
+/** Sipariş kartındaki mavi [MÜŞTERİ] / yeşil [BAYİ] rozeti. */
+function aliciRozetiHtml(s) {
+  const bilgi = ALICI_TIPLERI[aliciTipiKodu(s)] || ALICI_TIPLERI.individual;
+  const kesinMi = !!aliciTipiCoz(s && s.aliciTipi);
+
+  const ipucu = kesinMi
+    ? 'Alıcı rolü siteden bildirildi'
+    : 'Alıcı rolü sipariş künyesinden çıkarıldı (eski sipariş)';
+
+  return '<span title="' + kacis(ipucu) + '" ' +
+         'class="inline-block px-3 py-1 rounded-lg border-2 text-base font-black ' +
+         'tracking-wide whitespace-nowrap ' + bilgi.sinif + '">' +
+         bilgi.simge + ' [' + kacis(bilgi.etiket) + ']</span>';
+}
+
+/**
+ * Kredi kartı ile ödenen siparişlerde yeşil [POS Onaylı] etiketi.
+ *
+ * Banka provizyon kodu (transaction_id) varsa rozetin yanına basılır: kargo
+ * çıkışından önce depocunun "para gerçekten geçmiş mi?" sorusuna bakacağı tek
+ * yer burasıdır. Kod yoksa rozet yine gösterilir ama provizyon alanı yazılmaz —
+ * boş bir "Provizyon: —" satırı, tahsilatın yapılmadığı izlenimi verirdi.
+ */
+function posRozetiHtml(s) {
+  if (!s) return '';
+
+  const tip = String(s.odemeTipi || '').trim();
+
+  /* Ödeme tipi AÇIKÇA yazılmışsa yalnızca ona bakılır. Ödeme başlığından
+     çıkarım sadece tip hiç yokken (eski sipariş / eklentisiz yol) yapılır:
+     aksi hâlde "Kapıda nakit veya kart" gibi bir ağ geçidi adı, nakit
+     siparişe de POS rozeti bastırırdı. */
+  const kartMi = tip
+    ? tip === 'card'
+    : /kredi kart|kredi_kart|credit card|sanal ?pos|\bpos\b|iyzico|paytr|payten|craftgate|param ?pos/i
+        .test(String(s.odeme || ''));
+
+  if (!kartMi) return '';
+
+  const kod = String(s.provizyon || '').trim();
+
+  return '<span title="' + kacis(kod ? 'Banka provizyon kodu: ' + kod : 'Kredi kartı ile ödendi') + '" ' +
+         'class="inline-block mt-1 px-3 py-1 rounded-lg border-2 text-base font-bold whitespace-nowrap ' +
+         'bg-emerald-100 text-emerald-800 border-emerald-400 ' +
+         'dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40">' +
+         '💳 [POS Onaylı]' + (kod ? ' · ' + kacis(kod) : '') + '</span>';
+}
+
+/**
+ * Onaylanan kurumsal başvuruya verilecek WordPress rolü.
+ *
+ * Sözleşme gereği SABİT: sitedeki fiyat/görünürlük kuralları bu rol adına
+ * bakar. Eski `dealers/<id>/approve` ucu rolü kendisi belirler (genellikle
+ * approved_dealer); yeni `approve-user` ucuna ise rol AÇIKÇA gönderilir.
+ */
+const B2B_BAYI_ROLU = 'b2b_customer';
+
 /* --- Bayi durumları --- */
 const BAYI_DURUMLARI = {
   pending:   { etiket: 'ONAY BEKLİYOR', sinif: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30' },
@@ -834,11 +998,18 @@ function oranYaz(oran) {
     : String(n).replace('.', ',');
 }
 
+/*
+ * Bayiler / Müşteriler sekmesinin filtre sekmeleri.
+ *
+ * Sıra bilinçlidir: ekran artık yalnızca "onay kuyruğu" değil, İKİLİ bir
+ * müşteri defteridir. Önce bütün kayıtlar, sonra onaylı bayiler, en sonda
+ * karar bekleyen başvurular gelir; bekleyen sekmesi kırmızı sayaç taşır.
+ */
 const UYE_SUZGECLERI = [
-  { kod: 'pending', simge: '⏳', etiket: 'Onay Bekleyen' },
+  { kod: 'all', simge: '👥', etiket: 'Tüm Müşteriler' },
   { kod: 'approved', simge: '✅', etiket: 'Onaylı Bayiler' },
-  { kod: 'rejected', simge: '❌', etiket: 'Reddedilen' },
-  { kod: 'all', simge: '📋', etiket: 'Tümü' }
+  { kod: 'pending', simge: '⏳', etiket: 'Onay Bekleyenler' },
+  { kod: 'rejected', simge: '❌', etiket: 'Reddedilen' }
 ];
 
 /* ==========================================================================
@@ -868,6 +1039,34 @@ function b2b(yol, secenek) { return api('b2b', yol, secenek); }
 
 /** WooCommerce çekirdek uçları — /wp-json/wc/v3/... */
 function woo(yol, secenek) { return api('woo', yol, secenek); }
+
+/** b2b-core'un ESKİ ad alanı — /wp-json/b2b/v1/... (bkz. main.js → API_ALANLARI.b2bAlt) */
+function b2bAlt(yol, secenek) { return api('b2bAlt', yol, secenek); }
+
+/** Yanıt "böyle bir uç yok" anlamına mı geliyor? (yedek ad alanına düşme kararı) */
+function ucBulunamadiMi(cevap) {
+  if (!cevap) return true;
+  if (cevap.ok) return false;
+  const kod = String(cevap.kod || '');
+  return kod === 'rest_no_route' || Number(cevap.durum) === 404;
+}
+
+/**
+ * Aynı yolu önce kanonik (wc-b2b/v1), sonra eski (b2b/v1) ad alanında dener.
+ *
+ * Neden iki uç: kurumsal başvuru ekranı sahada iki farklı eklenti sürümüyle
+ * karşılaşıyor. Tek ad alanına bağlanmak, diğerinde ekranın "başvuru yok"
+ * göstermesine yol açardı — ki bu, gerçekten bekleyen başvuru varken en
+ * kötü sessiz hatadır. Yalnızca "uç yok" hatasında ikinciye geçilir;
+ * yetki/ağ hataları olduğu gibi geri döner.
+ */
+async function b2bIkiliUc(yol, secenek) {
+  const cevap = await b2b(yol, secenek);
+  if (!ucBulunamadiMi(cevap)) return cevap;
+
+  const yedek = await b2bAlt(yol, secenek);
+  return ucBulunamadiMi(yedek) ? cevap : yedek;
+}
 
 /* --------------------------------------------------------------------------
  *  SAYFALAMA — "mağazanın TAMAMINI getir"
@@ -1037,6 +1236,9 @@ async function eklentiyiTani() {
     return true;
   }
 
+  /* Yeni bir site/eklenti tanınıyor: "uç yok" hafızası geçersizdir. */
+  durum.basvuruUcuYok = false;
+
   const cevap = await b2b('ping');
 
   if (cevap.ok && cevap.veri && cevap.veri.ok) {
@@ -1061,6 +1263,12 @@ function b2bSiparisNormalle(s) {
   const bayi = s.dealer || {};
   const fatura = s.billing || {};
   const teslim = s.shipping || {};
+
+  /* Eklenti sürümüne göre alıcı tipi farklı adlarla gelebilir; hepsi taranır.
+     Yanıtta meta_data da varsa (bazı sürümler ekliyor) oradaki alt çizgili
+     anahtar da yedek olarak okunur. */
+  const b2bMeta = {};
+  (s.meta_data || []).forEach(function (m) { if (m && m.key) b2bMeta[m.key] = m.value; });
   const adres = [
     teslim.address_1 || fatura.address_1,
     teslim.address_2 || fatura.address_2,
@@ -1096,6 +1304,15 @@ function b2bSiparisNormalle(s) {
     odemeIskonto: Number(s.payment_discount_rate || 0),
     odemeIskontoTutar: Number(s.payment_discount_amount || 0),
     odemeNotu: s.payment_type_note || '',
+    /* Alıcı rolü (bireysel müşteri / kurumsal bayi) — bkz. ALICI TİPİ bölümü */
+    aliciTipi: s.buyer_type || bayi.buyer_type || s.customer_type ||
+               b2bMeta._b2b_buyer_type || b2bMeta.b2b_buyer_type || '',
+    /* Bireysel alıcının T.C. kimlik numarası (yalnızca kurumsal olmayan fişte basılır) */
+    tcKimlik: String(s.national_id || bayi.national_id || fatura.tc_no ||
+                     b2bMeta._b2b_tc_kimlik || b2bMeta.b2b_tc_kimlik || ''),
+    /* Kredi kartı tahsilatının banka provizyon / işlem kodu */
+    provizyon: String(s.transaction_id || s.provision_code ||
+                      b2bMeta._transaction_id || ''),
     /* --- Müşterinin teslim bildirimi (web paneli) --- */
     teslimDurum: (s.delivery && s.delivery.state) || '',
     teslimEtiket: (s.delivery && s.delivery.state_label) || '',
@@ -1154,8 +1371,12 @@ function siparisNormalle(s) {
     musteri: adSoyad || fatura.company || 'İsimsiz Müşteri',
     firma: fatura.company || '',
     telefon: fatura.phone || '',
-    vergiNo: '',
-    vergiDairesi: '',
+    /* Eklentisiz yolda vergi künyesi yalnızca meta'da olabilir; depo fişinin
+       kurumsal başlığı bu iki alana bağlı olduğu için yaygın adlar taranır. */
+    vergiNo: String(meta._b2b_tax_number || meta.b2b_vergi_no || meta.vergi_no ||
+                    meta._billing_tax_number || meta.billing_vergi_no || ''),
+    vergiDairesi: String(meta._b2b_tax_office || meta.b2b_vergi_dairesi || meta.vergi_dairesi ||
+                         meta._billing_tax_office || meta.billing_vergi_dairesi || ''),
     adres: adresSatiri || '',
     tutar: Number(s.total || 0),
     araToplam: 0,
@@ -1174,6 +1395,15 @@ function siparisNormalle(s) {
     odemeIskonto: Number(meta._b2b_payment_discount_rate || 0),
     odemeIskontoTutar: Number(meta._b2b_payment_discount_amount || 0),
     odemeNotu: String(meta._b2b_payment_note || ''),
+    /* Alıcı rolü — eklentisiz yolda yalnızca meta_data'dan okunabilir.
+       Alt çizgisiz ayna da taranır: WooCommerce "_" ile başlayan meta'yı
+       wc/v3 yanıtından düşürebilir (bkz. TESLİM DURUMU bölümündeki not). */
+    aliciTipi: String(meta._b2b_buyer_type || meta.b2b_buyer_type ||
+                      (s.b2b && s.b2b.buyer_type) || ''),
+    tcKimlik: String(meta._b2b_tc_kimlik || meta.b2b_tc_kimlik ||
+                     meta._billing_tc_no || meta.billing_tc_no || ''),
+    /* Banka provizyon kodu: wc/v3 sipariş nesnesinde çekirdek alandır. */
+    provizyon: String(s.transaction_id || meta._transaction_id || ''),
     /* Teslim bildirimi. Eklenti varsa hazır nesneden, yoksa meta_data'dan.
        (Anahtar alt çizgisiz olduğu için wc/v3 yanıtında görünür.) */
     teslimDurum: teslim0 ? String(teslim0.state || '') : String(meta.b2b_delivery_confirmation || ''),
@@ -1357,6 +1587,118 @@ function bayiNormalle(b) {
         : (b.discount_rate || 0)
     ) || 0,
     iskontoGecerli: Number(b.effective_discount_rate || 0) || 0
+  };
+}
+
+/* ==========================================================================
+ *  ONAY BEKLEYEN KURUMSAL BAŞVURULAR  (/pending-users)
+ *  ---------------------------------------------------------------------------
+ *  Sitedeki kayıt formundan gelen kurumsal başvurular, henüz bir "bayi"
+ *  kaydına dönüşmeden bu uçta bekler. Alan adları eklenti sürümüne göre
+ *  değiştiği için hepsi sırayla taranır (company_name / firma / title …).
+ *  Kayıt Tarihi, İl/İlçe gibi alanlar başvuruyu değerlendirmenin tek dayanağı
+ *  olduğu için burada boş bırakmak yerine bilinen tüm adlar denenir.
+ * ========================================================================*/
+
+function basvuruNormalle(b) {
+  b = b || {};
+  const meta = b.meta || b.meta_data_map || {};
+  const adSoyad = [b.first_name, b.last_name].filter(Boolean).join(' ');
+
+  /** Aynı bilgi için birden çok olası alan adını sırayla dener. */
+  const ilk = function (adlar) {
+    for (let i = 0; i < adlar.length; i++) {
+      const deger = adlar[i];
+      if (deger !== undefined && deger !== null && String(deger).trim() !== '') {
+        return String(deger).trim();
+      }
+    }
+    return '';
+  };
+
+  const il = ilk([b.city, b.il, meta.city, meta.il, b.billing_city]);
+  const ilce = ilk([b.district, b.ilce, b.state, meta.district, meta.ilce, b.billing_district]);
+
+  return {
+    id: Number(b.id || b.user_id || b.ID || 0),
+    /* Bu kayıt /pending-users ucundan geldi: onay isteği "approve-user" ucuna
+       gider, "dealers/<id>/approve" ucuna DEĞİL (bkz. uyeKarar). */
+    kaynak: 'pending-users',
+    durum: 'pending',
+    ad: ilk([b.contact_name, adSoyad, b.display_name, b.name, b.username, meta.yetkili]) || 'İsimsiz Başvuru',
+    firma: ilk([b.company_name, b.company, b.firma, b.firma_unvani, b.title,
+                meta.company_name, meta.firma_adi, meta.company]),
+    vergiNo: ilk([b.tax_number, b.vergi_no, b.vat_number, b.tax_id,
+                  meta.tax_number, meta.vergi_no, meta.vat_number]),
+    vergiDairesi: ilk([b.tax_office, b.vergi_dairesi, meta.tax_office, meta.vergi_dairesi]),
+    il: il,
+    ilce: ilce,
+    telefon: ilk([b.phone, b.telefon, b.billing_phone, meta.phone, meta.telefon]),
+    eposta: ilk([b.email, b.user_email, b.eposta]),
+    adres: [ilk([b.address, b.address_1, b.adres, meta.address, meta.adres]), ilce, il]
+      .filter(Boolean).join(', '),
+    tarih: ilk([b.registered, b.registered_at, b.applied_at, b.date_created,
+                b.user_registered, b.created_at]),
+    onayTarihi: '',
+    redSebebi: '',
+    not: ilk([b.note, b.not, meta.note]),
+    /* Başvuru aşamasında bayiye özel iskonto tanımlanamaz. */
+    iskontoAktif: false,
+    iskontoOran: 0,
+    iskontoGecerli: 0
+  };
+}
+
+/**
+ * Onay bekleyen kurumsal başvuruları getirir.
+ *
+ * Önce /wc-b2b/v1/pending-users, o yoksa /b2b/v1/pending-users denenir
+ * (bkz. b2bIkiliUc). Uç sitede hiç yoksa `ucYok: true` döner ve çağıran
+ * taraf eski `dealers?status=pending` yoluna düşer — böylece bu eklentiye
+ * sahip olmayan kurulumlarda ekran eskisi gibi çalışmaya devam eder.
+ *
+ * @returns {Promise<{ok, ucYok, basvurular, toplam, hata}>}
+ */
+async function bekleyenBasvurulariGetir(arama) {
+  /*
+   * Uç sitede yoksa bunu OTURUM BOYUNCA hatırla. Aksi hâlde her liste
+   * tazelemesi ve her onaydan sonra iki boşa istek daha atılırdı
+   * (wc-b2b/v1 → b2b/v1), üstelik ikisi de aynı "rest_no_route" ile döner.
+   * Bayrak eklenti yeniden tanındığında sıfırlanır (bkz. eklentiyiTani).
+   */
+  if (durum.basvuruUcuYok) {
+    return { ok: false, ucYok: true, basvurular: [], toplam: 0, hata: '' };
+  }
+
+  const sorgu = { per_page: SAYFA_BOYU };
+  if (arama) sorgu.search = arama;
+
+  const cevap = await b2bIkiliUc('pending-users', { sorgu: sorgu, sureAsimi: 30000 });
+
+  if (ucBulunamadiMi(cevap)) {
+    durum.basvuruUcuYok = true;
+    return { ok: false, ucYok: true, basvurular: [], toplam: 0, hata: (cevap && cevap.hata) || '' };
+  }
+
+  if (!cevap.ok) {
+    return { ok: false, ucYok: false, basvurular: [], toplam: 0, hata: cevap.hata || 'Başvurular alınamadı.' };
+  }
+
+  /* Uç ya düz dizi ya da { users: [...] } / { pending: [...] } döndürebilir. */
+  const veri = cevap.veri;
+  const ham = Array.isArray(veri)
+    ? veri
+    : (veri && (veri.users || veri.pending || veri.pending_users || veri.data)) || [];
+
+  const basvurular = (Array.isArray(ham) ? ham : []).map(basvuruNormalle)
+    .filter(function (u) { return u.id > 0; });
+
+  return {
+    ok: true,
+    ucYok: false,
+    basvurular: basvurular,
+    toplam: Number(cevap.toplam) || (veri && Number(veri.total)) || basvurular.length,
+    hata: ''
   };
 }
 
@@ -1560,6 +1902,17 @@ function sekmeAc(ad) {
   $$('.sekme-govde').forEach(function (bolum) {
     bolum.classList.toggle('acik', bolum.id === 'sekme-' + ad);
   });
+
+  /*
+   * GELİŞTİRİCİ KİLİDİ — sekme açılır ama içerik perdenin arkasında kalır ve
+   * hemen şifre penceresi gelir. Sekmeyi hiç açmamak yerine perdeyi göstermek
+   * bilinçli bir tercih: kullanıcı tıkladığı yerin NE olduğunu ve neden
+   * kapalı olduğunu görür, tıklaması sessizce yutulmuş olmaz.
+   */
+  if (ad === 'ayarlar') {
+    masterKilidiUygula();
+    if (!durum.masterKilitAcik) masterKilidiSor();
+  }
 
   // Sekmeye ilk girişte veriyi getir
   if (ad === 'siparisler' && durum.siparisler.length === 0) siparisleriYukle();
@@ -2067,7 +2420,11 @@ function siparisleriCiz() {
         '</div>' +
 
         '<div class="flex-1 min-w-0">' +
-          '<div class="text-xl font-extrabold truncate">' + kacis(s.firma || s.musteri) + '</div>' +
+          '<div class="flex items-center gap-2 flex-wrap">' +
+            /* Alıcı rolü rozeti: mavi [MÜŞTERİ] / yeşil [BAYİ] */
+            aliciRozetiHtml(s) +
+            '<span class="min-w-0 text-xl font-extrabold truncate">' + kacis(s.firma || s.musteri) + '</span>' +
+          '</div>' +
           (s.firma ? '<div class="text-base font-semibold text-slate-500 dark:text-slate-400 truncate">👤 ' + kacis(s.musteri) + '</div>' : '') +
           '<div class="text-base text-slate-500 dark:text-slate-400 mt-1">' +
             '📅 ' + kacis(tarihYaz(s.tarih, true)) +
@@ -2083,6 +2440,8 @@ function siparisleriCiz() {
             kacis(etiket) + '</span>' +
           /* Sipariş türü rozeti — renderer-ek.js içinde tanımlıdır (Nakit / Kredi Kartı / Vadeli) */
           (typeof siparisOdemeRozetiHtml === 'function' ? siparisOdemeRozetiHtml(s) : '') +
+          /* Kredi kartı tahsilatı: [POS Onaylı] + banka provizyon kodu */
+          '<div>' + posRozetiHtml(s) + '</div>' +
           /* Depoda adet düzeltmesi yapıldıysa */
           '<div>' + revizeRozetiHtml(s) + '</div>' +
           /* Müşterinin web sitesinden verdiği teslim cevabı */
@@ -3501,9 +3860,16 @@ function uyeSuzgecleriCiz() {
 
   kap.innerHTML = UYE_SUZGECLERI.map(function (f) {
     const aktif = f.kod === durum.uyeSuzgec;
-    const rozet = (f.kod === 'pending' && durum.bekleyenUyeSayisi > 0)
+
+    /* Bekleyen sekmesinde sayaç 0 olsa da gösterilir: "(0)" görmek,
+       sayacın hiç olmamasından farklıdır — kuyruğun boş olduğu bilgisidir. */
+    const sayi = Number(durum.bekleyenUyeSayisi || 0);
+    const rozet = (f.kod === 'pending')
       ? ' <span class="ml-1 px-2 py-0.5 rounded-lg text-base ' +
-        (aktif ? 'bg-white/25' : 'bg-red-600 text-white') + '">' + durum.bekleyenUyeSayisi + '</span>'
+        (aktif
+          ? 'bg-white/25'
+          : (sayi > 0 ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300')) +
+        '">' + sayi + '</span>'
       : '';
 
     return '<button data-uye-suzgec="' + kacis(f.kod) + '" ' +
@@ -3538,6 +3904,17 @@ async function bekleyenSayisiniTazele() {
 
   if (!durum.b2bVar) {
     // Yedek yolda sayı, çekilen listeden hesaplanır.
+    uyeSayaciTazele();
+    return;
+  }
+
+  /* Önce kurumsal başvuru kuyruğu (bkz. bekleyenBasvurulariGetir); bu uç
+     yoksa eski bayi sayımına düşülür. Menüdeki kırmızı rozetin, sekmeye
+     girildiğinde görülecek liste ile aynı sayıyı göstermesi için ikisinin
+     kaynağı da AYNI olmalıdır. */
+  const basvuru = await bekleyenBasvurulariGetir('');
+  if (basvuru.ok) {
+    durum.bekleyenUyeSayisi = basvuru.toplam;
     uyeSayaciTazele();
     return;
   }
@@ -3592,6 +3969,47 @@ async function uyeleriYukle() {
   }
 
   if (durum.b2bVar) {
+    /*
+     * ONAY BEKLEYENLER — önce /pending-users ucu denenir.
+     *
+     * Kurumsal başvurular bu uçta HENÜZ bayi kaydına dönüşmeden bekler ve
+     * "dealers?status=pending" listesinde hiç görünmeyebilir. Uç yoksa
+     * (eski eklenti sürümü) sessizce aşağıdaki bayi listesine düşülür;
+     * uç var ama hata verdiyse kullanıcıya söylenir.
+     */
+    if (durum.uyeSuzgec === 'pending') {
+      kap.innerHTML = '<div class="xl:col-span-2">' +
+        yukleniyorHtml('Kurumsal bayilik başvuruları getiriliyor…') + '</div>';
+
+      const basvuru = await bekleyenBasvurulariGetir(arama);
+
+      if (basvuru.ok) {
+        durum.canliBaglantiTamam = true;
+        ustCubuguTazele();
+
+        durum.uyeler = basvuru.basvurular;
+        durum.uyelerToplam = basvuru.toplam;
+        durum.bekleyenUyeSayisi = basvuru.toplam;
+
+        uyeleriCiz();
+        return;
+      }
+
+      if (!basvuru.ucYok) {
+        durum.uyeler = [];
+        durum.uyelerToplam = 0;
+        durum.bekleyenUyeSayisi = 0;
+        uyeSayaciTazele();
+        kap.innerHTML = '<div class="xl:col-span-2">' +
+          bosHtml('🔌', 'Başvurular alınamadı', basvuru.hata) + '</div>';
+        return;
+      }
+
+      /* ucYok → aşağıdaki klasik bayi listesi yolu devam eder. */
+      kap.innerHTML = '<div class="xl:col-span-2">' +
+        yukleniyorHtml('Bayi başvuruları getiriliyor…') + '</div>';
+    }
+
     /*
      * TÜM BAYİLER — sayfa sayfa. Tek istek 100 kayıtla sınırlıydı; 100'den
      * fazla bayisi olan mağazalarda listenin sonu hiç görünmüyor, "Onaylı
@@ -3668,6 +4086,40 @@ async function uyeleriYukle() {
   uyeleriCiz();
 }
 
+/**
+ * Onay bekleyen kurumsal başvurunun künye tablosu.
+ *
+ * Alanlar sözleşmede sayılan sırayla basılır: Firma Ünvanı · Vergi Dairesi ·
+ * Vergi No · İl/İlçe · Kayıt Tarihi. Eksik alanlar "—" ile gösterilir, çünkü
+ * burada boşluk bilgi taşır: vergi numarası girilmemiş bir başvuru zaten
+ * onaylanmamalıdır ve bunun ekranda görünmesi gerekir.
+ */
+function basvuruKunyesiHtml(u) {
+  const yer = [u.ilce, u.il].filter(Boolean).join(' / ') || u.adres || '';
+
+  const satir = function (etiket, deger, genisMi) {
+    return '<div class="' + (genisMi ? 'sm:col-span-2 ' : '') + 'min-w-0">' +
+      '<span class="font-bold text-slate-500 dark:text-slate-400">' + kacis(etiket) + ':</span> ' +
+      '<span class="font-semibold">' + kacis(deger || '—') + '</span></div>';
+  };
+
+  return '' +
+  '<div class="rounded-2xl border-2 border-amber-200 dark:border-amber-500/30 ' +
+       'bg-amber-50/60 dark:bg-amber-500/5 p-4">' +
+    '<div class="text-base font-black text-amber-800 dark:text-amber-300 mb-2">' +
+      '📄 KURUMSAL BAŞVURU BİLGİLERİ</div>' +
+    '<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-lg">' +
+      satir('Firma Ünvanı', u.firma, true) +
+      satir('Vergi Dairesi', u.vergiDairesi) +
+      satir('Vergi No', u.vergiNo) +
+      satir('İl / İlçe', yer) +
+      satir('Kayıt Tarihi', u.tarih ? tarihYaz(u.tarih, true) : '') +
+      satir('Telefon', u.telefon) +
+      satir('E-posta', u.eposta) +
+    '</div>' +
+  '</div>';
+}
+
 function uyeleriCiz() {
   const kap = $('#uyeListesi');
   uyeSayaciTazele();
@@ -3698,8 +4150,9 @@ function uyeleriCiz() {
     if (bekliyorMu) {
       dugmeler =
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
-                'class="flex-1 min-w-48 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">✅ TEK TIKLA ONAYLA</button>' +
+                'title="Rolü b2b_customer yapar; firma toptan fiyatları görmeye başlar." ' +
+                'class="flex-1 min-w-56 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
+                       'text-white text-xl font-extrabold shadow-lg transition">✅ BAYİLİĞİ ONAYLA</button>' +
         '<button data-eylem="uye-reddet" data-id="' + u.id + '" ' +
                 'class="flex-1 min-w-40 h-16 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
                        'text-white text-xl font-extrabold shadow-lg transition">❌ REDDET</button>';
@@ -3745,6 +4198,11 @@ function uyeleriCiz() {
           kacis(d.etiket) + '</span>' +
       '</div>' +
 
+      /* Onay bekleyen KURUMSAL BAŞVURULARDA künye farklıdır: karar vermek için
+         gereken alanlar (Firma Ünvanı · Vergi Dairesi · Vergi No · İl/İlçe ·
+         Kayıt Tarihi) öne alınır. Onaylı/reddedilmiş kayıtlarda ise iletişim
+         bilgileri daha kullanışlı olduğu için eski düzen korunur. */
+      (bekliyorMu ? basvuruKunyesiHtml(u) : '' +
       '<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-lg">' +
         '<div><span class="font-bold text-slate-500 dark:text-slate-400">Vergi No:</span> ' + kacis(u.vergiNo || '—') + '</div>' +
         '<div><span class="font-bold text-slate-500 dark:text-slate-400">Telefon:</span> ' + kacis(u.telefon || '—') + '</div>' +
@@ -3757,7 +4215,7 @@ function uyeleriCiz() {
           ? '<div class="sm:col-span-2 text-red-700 dark:text-red-300"><span class="font-bold">Red sebebi:</span> ' +
             kacis(u.redSebebi) + '</div>'
           : '') +
-      '</div>' +
+      '</div>') +
 
       /* Bayiye özel iskonto anahtarı + oran kutusu (yalnızca onaylı/askıdaki bayilerde) */
       bayiIskontoHtml(u) +
@@ -3952,7 +4410,8 @@ async function uyeKarar(id, onayMi) {
     const onaylandi = await onayla(
       '✅ Bayiliği Onayla',
       '"' + (uye.firma || uye.ad) + '" firmasını TOPTAN BAYİ olarak onaylıyorsunuz.\n\n' +
-      'Onayladıktan sonra sitenizde toptan fiyatları görebilecek ve sipariş verebilecek.' +
+      'Kullanıcının rolü "' + B2B_BAYI_ROLU + '" yapılacak; sitenizde toptan fiyatları\n' +
+      'görebilecek ve sipariş verebilecek.' +
       (durum.ayarlar.onayEpostasi !== false
         ? '\n\n📧 Firmaya "Bayiliğiniz Onaylanmıştır" e-postası gönderilecek.'
         : '\n\n📧 E-posta gönderilmeyecek (⚙️ Ayarlar\'dan açabilirsiniz).') +
@@ -3995,7 +4454,45 @@ async function uyeKarar(id, onayMi) {
   /* ---------- CANLI ---------- */
   let cevap;
 
-  if (durum.b2bVar) {
+  /* Kayıt /pending-users kuyruğundan geldiyse onay AYRI bir uca gider:
+     "dealers/<id>/approve" henüz bayi kaydı OLMAYAN bir kullanıcıyı bulamaz
+     ve 404 döner. approve-user ise kullanıcının WordPress rolünü doğrudan
+     'b2b_customer' yapar. */
+  const basvuruMu = String(uye.kaynak || '') === 'pending-users';
+
+  if (durum.b2bVar && basvuruMu) {
+    cevap = onayMi
+      ? await b2bIkiliUc('approve-user', {
+          metod: 'POST',
+          sureAsimi: 45000,
+          govde: {
+            user_id: Number(id),
+            id: Number(id),
+            role: B2B_BAYI_ROLU,
+            approve: true,
+            send_email: durum.ayarlar.onayEpostasi !== false
+          }
+        })
+      : await b2bIkiliUc('reject-user', {
+          metod: 'POST',
+          sureAsimi: 45000,
+          govde: {
+            user_id: Number(id),
+            id: Number(id),
+            reason: redSebebi || '',
+            send_email: durum.ayarlar.onayEpostasi !== false
+          }
+        });
+
+    /* Sitede ayrı bir "reject-user" ucu olmayabilir; o zaman klasik bayi
+       reddine düşülür (kullanıcı kaydı zaten oluşmuş olur). */
+    if (!onayMi && ucBulunamadiMi(cevap)) {
+      cevap = await b2b('dealers/' + id + '/reject', {
+        metod: 'POST',
+        govde: { reason: redSebebi || '', send_email: durum.ayarlar.onayEpostasi !== false }
+      });
+    }
+  } else if (durum.b2bVar) {
     cevap = onayMi
       ? await b2b('dealers/' + id + '/approve', {
           metod: 'POST',
@@ -4032,10 +4529,21 @@ async function uyeKarar(id, onayMi) {
 
   bildir((uye.firma || uye.ad) + '\n' +
          (onayMi
-           ? '✅ Bayilik onaylandı (approved_dealer).' +
+           ? '✅ Bayilik onaylandı' + (basvuruMu ? ' (rol: ' + B2B_BAYI_ROLU + ').' : ' (approved_dealer).') +
              (durum.b2bVar && durum.ayarlar.onayEpostasi !== false ? '\n📧 Bilgilendirme e-postası gönderildi.' : '')
            : '❌ Başvuru reddedildi.'),
          onayMi ? 'basari' : 'uyari');
+
+  /*
+   * Başvuru kuyruğundan çıkan kayıt SUNUCUDA artık bambaşka bir şeydir
+   * (bekleyen kullanıcı → onaylı bayi). Yerel listeden silmek ekranı doğru
+   * gösterir ama sayaçlar ile "Onaylı Bayiler" sekmesi eskide kalırdı;
+   * bu yüzden liste sunucudan yeniden çekilir.
+   */
+  if (basvuruMu) {
+    await uyeleriYukle();
+    bekleyenSayisiniTazele();
+  }
 }
 
 /** Bayiyi askıya alır (rol korunur, fiyat/sepet erişimi kapanır). */
@@ -4290,10 +4798,70 @@ async function bayiDetayiAc(id) {
  *   · Sipariş notu ve imzalar yan yana (dikeyde yer kazanır)
  * ========================================================================*/
 
+/**
+ * Fiş künyesinde tek bir "Etiket: değer" parçası.
+ * Değer boşsa parça HİÇ üretilmez — kağıda "Vergi No: —" basmak, o siparişte
+ * vergi bilgisi olmadığı hâlde eksik girilmiş izlenimi verirdi.
+ */
+function fisAlaniHtml(etiket, deger, vurgulaMi) {
+  const metin = String(deger === null || deger === undefined ? '' : deger).trim();
+  if (!metin) return '';
+  return '<span class="etiket">' + kacis(etiket) + ':</span> ' +
+         (vurgulaMi ? '<span class="vurgu">' + kacis(metin) + '</span>' : kacis(metin));
+}
+
+/** Künye satırlarını "·" ile birleştirir; boş parçalar elenir. */
+function fisSatiriHtml(parcalar) {
+  const dolu = parcalar.filter(Boolean);
+  if (!dolu.length) return '';
+  return '<div>' + dolu.join(' &nbsp;·&nbsp; ') + '</div>';
+}
+
+/**
+ * Depo fişinin ALICI KÜNYESİ — alıcı tipine göre TAMAMEN farklı alanlar basar.
+ *
+ *   👤 Bireysel müşteri : Ad-Soyad · T.C. Kimlik No (varsa) · Teslimat Adresi · Telefon
+ *   🏢 Kurumsal bayi    : Firma Ünvanı · Vergi Dairesi · Vergi No · Cari Adres · Telefon
+ *
+ * İki şablonu tek bir "hepsini bas" bloğunda birleştirmek yanlış olurdu:
+ * bireysel siparişin fişinde boş vergi alanları, kurumsal siparişin fişinde
+ * ise şahsın T.C. kimliği yer alırdı (ikincisi ayrıca gereksiz kişisel veri).
+ */
+function fisKunyesiHtml(s) {
+  const kurumsalMi = aliciTipiKodu(s) === 'corporate';
+
+  if (kurumsalMi) {
+    return '' +
+      fisSatiriHtml([
+        fisAlaniHtml('Firma Ünvanı', s.firma || s.musteri, true),
+        fisAlaniHtml('Tel', s.telefon)
+      ]) +
+      fisSatiriHtml([
+        fisAlaniHtml('Vergi Dairesi', s.vergiDairesi),
+        fisAlaniHtml('Vergi No', s.vergiNo)
+      ]) +
+      fisSatiriHtml([fisAlaniHtml('Cari Adres', s.adres)]) +
+      fisSatiriHtml([fisAlaniHtml('Yetkili', s.musteri)]);
+  }
+
+  return '' +
+    fisSatiriHtml([
+      fisAlaniHtml('Ad-Soyad', s.musteri, true),
+      fisAlaniHtml('Tel', s.telefon)
+    ]) +
+    fisSatiriHtml([fisAlaniHtml('T.C. Kimlik No', s.tcKimlik)]) +
+    fisSatiriHtml([fisAlaniHtml('Teslimat Adresi', s.adres)]);
+}
+
 function depoFisiHtml(s) {
   const cesit = s.kalemler.length;
   const toplamAdet = s.kalemler.reduce(function (t, k) { return t + k.adet; }, 0);
   const kalemToplami = s.kalemler.reduce(function (t, k) { return t + Number(k.tutar || 0); }, 0);
+
+  /* Fiş başlığı alıcı tipine göre değişir (bkz. fisKunyesiHtml). */
+  const aliciKod = aliciTipiKodu(s);
+  const aliciBilgi = ALICI_TIPLERI[aliciKod] || ALICI_TIPLERI.individual;
+  const aliciAdi = aliciKod === 'corporate' ? (s.firma || s.musteri) : s.musteri;
 
   /* Yoğunluk kademesi: kalem sayısı arttıkça görsel ve punto otomatik küçülür,
      böylece 30-35 satırlık siparişler de TEK A4 sayfasında kalır.
@@ -4362,6 +4930,13 @@ function depoFisiHtml(s) {
 '  .ust-sag .no { font-size:13px; font-weight:900; }' +
 '  .ust-sag .bayi { font-size:11px; font-weight:800; }' +
 '  .ust-sag .etiket { color:#64748b; font-weight:700; }' +
+
+'  /* Alıcı rolü rozeti — ekrandaki mavi [MÜŞTERİ] / yeşil [BAYİ] ile aynı renkler.' +
+'     Yazıcı renkli değilse bile çerçeve + kalın yazı ayrımı korur. */' +
+'  .alici-rozet { display:inline-block; margin-right:5px; padding:0 5px; border-radius:3px;' +
+'                 font-size:8.5px; font-weight:900; letter-spacing:.5px; border:1px solid; }' +
+'  .alici-rozet.individual { color:#075985; border-color:#38bdf8; background:#e0f2fe; }' +
+'  .alici-rozet.corporate  { color:#065f46; border-color:#34d399; background:#d1fae5; }' +
 
 '  /* ---- Bilgi şeridi: solda bayi künyesi, sağda sipariş özeti ---- */' +
 '  .bilgi { display:flex; gap:4px; margin-bottom:4px; }' +
@@ -4447,26 +5022,21 @@ function depoFisiHtml(s) {
 '      <div class="logo">🔧</div>' +
 '      <div>' +
 '        <div class="firma">' + kacis(durum.ayarlar.firmaAdi || 'FİRMA ADI') + '</div>' +
-'        <div class="fis-turu">DEPO TOPLAMA FİŞİ</div>' +
+'        <div class="fis-turu">DEPO &amp; SEVK FİŞİ &nbsp;·&nbsp; ' +
+         (aliciKod === 'corporate' ? 'KURUMSAL BAYİ' : 'BİREYSEL MÜŞTERİ') + '</div>' +
 '      </div>' +
 '    </div>' +
 '    <div class="ust-sag">' +
 '      <div><span class="etiket">SİPARİŞ NO:</span> <span class="no">' + kacis(s.numara) + '</span>' +
 '           &nbsp;·&nbsp; <span class="etiket">TARİH:</span> ' + kacis(tarihYaz(s.tarih, true)) + '</div>' +
-'      <div><span class="etiket">BAYİ:</span> <span class="bayi">' + kacis(s.firma || s.musteri) + '</span></div>' +
+'      <div><span class="alici-rozet ' + aliciKod + '">' + kacis(aliciBilgi.etiket) + '</span>' +
+'           <span class="bayi">' + kacis(aliciAdi) + '</span></div>' +
 '    </div>' +
 '  </div>' +
 
-/* ---- Bilgi şeridi: solda bayi künyesi, sağda sipariş özeti ---- */
+/* ---- Bilgi şeridi: solda ALICI KÜNYESİ (tipe göre değişir), sağda sipariş özeti ---- */
 '  <div class="bilgi">' +
-'    <div>' +
-'      <div><span class="etiket">Yetkili:</span> <span class="vurgu">' + kacis(s.musteri) + '</span>' +
-'           &nbsp;·&nbsp; <span class="etiket">Tel:</span> ' + kacis(s.telefon || '—') + '</div>' +
-'      <div><span class="etiket">Adres:</span> ' + kacis(s.adres || '—') + '</div>' +
-(s.vergiNo ? '      <div><span class="etiket">Vergi No:</span> ' + kacis(s.vergiNo) +
-             (s.vergiDairesi ? ' &nbsp;·&nbsp; <span class="etiket">Vergi D.:</span> ' + kacis(s.vergiDairesi) : '') +
-             '</div>' : '') +
-'    </div>' +
+'    <div>' + fisKunyesiHtml(s) + '</div>' +
 '    <div>' +
 '      <div><span class="etiket">Çeşit:</span> <span class="vurgu">' + cesit + '</span>' +
 '           &nbsp;·&nbsp; <span class="etiket">Toplam Adet:</span> <span class="vurgu">' + toplamAdet + '</span></div>' +
@@ -4563,11 +5133,176 @@ async function depoFisiAc(id) {
  *  BÖLÜM 11 — ⚙️ AYARLAR
  * ========================================================================*/
 
+/* --------------------------------------------------------------------------
+ *  GELİŞTİRİCİ KİLİDİ (MASTER LOCK)
+ *  --------------------------------------------------------------------------
+ *  "⚙️ API & Sistem Ayarları" sekmesi menünün en altındadır, kilit ikonu
+ *  taşır ve şifre doğrulanmadan İÇERİĞİ HİÇ ÇİZİLMEZ.
+ *
+ *  Neden gerekli: panel mağazanın kasasında, depoda, tezgâhta açık durur.
+ *  API anahtarları ya da çalışma modu yanlışlıkla değiştirildiğinde sitenin
+ *  siparişleri panele hiç düşmez ve arıza "uygulama bozuldu" olarak gelir.
+ *
+ *  Şifre nasıl saklanır: DÜZ METİN OLARAK HİÇBİR YERDE TUTULMAZ. Aşağıdaki
+ *  sabit, varsayılan yönetici şifresinin SHA-256 özetidir; girilen metin de
+ *  aynı işlevden geçirilip özetler karşılaştırılır.
+ *
+ *  Sınır — dürüstçe: bu kilit KAZA ÖNLEYİCİDİR, güvenlik sınırı değildir.
+ *  Uygulama dosyalarına erişebilen biri özeti değiştirebilir; asıl koruma
+ *  WooCommerce tarafındaki anahtar izinleridir.
+ *
+ *  Kilit oturumluktur: uygulama kapanınca sıfırlanır (diske yazılmaz), çünkü
+ *  "bir kez açtım, hep açık kalsın" davranışı kilidin amacını ortadan kaldırır.
+ * ------------------------------------------------------------------------*/
+
+/** SHA-256("ByomAdmin#2026") — varsayılan geliştirici şifresinin özeti. */
+const MASTER_SIFRE_OZETI = 'c20e3740bccb887d2c3a6c6eecbef75a3d00a0944379e4ace7628af7461a9674';
+
+/** Verilen metnin SHA-256 özeti (küçük harf onaltılık). */
+function sha256Hex(metin) {
+  /* Node'un crypto modülü senkron ve her zaman kullanılabilir; tarayıcının
+     crypto.subtle'ı file:// altında "secure context" saymayabilir. */
+  return require('crypto').createHash('sha256')
+    .update(String(metin === null || metin === undefined ? '' : metin), 'utf8')
+    .digest('hex');
+}
+
+/** Girilen şifre doğru mu? (Sabit özetle karşılaştırır.) */
+function masterSifreDogruMu(girilen) {
+  return sha256Hex(girilen) === MASTER_SIFRE_OZETI;
+}
+
+/**
+ * Kilidin arayüzdeki karşılığını uygular.
+ * Kapalıyken #ayarlarIcerik DOM'da `hidden` kalır — üstü örtülmez, hiç çizilmez.
+ */
+function masterKilidiUygula() {
+  const acik = !!durum.masterKilitAcik;
+
+  const perde = $('#ayarKilitPerdesi');
+  const icerik = $('#ayarlarIcerik');
+  const simge = $('#ayarKilitSimgesi');
+
+  if (perde) perde.classList.toggle('hidden', acik);
+  if (icerik) icerik.classList.toggle('hidden', !acik);
+
+  if (simge) {
+    simge.textContent = acik ? '🔓' : '🔒';
+    simge.title = acik
+      ? 'Geliştirici kilidi bu oturum için açık'
+      : 'Geliştirici kilidi — şifre gerekir';
+  }
+}
+
+/** Şifre penceresindeki uyarı kutusu. */
+function kilitUyar(mesaj) {
+  const kutu = $('#kilitUyari');
+  if (!kutu) return;
+
+  if (!mesaj) { kutu.classList.add('hidden'); kutu.textContent = ''; return; }
+  kutu.textContent = mesaj;
+  kutu.classList.remove('hidden');
+}
+
+function kilitPenceresiniKapat() {
+  const katman = $('#kilitModalKatman');
+  const girdi = $('#kilitSifre');
+  const gosterBtn = $('#kilitSifreGosterBtn');
+
+  if (katman) katman.classList.add('hidden');
+  /* Şifre DOM'da asılı kalmasın. */
+  if (girdi) { girdi.value = ''; girdi.type = 'password'; }
+  if (gosterBtn) gosterBtn.textContent = '👁️';
+  kilitUyar('');
+}
+
+/**
+ * Şifre penceresini açar ve kilidin açılıp açılmadığını döndürür.
+ * @returns {Promise<boolean>}
+ */
+function masterKilidiSor() {
+  if (durum.masterKilitAcik) return Promise.resolve(true);
+
+  const katman = $('#kilitModalKatman');
+  const girdi = $('#kilitSifre');
+  const tamam = $('#kilitTamam');
+  const vazgec = $('#kilitVazgec');
+
+  if (!katman || !girdi || !tamam || !vazgec) return Promise.resolve(false);
+
+  return new Promise(function (cozumle) {
+    /* Aynı anda ikinci bir pencere açılmasın (menüye üst üste tıklama). */
+    if (durum.kilitPenceresiAcik) { cozumle(false); return; }
+    durum.kilitPenceresiAcik = true;
+
+    kilitUyar('');
+    girdi.value = '';
+    girdi.type = 'password';
+    katman.classList.remove('hidden');
+    setTimeout(function () { girdi.focus(); }, 40);
+
+    const bitir = function (sonuc) {
+      tamam.removeEventListener('click', onayla2);
+      vazgec.removeEventListener('click', iptal);
+      katman.removeEventListener('mousedown', disaTikla);
+      katman.removeEventListener('keydown', tusla);
+      durum.kilitPenceresiAcik = false;
+      kilitPenceresiniKapat();
+      cozumle(sonuc);
+    };
+
+    function onayla2() {
+      const deger = girdi.value;
+
+      if (!deger) {
+        kilitUyar('Şifre boş olamaz.');
+        girdi.focus();
+        return;
+      }
+
+      if (!masterSifreDogruMu(deger)) {
+        /* Kaç deneme yapıldığı söylenmez ve hesap kilitlenmez: bu bir kaza
+           önleyicidir, kaba kuvvet saldırısına karşı bir savunma değil. */
+        kilitUyar('❌ Şifre hatalı.\nDoğru şifreyi bilmiyorsanız kurulumu yapan geliştirici ile görüşün.');
+        girdi.value = '';
+        girdi.focus();
+        return;
+      }
+
+      durum.masterKilitAcik = true;
+      masterKilidiUygula();
+      /* Anahtar kutuları kilit açılana kadar boş bırakılıyordu; şimdi doldur. */
+      ayarFormunuDoldur();
+      bitir(true);
+      bildir('🔓 Geliştirici kilidi açıldı.\nUygulamayı kapatınca yeniden şifre sorulur.', 'basari');
+    }
+
+    function iptal() { bitir(false); }
+
+    function disaTikla(o) { if (o.target === katman) bitir(false); }
+
+    function tusla(o) {
+      if (o.key === 'Escape') { bitir(false); return; }
+      if (o.key === 'Enter') { o.preventDefault(); onayla2(); }
+    }
+
+    tamam.addEventListener('click', onayla2);
+    vazgec.addEventListener('click', iptal);
+    katman.addEventListener('mousedown', disaTikla);
+    katman.addEventListener('keydown', tusla);
+  });
+}
+
 function ayarFormunuDoldur() {
+  /* Geliştirici kilidi kapalıyken site adresi ve API anahtarları DOM'a hiç
+     yazılmaz. Yalnızca gizlemek yetmez: F12 konsolu ya da bir ekran
+     yakalayıcı gizli kutunun içindeki değeri de okuyabilirdi. */
+  const kilitAcik = !!durum.masterKilitAcik;
+
   $('#girdiFirmaAdi').value = durum.ayarlar.firmaAdi || '';
-  $('#girdiUrl').value = durum.ayarlar.wooUrl || '';
-  $('#girdiCk').value = durum.ayarlar.ck || '';
-  $('#girdiCs').value = durum.ayarlar.cs || '';
+  $('#girdiUrl').value = kilitAcik ? (durum.ayarlar.wooUrl || '') : '';
+  $('#girdiCk').value = kilitAcik ? (durum.ayarlar.ck || '') : '';
+  $('#girdiCs').value = kilitAcik ? (durum.ayarlar.cs || '') : '';
   $('#girdiB2bAlan').value = durum.ayarlar.b2bAlan || '';
   $('#girdiB2bBekliyor').value = durum.ayarlar.b2bBekliyor || '';
   $('#girdiB2bOnay').value = durum.ayarlar.b2bOnaylandi || '';
@@ -4635,6 +5370,75 @@ async function yerelLogoKaldir() {
   bildir('Yerel logo kaldırıldı.', 'bilgi');
 }
 
+/* --------------------------------------------------------------------------
+ *  SİTE FAVICON'U
+ *  --------------------------------------------------------------------------
+ *  Logo ile aynı desende çalışır: dosya base64'e çevrilip ayarlar.json'a
+ *  yazılır, "🚀 DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER" ile theme-config'in
+ *  `branding.favicon` alanına iletilir (bkz. renderer-ek.js → vitrinGonder).
+ *
+ *  Boyut sınırı logodan küçüktür (1 MB): favicon her sayfa isteğinde
+ *  yüklenir, base64 olarak yapılandırmaya gömülen büyük bir dosya sitenin
+ *  her sayfasını yavaşlatırdı.
+ * ------------------------------------------------------------------------*/
+
+const EN_BUYUK_FAVICON_MB = 1;
+
+/** Vitrin sekmesindeki favicon önizlemesini durum.ayarlar.yerelFavicon'a göre çizer. */
+function faviconOnizlemeGuncelle() {
+  const kutu = $('#faviconOnizlemeKutu');
+  const img = $('#faviconOnizleme');
+  const yokKutu = $('#faviconYokKutu');
+  const kaldirBtn = $('#faviconKaldirBtn');
+  if (!kutu || !img || !yokKutu || !kaldirBtn) return;
+
+  const kaynak = String(durum.ayarlar.yerelFavicon || '').trim();
+
+  if (kaynak) {
+    img.src = kaynak;
+    kutu.classList.remove('hidden');
+    yokKutu.classList.add('hidden');
+    kaldirBtn.classList.remove('hidden');
+  } else {
+    kutu.classList.add('hidden');
+    yokKutu.classList.remove('hidden');
+    kaldirBtn.classList.add('hidden');
+  }
+}
+
+async function faviconYukle(dosya) {
+  if (!dosya) return;
+
+  /* .ico dosyalarında tarayıcı türü "image/x-icon" ya da boş verebilir;
+     bu yüzden tür kontrolü uzantıyı da kabul eder. */
+  const gorselMi = /^image\//.test(dosya.type) || /\.(ico|png|svg|webp)$/i.test(dosya.name || '');
+  if (!gorselMi) {
+    bildir('Lütfen bir görsel dosyası seçin (PNG, ICO, SVG veya WEBP).', 'uyari');
+    return;
+  }
+  if (dosya.size > EN_BUYUK_FAVICON_MB * 1024 * 1024) {
+    bildir('Favicon dosyası çok büyük (en fazla ' + EN_BUYUK_FAVICON_MB + ' MB).\n' +
+           'Favicon her sayfa açılışında yüklenir; küçük tutun.', 'uyari');
+    return;
+  }
+
+  try {
+    const veriAdresi = await dosyayiVeriAdresineCevir(dosya);
+    durum.ayarlar = await ipcRenderer.invoke('ayar:yaz', { yerelFavicon: veriAdresi });
+    faviconOnizlemeGuncelle();
+    bildir('🔖 Favicon kaydedildi.\n' +
+           'Sitede görünmesi için "🚀 DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER" deyin.', 'basari');
+  } catch (e) {
+    bildir('Favicon yüklenemedi:\n' + String((e && e.message) || e), 'hata');
+  }
+}
+
+async function faviconKaldir() {
+  durum.ayarlar = await ipcRenderer.invoke('ayar:yaz', { yerelFavicon: '' });
+  faviconOnizlemeGuncelle();
+  bildir('Favicon kaldırıldı.\nSiteye işlenmesi için vitrini yeniden gönderin.', 'bilgi');
+}
+
 /** Bir anahtarın ortasını gizler: "ck_1234••••••••90ab" (kısa değerlerde tamamı gizlenir). */
 function alanMaskele(deger) {
   const s = String(deger || '');
@@ -4666,10 +5470,15 @@ function apiKilidiniUygula() {
     alan.classList.toggle('cursor-not-allowed', kilitli);
   });
 
-  if (ck) ck.value = kilitli ? alanMaskele(durum.ayarlar.ck) : (durum.ayarlar.ck || '');
+  /* Geliştirici kilidi (master lock) kapalıysa anahtarlar DOM'a hiç yazılmaz;
+     maskeli hâlleri bile yazılmaz, çünkü maske de anahtarın ilk/son 4 hanesini
+     sızdırır (bkz. alanMaskele). Bkz. GELİŞTİRİCİ KİLİDİ bölümü. */
+  const masterAcik = !!durum.masterKilitAcik;
+
+  if (ck) ck.value = !masterAcik ? '' : (kilitli ? alanMaskele(durum.ayarlar.ck) : (durum.ayarlar.ck || ''));
   if (cs) {
     cs.type = 'password';
-    cs.value = kilitli ? alanMaskele(durum.ayarlar.cs) : (durum.ayarlar.cs || '');
+    cs.value = !masterAcik ? '' : (kilitli ? alanMaskele(durum.ayarlar.cs) : (durum.ayarlar.cs || ''));
   }
   if (csBtn) {
     csBtn.disabled = kilitli;
@@ -4717,11 +5526,16 @@ async function ayarlariKaydet(sessizMi) {
      gerçek değerlerden) alınır, DOM'a hiç bakılmaz. */
   const kilitli = !!durum.ayarlar.apiKilitli;
 
+  /* Geliştirici kilidi kapalıyken adres/anahtar kutuları BOŞ durur
+     (bkz. ayarFormunuDoldur). O hâldeki DOM'u kaydetmek, kayıtlı anahtarların
+     üzerine boş dize yazıp bağlantıyı koparırdı. */
+  const domGuvenilir = !kilitli && !!durum.masterKilitAcik;
+
   const yeni = {
     firmaAdi: $('#girdiFirmaAdi').value.trim(),
-    wooUrl: kilitli ? (durum.ayarlar.wooUrl || '') : $('#girdiUrl').value.trim(),
-    ck: kilitli ? (durum.ayarlar.ck || '') : $('#girdiCk').value.trim(),
-    cs: kilitli ? (durum.ayarlar.cs || '') : $('#girdiCs').value.trim(),
+    wooUrl: domGuvenilir ? $('#girdiUrl').value.trim() : (durum.ayarlar.wooUrl || ''),
+    ck: domGuvenilir ? $('#girdiCk').value.trim() : (durum.ayarlar.ck || ''),
+    cs: domGuvenilir ? $('#girdiCs').value.trim() : (durum.ayarlar.cs || ''),
     apiKilitli: kilitli,
     demoModu: !!durum.ayarlar.demoModu,
     tema: durum.ayarlar.tema,
@@ -5347,7 +6161,7 @@ function olaylariBagla() {
     $('#firmaAdiBaslik').textContent = $('#girdiFirmaAdi').value || 'Firma Adı Girilmedi';
   });
 
-  /* --- Yerel firma logosu --- */
+  /* --- Marka görselleri (🖼️ Web Vitrini sekmesinde) --- */
   $('#logoYukleBtn').addEventListener('click', function () { $('#logoDosyaSec').click(); });
   $('#logoDosyaSec').addEventListener('change', function (o) {
     const dosya = o.target.files && o.target.files[0];
@@ -5355,6 +6169,24 @@ function olaylariBagla() {
     o.target.value = '';
   });
   $('#logoKaldirBtn').addEventListener('click', function () { yerelLogoKaldir(); });
+
+  $('#faviconYukleBtn').addEventListener('click', function () { $('#faviconDosyaSec').click(); });
+  $('#faviconDosyaSec').addEventListener('change', function (o) {
+    const dosya = o.target.files && o.target.files[0];
+    faviconYukle(dosya);
+    o.target.value = '';
+  });
+  $('#faviconKaldirBtn').addEventListener('click', function () { faviconKaldir(); });
+
+  /* --- Geliştirici kilidi --- */
+  $('#ayarKilitAcModalBtn').addEventListener('click', function () { masterKilidiSor(); });
+
+  $('#kilitSifreGosterBtn').addEventListener('click', function () {
+    const kutu = $('#kilitSifre');
+    kutu.type = kutu.type === 'password' ? 'text' : 'password';
+    $('#kilitSifreGosterBtn').textContent = kutu.type === 'password' ? '👁️' : '🙈';
+    kutu.focus();
+  });
 
   /* --- Kısayollar --- */
   document.addEventListener('keydown', function (o) {
@@ -5369,8 +6201,11 @@ function olaylariBagla() {
       if (durum.aktifSekme === 'urunler') urunleriYukle($('#urunArama').value);
       if (durum.aktifSekme === 'uyeler') uyeleriYukle();
     }
+    /* Alt+1…5 sol menüdeki İLK BEŞ sekmeye gider. Ayarlar sekmesi bilerek
+       kısayolsuzdur: geliştirici kilidinin arkasındadır ve yanlışlıkla
+       tetiklenmesi her seferinde şifre penceresi açardı. */
     if (o.key >= '1' && o.key <= '5' && o.altKey) {
-      const sekmeler = ['siparisler', 'urunler', 'uyeler', 'iskonto', 'ayarlar'];
+      const sekmeler = ['siparisler', 'urunler', 'uyeler', 'iskonto', 'vitrin'];
       sekmeAc(sekmeler[Number(o.key) - 1]);
     }
   });
@@ -5389,7 +6224,9 @@ async function baslat() {
   temayiUygula();
   olcekArayuzunuTazele();   // Kayıtlı ölçek zaten uygulandı; burada sadece arayüz işaretlenir
   ustCubuguTazele();
+  masterKilidiUygula();     // Ayarlar sekmesi kilitli başlar (bkz. GELİŞTİRİCİ KİLİDİ)
   ayarFormunuDoldur();
+  faviconOnizlemeGuncelle();
   siparisSekmeleriCiz();
   siparisSuzgecleriCiz();
   teslimSuzgecleriCiz();
