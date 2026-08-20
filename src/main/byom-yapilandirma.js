@@ -39,6 +39,13 @@ function varsayilanlar() {
   };
 }
 
+/** Sayıyı verilen aralığa sıkıştırır; sayı değilse varsayılan döner. */
+function araligaSikistir(ham, enAz, enCok, varsayilan) {
+  const n = Number(ham);
+  if (!isFinite(n)) return varsayilan;
+  return Math.min(enCok, Math.max(enAz, Math.round(n)));
+}
+
 function oku() {
   try {
     const ham = fs.readFileSync(dosyaYolu(), 'utf8');
@@ -46,6 +53,29 @@ function oku() {
   } catch (e) {
     return varsayilanlar();
   }
+}
+
+/**
+ * Çevrimdışı izin süresi (gün) — SINIRLANDIRILMIŞ hâli.
+ *
+ * Ayar dosyası kullanıcının kendi bilgisayarında düz JSON olarak durur.
+ * Değer doğrudan okunsaydı, dosyaya `"cevrimdisiIzinGunu": 99999` yazan
+ * biri lisans sunucusuna hiç bağlanmadan uygulamayı süresiz kullanabilirdi.
+ * Bu yüzden değer 1–30 gün aralığına sıkıştırılır: destek amaçlı esneme
+ * mümkün kalır, sınırsız kullanım mümkün olmaz.
+ */
+function cevrimdisiIzinGunu() {
+  return araligaSikistir(oku().cevrimdisiIzinGunu, 1, 30, 7);
+}
+
+/** Otomatik kontrol aralığı (saat) — 1–24 aralığına sıkıştırılır. */
+function otoKontrolSaati() {
+  return araligaSikistir(oku().otoKontrolSaati, 1, 24, 6);
+}
+
+/** İstek zaman aşımı (ms) — 5sn–120sn aralığına sıkıştırılır. */
+function sureAsimi() {
+  return araligaSikistir(oku().sureAsimi, 5000, 120000, 20000);
 }
 
 function yaz(yeni) {
@@ -148,5 +178,8 @@ module.exports = {
   apiKaynagi,
   adresiTemizle,
   adresBirlestir,
-  adresGecerliMi
+  adresGecerliMi,
+  cevrimdisiIzinGunu,
+  otoKontrolSaati,
+  sureAsimi
 };

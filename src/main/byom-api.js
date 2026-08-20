@@ -102,7 +102,6 @@ function httpHatasiTurkce(durum, veri) {
  */
 async function istekAt(istek) {
   istek = istek || {};
-  const ayar = yapilandirma.oku();
   const taban = yapilandirma.apiTabani();
 
   let url;
@@ -141,7 +140,7 @@ async function istekAt(istek) {
   if (istek.hardwareId) basliklar['X-Hardware-Id'] = String(istek.hardwareId);
 
   const metod = (istek.metod || 'GET').toUpperCase();
-  const sureAsimi = Number(istek.sureAsimi) > 0 ? Number(istek.sureAsimi) : (Number(ayar.sureAsimi) || 20000);
+  const sureAsimi = Number(istek.sureAsimi) > 0 ? Number(istek.sureAsimi) : yapilandirma.sureAsimi();
 
   try {
     const yanit = await esnekIstek(url.toString(), {

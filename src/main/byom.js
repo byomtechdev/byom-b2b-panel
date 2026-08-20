@@ -345,15 +345,27 @@ async function acilisKontrolu() {
 async function sonucuIsle(sonuc, kayit, sessizYenilemeMi) {
   /* --- Sunucuya ulaşılamadı: çevrimdışı izin süresi --- */
   if (!sonuc.ok && sonuc.agSorunu) {
-    const ayar = yapilandirma.oku();
-    const izinGunu = Number(ayar.cevrimdisiIzinGunu) > 0 ? Number(ayar.cevrimdisiIzinGunu) : 7;
+    const izinGunu = yapilandirma.cevrimdisiIzinGunu();
     const sonBasarili = kayit && kayit.sonDogrulama ? new Date(kayit.sonDogrulama).getTime() : 0;
-    const gecenGun = sonBasarili ? Math.floor((Date.now() - sonBasarili) / 86400000) : 9999;
+    const gecenMs = sonBasarili ? (Date.now() - sonBasarili) : Infinity;
+    const gecenGun = isFinite(gecenMs) ? Math.floor(gecenMs / 86400000) : 9999;
 
     // Kayıt başka bir bilgisayardan kopyalanmışsa çevrimdışı izin verilmez.
     const tasindi = !!(kayit && kayit.tasindi);
 
-    if (!tasindi && sonBasarili && gecenGun <= izinGunu && lisansServisi.acikMi(kayit.durum)) {
+    /* SAAT GERİ ALINMIŞ MI?
+       Çevrimdışı izin "son başarılı doğrulamadan bu yana geçen gün" ile
+       ölçülüyor. Sistem saati geriye alınırsa bu fark NEGATİF olur ve
+       "gecenGun <= izinGunu" sonsuza dek doğru kalırdı: internet olmadan
+       süresiz kullanım. Küçük bir tolerans (5 dk) saat dilimi/NTP
+       düzeltmeleri içindir; ötesi kasıtlı sayılır ve izin verilmez. */
+    const saatGeriAlinmis = isFinite(gecenMs) && gecenMs < -300000;
+
+    if (saatGeriAlinmis) {
+      console.warn('[BYOM] Sistem saati son doğrulamadan geriye alınmış; çevrimdışı izin verilmiyor.');
+    }
+
+    if (!tasindi && !saatGeriAlinmis && sonBasarili && gecenGun <= izinGunu && lisansServisi.acikMi(kayit.durum)) {
       durum.lisans = {
         durum: kayit.durum,
         kalanGun: kayit.kalanGun,
@@ -385,15 +397,21 @@ async function sonucuIsle(sonuc, kayit, sessizYenilemeMi) {
     }
 
     // Çevrimdışı izin yok/bitti: kilit ekranı (yeniden dene düğmesiyle)
+    const ekBilgi = saatGeriAlinmis
+      ? '\n\nSistem saatiniz son lisans doğrulamasından daha GERİYE ayarlanmış.\n' +
+        'Çevrimdışı kullanım süresi bu yüzden uygulanamıyor. Lütfen bilgisayarınızın ' +
+        'tarih/saat ayarını düzeltip tekrar deneyin.'
+      : '';
+
     if (sessizYenilemeMi) {
       // Uygulama açıkken geçici ağ hatası yüzünden kapatılmaz, sadece uyarılır.
       anaPencereyeGonder('byom:uyari', {
         tur: 'uyari',
-        mesaj: 'Lisans kontrolü yapılamadı: BYOM Brain sunucusuna ulaşılamıyor.'
+        mesaj: 'Lisans kontrolü yapılamadı: BYOM Brain sunucusuna ulaşılamıyor.' + ekBilgi
       });
       return;
     }
-    kilitle('baglanti', { mesaj: sonuc.hata });
+    kilitle('baglanti', { mesaj: (sonuc.hata || '') + ekBilgi });
     return;
   }
 
@@ -478,7 +496,10 @@ async function sonucuIsle(sonuc, kayit, sessizYenilemeMi) {
 
 function otoKontroluBaslat() {
   otoKontroluDurdur();
-  const saat = Number(yapilandirma.oku().otoKontrolSaati) > 0 ? Number(yapilandirma.oku().otoKontrolSaati) : 6;
+  /* Aralık yapılandırmadan gelir ama 1–24 saate sıkıştırılır: ayar dosyasına
+     elle yazılan 0/negatif değer setInterval'i saniyede binlerce kez
+     tetikler, devasa bir değer ise kontrolü fiilen kapatırdı. */
+  const saat = yapilandirma.otoKontrolSaati();
   otoKontrolZamanlayici = setInterval(function () {
     yenidenDogrula(true);
   }, saat * 3600 * 1000);
@@ -491,8 +512,19 @@ function otoKontroluDurdur() {
   }
 }
 
-/** Lisansı yeniden doğrular. sessiz=true → uygulama açıkken arka planda. */
-async function yenidenDogrula(sessiz) {
+/* Süren doğrulama turu. Aynı anda birden fazla doğrulama ÇALIŞMAMALIDIR:
+   6 saatlik zamanlayıcı, kilit ekranındaki "Tekrar Dene" ve ayarlardaki
+   "Lisansı Kontrol Et" aynı anı yakalayabiliyordu. İki yanıt üst üste
+   sonucuIsle()'ye girdiğinde biri uygulamayı açarken diğeri kilitleyebiliyor,
+   ikisi de lisans dosyasına yazdığı için son yazan kazanıyordu.
+
+   Kural: turlar SIRAYA alınır (bkz. yenidenDogrula). Arka plan yoklaması
+   süren tur varken atlanır; kullanıcı isteği ise sırasını bekleyip kendi
+   turunu çalıştırır. Böylece hiçbir an iki tur birden ilerlemez. */
+let surenDogrulama = null;
+
+/** Tek bir doğrulama turunu yürütür (sıraya alınmış hâli). */
+async function dogrulamaTuru(sessiz) {
   const kayit = depo.oku(durum.hwid);
   if (!kayit.varMi) {
     if (!sessiz) {
@@ -505,6 +537,40 @@ async function yenidenDogrula(sessiz) {
   const sonuc = await lisansServisi.dogrula(kayit.lisansAnahtari, durum.hwid, uygulamaSurumu());
   await sonucuIsle(sonuc, kayit, !!sessiz);
   return sonuc;
+}
+
+/**
+ * Lisansı yeniden doğrular. sessiz=true → uygulama açıkken arka planda.
+ *
+ * · Arka plan (sessiz) isteği: zaten süren bir tur varsa ATLANIR — periyodik
+ *   yoklamanın iki kez çalışmasının bir faydası yok.
+ * · Kullanıcı isteği: süren tur BEKLENİR, sonra kendi turu çalışır. Böylece
+ *   "Tekrar Dene"ye basan kullanıcı arka plan turunun sonucuna razı edilmez,
+ *   ama iki tur da asla aynı anda ilerlemez.
+ */
+function yenidenDogrula(sessiz) {
+  if (sessiz && surenDogrulama) return surenDogrulama;
+
+  const onceki = surenDogrulama;
+
+  surenDogrulama = (async function () {
+    if (onceki) {
+      try { await onceki; } catch (e) { /* önceki turun hatası bu turu bağlamaz */ }
+    }
+    return dogrulamaTuru(sessiz);
+  })();
+
+  const bu = surenDogrulama;
+
+  /* Hata da olsa kilit MUTLAKA açılmalı; aksi halde tek bir çökme sonrası
+     lisans bir daha hiç doğrulanamaz. Yalnızca EN SON tur kilidi bırakır,
+     yoksa sıradaki turu erken silmiş oluruz. */
+  bu.catch(function () { /* çağıran taraf zaten ele alıyor */ })
+    .then(function () {
+      if (surenDogrulama === bu) surenDogrulama = null;
+    });
+
+  return bu;
 }
 
 /* ==========================================================================
@@ -639,7 +705,8 @@ function lisansKanallariniBagla() {
       varsayilanGelistirme: yapilandirma.VARSAYILAN_GELISTIRME,
       varsayilanUretim: yapilandirma.VARSAYILAN_URETIM,
       paketlenmis: app.isPackaged,
-      cevrimdisiIzinGunu: ayar.cevrimdisiIzinGunu
+      // Arayüz SIKIŞTIRILMIŞ değeri görmeli; dosyadaki ham değeri değil.
+      cevrimdisiIzinGunu: yapilandirma.cevrimdisiIzinGunu()
     };
   });
 

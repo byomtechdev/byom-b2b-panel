@@ -889,10 +889,12 @@ async function urunDuzenleKaydet() {
     if (indirimliAlani) indirimliAlani.focus();
     return;
   }
-  if (indirimliYazi && indirimli > fiyat) {
-    duzenleUyar('İndirimli fiyat, normal fiyattan yüksek olamaz.\n' +
+  /* Sunucu eşit fiyatı da reddediyor (bkz. renderer.js urunEkle). */
+  if (indirimliYazi && indirimli >= fiyat) {
+    duzenleUyar('İndirimli fiyat, normal fiyattan DÜŞÜK olmalıdır.\n' +
                 'Normal fiyat: ' + para(fiyat) + '\n' +
-                'İndirimli fiyat: ' + para(indirimli));
+                'İndirimli fiyat: ' + para(indirimli) + '\n' +
+                'İndirimi kaldırmak için kutuyu tamamen boşaltın.');
     if (indirimliAlani) { indirimliAlani.focus(); if (indirimliAlani.select) indirimliAlani.select(); }
     return;
   }
@@ -2395,15 +2397,29 @@ async function vitrinSekmesiYukle(zorla) {
 
     const showcase = (cevap.veri && cevap.veri.config && cevap.veri.config.showcase) || {};
 
+    /* Eklenti öne çıkan ürünleri DÜZ ID DİZİSİ olarak saklar (sanitize
+       sırasında nesneler ID'ye indirgenir); panel ise nesne gönderir. Burada
+       yalnızca nesne biçimi okunuyordu: kaydedilen liste geri yüklenirken
+       Number(12).id === undefined olduğu için hepsi eleniyor, ekran BOŞ
+       görünüyor ve bir sonraki "Gönder" siteye boş liste yazıp kullanıcının
+       seçimini siliyordu. Artık iki biçim de okunur; ad/görsel gibi eksik
+       alanlar yüklü ürün listesinden tamamlanır. */
     d.vitrin.featured = Array.isArray(showcase.featured_products)
       ? showcase.featured_products.map(function (u) {
+          const nesneMi = u && typeof u === 'object';
+          const id = Number(nesneMi ? u.id : u) || 0;
+          if (!id) return null;
+
+          // Adı/görseli eklenti döndürmüyorsa yüklü ürün listesinden tamamla.
+          const kaynak = (d.urunler || []).filter(function (x) { return Number(x.id) === id; })[0];
+
           return {
-            id: Number(u.id) || 0,
-            ad: u.name || u.ad || ('Ürün #' + u.id),
-            kod: u.sku || u.kod || '',
-            gorsel: u.image || u.gorsel || YEDEK_GORSEL
+            id: id,
+            ad: (nesneMi && (u.name || u.ad)) || (kaynak && kaynak.ad) || ('Ürün #' + id),
+            kod: (nesneMi && (u.sku || u.kod)) || (kaynak && kaynak.kod) || '',
+            gorsel: (nesneMi && (u.image || u.gorsel)) || (kaynak && kaynak.gorsel) || YEDEK_GORSEL
           };
-        }).filter(function (u) { return u.id; })
+        }).filter(Boolean)
       : [];
 
     d.vitrin.banners = Array.isArray(showcase.banners)
@@ -2411,7 +2427,9 @@ async function vitrinSekmesiYukle(zorla) {
           return {
             gorselUrl: b.image || b.url || '',
             mediaId: Number(b.media_id || b.id || 0),
-            baslik: b.title || b.baslik || '',
+            /* Eklenti başlığı "alt" alanında saklar (sanitize_showcase_banners),
+               panel "title" gönderir. İkisi de okunur. */
+            baslik: b.title || b.alt || b.baslik || '',
             link: b.link || ''
           };
         })
@@ -2708,7 +2726,18 @@ async function vitrinGonder() {
             return { id: u.id, name: u.ad, sku: u.kod, image: u.gorsel, menu_order: i };
           }),
           banners: d.vitrin.banners.map(function (b, i) {
-            return { image: b.gorselUrl, media_id: b.mediaId || 0, title: b.baslik || '', link: b.link || '', menu_order: i };
+            return {
+              image: b.gorselUrl,
+              media_id: b.mediaId || 0,
+              /* Başlık İKİ adla birden gönderilir: eklentinin sakladığı
+                 kanonik ad "alt", panelin tarihsel adı "title". Yalnızca
+                 "title" gönderildiğinde eklentinin sanitize adımı başlığı
+                 sessizce düşürüyordu. */
+              title: b.baslik || '',
+              alt: b.baslik || '',
+              link: b.link || '',
+              menu_order: i
+            };
           })
         }
       }

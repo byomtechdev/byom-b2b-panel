@@ -320,7 +320,18 @@ let _suredekiIslem = null; // Eşzamanlı çağrılarda komutlar iki kez çalı�
  */
 async function hwidDetay(yenidenHesapla) {
   if (_onbellek && !yenidenHesapla) return _onbellek;
-  if (_suredekiIslem && !yenidenHesapla) return _suredekiIslem;
+  if (_suredekiIslem) {
+    /* Süren bir hesap varsa YENİDEN HESAPLA istekleri de onu bekler.
+       Eskiden yenidenHesapla=true süren işlemi yok sayıp ikinci bir
+       PowerShell turu başlatıyordu; ilk tur bitince `_suredekiIslem = null`
+       yazdığı için ikinci turun izi siliniyor ve üçüncü bir çağrı ÜÇÜNCÜ
+       turu başlatabiliyordu. Açılışta HWID hesabı zaten sürerken kullanıcının
+       "Donanım Kimliğini Yenile"ye basması bu duruma yol açıyordu. */
+    const suren = _suredekiIslem;
+    if (!yenidenHesapla) return suren;
+    try { await suren; } catch (e) { /* aşağıda yeniden denenecek */ }
+    if (_suredekiIslem && _suredekiIslem !== suren) return _suredekiIslem;
+  }
 
   _suredekiIslem = (async function () {
     let ham = {};
@@ -365,11 +376,21 @@ async function hwidDetay(yenidenHesapla) {
       makineAdi: os.hostname(),
       uretimZamani: new Date().toISOString()
     };
-    _suredekiIslem = null;
     return _onbellek;
   })();
 
-  return _suredekiIslem;
+  const bu = _suredekiIslem;
+
+  /* Kilit HER durumda bırakılır. Eskiden temizleme işlemin İÇİNDE, son satırda
+     yapılıyordu: beklenmedik bir hata (ör. crypto çağrısı) o satıra hiç
+     ulaşmadan atarsa `_suredekiIslem` sonsuza dek dolu kalır ve uygulama bir
+     daha HWID hesaplayamazdı. */
+  bu.catch(function () { /* çağıran taraf ele alıyor */ })
+    .then(function () {
+      if (_suredekiIslem === bu) _suredekiIslem = null;
+    });
+
+  return bu;
 }
 
 /** Yalnızca kimlik metnini döndürür (en sık kullanılan biçim). */

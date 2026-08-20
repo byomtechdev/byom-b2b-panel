@@ -1221,9 +1221,17 @@ function siparisNormalle(s) {
  *  listesinde tutulur. Sitedeki eklenti/tema hangi adı okuyorsa bulabilsin
  *  diye aynı değer birkaç anahtara birden yazılır:
  *
- *    _b2b_koli_adeti   b2b-core'un beklediği ad
+ *    _b2b_koli_adeti   KANONİK ad (b2b-core bunu yazar/okur)
+ *    _byom_case_qty    byom-pro-theme'in ilk sırada taradığı ad
+ *    _b2b_koli_adet    temanın tarihsel adı (SONDAKİ "i" YOK — dikkat)
  *    _box_quantity     yaygın İngilizce karşılığı
  *    b2b_koli_adeti    ALT ÇİZGİSİZ AYNA — okuma güvencesi
+ *
+ *  Neden bu kadar çok ad: değer üç ayrı katmanda (panel, eklenti, tema) ayrı
+ *  ayrı adlandırılmıştı ve `_b2b_koli_adeti` ile `_b2b_koli_adet` tek harf
+ *  farkla ayrışıyordu; panelde girilen koli adedi vitrinde hiç görünmüyordu.
+ *  Tek ada indirgemek, o adla veri girilmiş kurulumlarda bilgiyi kaybettirirdi.
+ *  Bu yüzden YAZARKEN hepsi birden yazılır, OKURKEN hepsi taranır.
  *
  *  Ayna neden gerekli: WooCommerce "_" ile başlayan meta'yı gizli sayabilir ve
  *  wc/v3 yanıtındaki meta_data listesinden düşürebilir (aynı sebeple sipariş
@@ -1236,6 +1244,18 @@ const KOLI_META_ANAHTARI = '_b2b_koli_adeti';
 const KOLI_META_YEDEK    = '_box_quantity';
 const KOLI_META_AYNA     = 'b2b_koli_adeti';
 
+/* Yazılırken kullanılan TAM liste. Sıra önemsizdir; hepsi aynı değeri alır.
+   Doğrudan wc/v3'e yazıldığında (b2b-core devrede değilken) temanın taradığı
+   adların da dolması için tema adları da buradadır. */
+const KOLI_META_TUM_ANAHTARLAR = [
+  KOLI_META_ANAHTARI,   // _b2b_koli_adeti — kanonik
+  '_byom_case_qty',     // tema listesinde ilk sırada
+  '_b2b_koli_adet',     // temanın tarihsel adı (sondaki "i" yok)
+  KOLI_META_YEDEK,      // _box_quantity
+  KOLI_META_AYNA,       // b2b_koli_adeti (alt çizgisiz ayna)
+  'box_quantity'        // alt çizgisiz İngilizce ayna
+];
+
 /** Ürün yanıtından koli içi adedi okur. Bulunamazsa 1 döner. */
 function koliAdediCoz(u) {
   const meta = {};
@@ -1243,13 +1263,12 @@ function koliAdediCoz(u) {
     if (m && m.key !== undefined && m.key !== null) meta[m.key] = m.value;
   });
 
-  const adaylar = [
-    u ? u.box_quantity : undefined,      // b2b-core hazır alan döndürüyorsa
-    meta[KOLI_META_ANAHTARI],
-    meta[KOLI_META_YEDEK],
-    meta[KOLI_META_AYNA],
-    meta.box_quantity                    // ayna karşılığı (alt çizgisiz)
-  ];
+  /* b2b-core artık `box_quantity` alanını hazır döndürüyor; en güvenilir
+     kaynak odur (WooCommerce "_" ile başlayan meta'yı yanıttan düşürebiliyor).
+     Bulunamazsa bilinen bütün meta adları sırayla taranır. */
+  const adaylar = [u ? u.box_quantity : undefined].concat(
+    KOLI_META_TUM_ANAHTARLAR.map(function (anahtar) { return meta[anahtar]; })
+  );
 
   for (let i = 0; i < adaylar.length; i++) {
     const ham = adaylar[i];
@@ -1263,11 +1282,9 @@ function koliAdediCoz(u) {
 /** Koli adedini API'ye gönderilecek meta_data listesine çevirir. */
 function koliMetaVerisi(adet) {
   const n = String(Math.max(1, Math.round(Number(adet) || 1)));
-  return [
-    { key: KOLI_META_ANAHTARI, value: n },
-    { key: KOLI_META_YEDEK,    value: n },
-    { key: KOLI_META_AYNA,     value: n }
-  ];
+  return KOLI_META_TUM_ANAHTARLAR.map(function (anahtar) {
+    return { key: anahtar, value: n };
+  });
 }
 
 /** sale_price alanını sayıya çevirir; indirim yoksa '' döner. */
@@ -3328,10 +3345,14 @@ async function urunEkle() {
                  'İndirim uygulamak istemiyorsanız kutuyu boş bırakın.');
     $('#yeniIndirimliFiyat').focus(); return;
   }
-  if (indirimliYazi && indirimli > fiyat) {
-    urunEkleUyar('İndirimli fiyat, normal fiyattan yüksek olamaz.\n' +
+  /* Sunucu (b2b-core) indirimli fiyatın normal fiyattan KÜÇÜK olmasını şart koşar;
+     eşitse HTTP 400 döner. Yalnızca "büyük olamaz" denetlenseydi eşit değer
+     panelde geçer, kaydederken sunucudan hata alırdı. */
+  if (indirimliYazi && indirimli >= fiyat) {
+    urunEkleUyar('İndirimli fiyat, normal fiyattan DÜŞÜK olmalıdır.\n' +
                  'Normal fiyat: ' + para(fiyat) + '\n' +
-                 'İndirimli fiyat: ' + para(indirimli));
+                 'İndirimli fiyat: ' + para(indirimli) + '\n' +
+                 'İndirim uygulamak istemiyorsanız kutuyu boş bırakın.');
     $('#yeniIndirimliFiyat').focus(); return;
   }
   if (stok < 0) { urunEkleUyar('Stok adedi eksi olamaz.'); $('#yeniStok').focus(); return; }
