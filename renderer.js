@@ -1214,6 +1214,69 @@ function siparisNormalle(s) {
   };
 }
 
+/* --------------------------------------------------------------------------
+ *  KOLİ İÇİ ADET (B2B sipariş katı)
+ *
+ *  WooCommerce'de böyle bir çekirdek alan YOKTUR; değer ürünün meta_data
+ *  listesinde tutulur. Sitedeki eklenti/tema hangi adı okuyorsa bulabilsin
+ *  diye aynı değer birkaç anahtara birden yazılır:
+ *
+ *    _b2b_koli_adeti   b2b-core'un beklediği ad
+ *    _box_quantity     yaygın İngilizce karşılığı
+ *    b2b_koli_adeti    ALT ÇİZGİSİZ AYNA — okuma güvencesi
+ *
+ *  Ayna neden gerekli: WooCommerce "_" ile başlayan meta'yı gizli sayabilir ve
+ *  wc/v3 yanıtındaki meta_data listesinden düşürebilir (aynı sebeple sipariş
+ *  teslim bildirimi de alt çizgisiz tutuluyor — bkz. TESLİM DURUMU bölümü).
+ *  Ayna olmasaydı kaydedilen koli adedi listeyi tazeledikten sonra geri
+ *  okunamaz, düzenleme penceresi 1 gösterir ve bir sonraki kayıtta kullanıcının
+ *  girdiği değeri sessizce 1'e düşürürdü.
+ * ------------------------------------------------------------------------*/
+const KOLI_META_ANAHTARI = '_b2b_koli_adeti';
+const KOLI_META_YEDEK    = '_box_quantity';
+const KOLI_META_AYNA     = 'b2b_koli_adeti';
+
+/** Ürün yanıtından koli içi adedi okur. Bulunamazsa 1 döner. */
+function koliAdediCoz(u) {
+  const meta = {};
+  ((u && u.meta_data) || []).forEach(function (m) {
+    if (m && m.key !== undefined && m.key !== null) meta[m.key] = m.value;
+  });
+
+  const adaylar = [
+    u ? u.box_quantity : undefined,      // b2b-core hazır alan döndürüyorsa
+    meta[KOLI_META_ANAHTARI],
+    meta[KOLI_META_YEDEK],
+    meta[KOLI_META_AYNA],
+    meta.box_quantity                    // ayna karşılığı (alt çizgisiz)
+  ];
+
+  for (let i = 0; i < adaylar.length; i++) {
+    const ham = adaylar[i];
+    if (ham === undefined || ham === null || ham === '') continue;
+    const n = Math.round(Number(ham));
+    if (isFinite(n) && n >= 1) return n;
+  }
+  return 1;
+}
+
+/** Koli adedini API'ye gönderilecek meta_data listesine çevirir. */
+function koliMetaVerisi(adet) {
+  const n = String(Math.max(1, Math.round(Number(adet) || 1)));
+  return [
+    { key: KOLI_META_ANAHTARI, value: n },
+    { key: KOLI_META_YEDEK,    value: n },
+    { key: KOLI_META_AYNA,     value: n }
+  ];
+}
+
+/** sale_price alanını sayıya çevirir; indirim yoksa '' döner. */
+function indirimliFiyatCoz(ham) {
+  if (ham === undefined || ham === null || String(ham).trim() === '') return '';
+  const n = Number(ham);
+  return (isFinite(n) && n > 0) ? n : '';
+}
+
 /** Hem b2b-core hem WooCommerce ürün yanıtını iç yapıya çevirir. */
 function urunNormalle(u) {
   const gorsel = u.image
@@ -1238,6 +1301,9 @@ function urunNormalle(u) {
     barkod: String(u.barcode || u.sku || ''),
     aciklama: String(u.description || ''),
     stokTakip: !!u.manage_stock,
+    /* İndirimli fiyat: indirim yoksa '' kalır (0 ile karıştırılmasın). */
+    indirimliFiyat: indirimliFiyatCoz(u.sale_price),
+    koliAdedi: koliAdediCoz(u),
     kategoriler: (u.categories || []).map(function (k) {
       return { id: Number(k.id || 0), ad: String(k.name || '') };
     })
@@ -3191,10 +3257,12 @@ function urunModaliKapat() {
 
 async function urunModaliAc() {
   // Formu temizle
-  ['#yeniAd', '#yeniKod', '#yeniFiyat', '#yeniStok', '#yeniGorsel', '#yeniAciklama'].forEach(function (s) {
+  ['#yeniAd', '#yeniKod', '#yeniFiyat', '#yeniIndirimliFiyat', '#yeniStok',
+   '#yeniKoliAdedi', '#yeniGorsel', '#yeniAciklama'].forEach(function (s) {
     $(s).value = '';
   });
   $('#yeniStok').value = '0';
+  $('#yeniKoliAdedi').value = '1';
   urunEkleUyar('');
 
   durum.yuklenenGorseller = [];
@@ -3237,8 +3305,12 @@ async function urunEkle() {
   const ad = $('#yeniAd').value.trim();
   const kod = $('#yeniKod').value.trim();
   const fiyat = sayiCoz($('#yeniFiyat').value);
+  const indirimliYazi = $('#yeniIndirimliFiyat').value.trim();
+  const indirimli = indirimliYazi ? sayiCoz(indirimliYazi) : NaN;
   const stokHam = sayiCoz($('#yeniStok').value);
   const stok = isNaN(stokHam) ? 0 : Math.round(stokHam);
+  const koliHam = sayiCoz($('#yeniKoliAdedi').value);
+  const koli = isNaN(koliHam) ? 1 : Math.round(koliHam);
   const kategoriId = $('#yeniKategori').value;
   const kategoriAdi = $('#yeniKategori').selectedOptions[0] ? $('#yeniKategori').selectedOptions[0].textContent : '';
   const gorselUrl = $('#yeniGorsel').value.trim();
@@ -3251,7 +3323,22 @@ async function urunEkle() {
     urunEkleUyar('Geçerli bir fiyat yazın.\nÖrnek: 2450,00');
     $('#yeniFiyat').focus(); return;
   }
+  if (indirimliYazi && (isNaN(indirimli) || !isFinite(indirimli) || indirimli < 0)) {
+    urunEkleUyar('Geçerli bir indirimli fiyat yazın.\nÖrnek: 1990,00\n' +
+                 'İndirim uygulamak istemiyorsanız kutuyu boş bırakın.');
+    $('#yeniIndirimliFiyat').focus(); return;
+  }
+  if (indirimliYazi && indirimli > fiyat) {
+    urunEkleUyar('İndirimli fiyat, normal fiyattan yüksek olamaz.\n' +
+                 'Normal fiyat: ' + para(fiyat) + '\n' +
+                 'İndirimli fiyat: ' + para(indirimli));
+    $('#yeniIndirimliFiyat').focus(); return;
+  }
   if (stok < 0) { urunEkleUyar('Stok adedi eksi olamaz.'); $('#yeniStok').focus(); return; }
+  if (!isFinite(koli) || koli < 1) {
+    urunEkleUyar('Koli içi adet en az 1 olmalıdır.\nTek tek satılan ürünlerde 1 yazın.');
+    $('#yeniKoliAdedi').focus(); return;
+  }
   if (!yuklenenler.length && gorselUrl && !/^https?:\/\//i.test(gorselUrl)) {
     urunEkleUyar('Görsel bağlantısı http:// veya https:// ile başlamalıdır.');
     $('#yeniGorsel').focus(); return;
@@ -3278,6 +3365,8 @@ async function urunEkle() {
 
     const yeni = {
       id: yeniId, ad: ad, kod: kod || '-', fiyat: fiyat, stok: stok, durum: 'publish',
+      indirimliFiyat: indirimliYazi ? indirimli : '',
+      koliAdedi: koli,
       gorsel: (yuklenenler[0] && yuklenenler[0].onizleme) || gorselUrl || svgGorsel('🆕', '#dcfce7')
     };
     DEMO_URUNLER.unshift(yeni);              // "🔄 YENİLE" sonrası da görünsün
@@ -3288,6 +3377,8 @@ async function urunEkle() {
     $('#urunArama').value = '';
     urunleriCiz('');
     bildir('Ürün eklendi:\n' + ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
+           (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli) : '') +
+           (koli > 1 ? '\nKoli içi adet: ' + koli : '') +
            (yuklenenler.length ? '\nGörsel: ' + yuklenenler.length + ' adet' : '') +
            (kategoriId ? '\nKategori: ' + kategoriAdi : '') +
            '\n(Demo Modu — sitenize kaydedilmedi)', 'basari');
@@ -3303,9 +3394,12 @@ async function urunEkle() {
     const govde = {
       name: ad,
       regular_price: fiyat.toFixed(2),
+      /* Boş dize GÖNDERİLİR: WooCommerce'de indirimi kaldırmanın yolu budur. */
+      sale_price: indirimliYazi ? indirimli.toFixed(2) : '',
       manage_stock: true,
       stock_quantity: stok,
-      status: 'publish'
+      status: 'publish',
+      meta_data: koliMetaVerisi(koli)
     };
     if (kod) govde.sku = kod;
     if (aciklama) govde.description = aciklama;
@@ -3325,8 +3419,10 @@ async function urunEkle() {
       type: 'simple',
       status: 'publish',
       regular_price: fiyat.toFixed(2),
+      sale_price: indirimliYazi ? indirimli.toFixed(2) : '',
       manage_stock: true,
-      stock_quantity: stok
+      stock_quantity: stok,
+      meta_data: koliMetaVerisi(koli)
     };
     if (kod) govde.sku = kod;
     if (aciklama) govde.description = aciklama;

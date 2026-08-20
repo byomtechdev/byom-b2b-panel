@@ -92,10 +92,13 @@ function httpHatasiTurkce(durum, veri) {
  *   sorgu: { license_key: '…' },
  *   govde: { … },
  *   lisansAnahtari, hardwareId,     → başlıklara da eklenir
- *   sureAsimi
+ *   sureAsimi,
+ *   htmlUyarisi                     → false ise, HTML dönen hata sayfaları
+ *                                     "yanlış adres" (agSorunu) sayılmaz;
+ *                                     bağlantı yoklaması bunu kullanır.
  * }
  *
- * döner = { ok, durum, veri, hata, agSorunu, url }
+ * döner = { ok, durum, veri, hata, agSorunu, kod, url }
  */
 async function istekAt(istek) {
   istek = istek || {};
@@ -104,7 +107,9 @@ async function istekAt(istek) {
 
   let url;
   try {
-    url = new URL(taban + (String(istek.yol || '').indexOf('/') === 0 ? istek.yol : '/' + istek.yol));
+    /* Kök + yol birleştirmesi tek yerden geçer: çift slash ve eksik protokol
+       burada sanitize edilir (bkz. yapilandirma.adresBirlestir).            */
+    url = new URL(yapilandirma.adresBirlestir(taban, istek.yol));
   } catch (e) {
     return {
       ok: false,
@@ -157,7 +162,7 @@ async function istekAt(istek) {
     if (!yanit.ok) {
       /* JSON yerine HTML geldiyse muhtemelen BYOM Brain değil, başka bir sunucu
          yanıt veriyor (yanlış adres, vekil sunucu, giriş sayfası…).            */
-      if (veri === null && metin && metin.trim().indexOf('<') === 0) {
+      if (istek.htmlUyarisi !== false && veri === null && metin && metin.trim().indexOf('<') === 0) {
         return {
           ok: false,
           durum: yanit.status,
@@ -182,6 +187,9 @@ async function istekAt(istek) {
       ok: false,
       durum: 0,
       agSorunu: true,
+      /* Taşıma katmanı hata kodu (ENOTFOUND, ECONNREFUSED, …). Çağıran taraf
+         "bu host hiç çözülmüyor" ile "bu rota yok" ayrımını buradan yapar. */
+      kod: (e && (e.code || (e.cause && e.cause.code))) || (e && e.name) || '',
       url: url.toString(),
       hata: agHatasiTurkce(e, taban)
     };

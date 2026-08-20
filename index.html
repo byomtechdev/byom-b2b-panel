@@ -1030,6 +1030,12 @@
 
     <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
 
+      <!-- Uyarı kutusu bilerek EN ÜSTTE: pencere kaydırılabilir olduğu için
+           altta dururken ekran dışında kalıyor ve kullanıcı hatayı görmüyordu. -->
+      <div id="urunEkleUyari" class="hidden md:col-span-2 rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                     bg-red-50 text-red-800 border-2 border-red-300
+                                     dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
+
       <div class="md:col-span-2">
         <label for="yeniAd" class="block text-lg font-extrabold mb-2">📝 Ürün Adı <span class="text-red-600">*</span></label>
         <input id="yeniAd" type="text" placeholder="Örn: Bosch GSB 13 RE Darbeli Matkap 600W"
@@ -1039,11 +1045,20 @@
       </div>
 
       <div>
-        <label for="yeniFiyat" class="block text-lg font-extrabold mb-2">💰 Fiyat (₺) <span class="text-red-600">*</span></label>
+        <label for="yeniFiyat" class="block text-lg font-extrabold mb-2">💰 Normal Fiyat (₺) <span class="text-red-600">*</span></label>
         <input id="yeniFiyat" type="text" inputmode="decimal" placeholder="2450,00"
                class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                       focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="yeniIndirimliFiyat" class="block text-lg font-extrabold mb-2">🏷️ İndirimli Fiyat (₺)</label>
+        <input id="yeniIndirimliFiyat" type="text" inputmode="decimal" placeholder="İsteğe bağlı"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <p class="mt-1 text-sm text-slate-500">Boş bırakırsanız ürün indirimsiz satılır. Normal fiyattan yüksek olamaz.</p>
       </div>
 
       <div>
@@ -1052,6 +1067,15 @@
                class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                       focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="yeniKoliAdedi" class="block text-lg font-extrabold mb-2">🧰 Koli İçi Adet</label>
+        <input id="yeniKoliAdedi" type="text" inputmode="numeric" placeholder="1"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <p class="mt-1 text-sm text-slate-500">Bir kolide kaç adet ürün var? Bayi siparişleri bu katlarda toplanır. Varsayılan: 1</p>
       </div>
 
       <div>
@@ -1119,9 +1143,6 @@
                          focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
       </div>
 
-      <div id="urunEkleUyari" class="hidden md:col-span-2 rounded-xl p-4 text-lg font-bold whitespace-pre-line
-                                     bg-red-50 text-red-800 border-2 border-red-300
-                                     dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
     </div>
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700
@@ -1160,6 +1181,11 @@
 
     <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
 
+      <!-- Uyarı kutusu bilerek EN ÜSTTE (bkz. Yeni Ürün penceresi). -->
+      <div id="duzenleUyari" class="hidden md:col-span-2 rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                    bg-red-50 text-red-800 border-2 border-red-300
+                                    dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
+
       <div class="md:col-span-2">
         <label for="duzenleAd" class="block text-lg font-extrabold mb-2">📝 Ürün Adı <span class="text-red-600">*</span></label>
         <input id="duzenleAd" type="text"
@@ -1169,11 +1195,20 @@
       </div>
 
       <div>
-        <label for="duzenleFiyat" class="block text-lg font-extrabold mb-2">💰 Fiyat (₺) <span class="text-red-600">*</span></label>
+        <label for="duzenleFiyat" class="block text-lg font-extrabold mb-2">💰 Normal Fiyat (₺) <span class="text-red-600">*</span></label>
         <input id="duzenleFiyat" type="text" inputmode="decimal"
                class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                       focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="duzenleIndirimliFiyat" class="block text-lg font-extrabold mb-2">🏷️ İndirimli Fiyat (₺)</label>
+        <input id="duzenleIndirimliFiyat" type="text" inputmode="decimal" placeholder="İsteğe bağlı"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <p class="mt-1 text-sm text-slate-500">Kutuyu boşaltıp kaydederseniz üründeki indirim kaldırılır.</p>
       </div>
 
       <div>
@@ -1182,6 +1217,15 @@
                class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                       focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+      </div>
+
+      <div>
+        <label for="duzenleKoliAdedi" class="block text-lg font-extrabold mb-2">🧰 Koli İçi Adet</label>
+        <input id="duzenleKoliAdedi" type="text" inputmode="numeric" placeholder="1"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <p class="mt-1 text-sm text-slate-500">Bir kolide kaç adet ürün var? Varsayılan: 1</p>
       </div>
 
       <div>
@@ -1252,9 +1296,6 @@
                          focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
       </div>
 
-      <div id="duzenleUyari" class="hidden md:col-span-2 rounded-xl p-4 text-lg font-bold whitespace-pre-line
-                                    bg-red-50 text-red-800 border-2 border-red-300
-                                    dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
     </div>
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700

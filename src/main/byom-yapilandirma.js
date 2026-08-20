@@ -59,17 +59,53 @@ function yaz(yeni) {
   return tam;
 }
 
-/** Kullanıcının yazdığı adresi temizler: boşluk, sondaki /, eksik protokol, /api eki. */
+/**
+ * Kullanıcının yazdığı adresi temizler.
+ * Giderilen tipik yazım hataları:
+ *   · baştaki/sondaki boşluk ve satır sonları
+ *   · eksik ya da bozuk protokol:  "hub.byomtech.com", "https:/hub…", "https:hub…"
+ *   · çift slash:  "https://hub.byomtech.com//"
+ *   · elle yapıştırılan "/api" veya "/api/v1" eki
+ */
 function adresiTemizle(ham) {
   let adres = String(ham || '').trim().replace(/\s+/g, '');
   if (!adres) return '';
+
+  /* Protokolü ayır: "https://", "https:/" ve "https:" biçimlerinin hepsi kabul
+     edilir; gövde temizlendikten sonra tek biçimde geri eklenir.            */
+  let protokol = '';
+  const protokolEsi = adres.match(/^(https?):\/*/i);
+  if (protokolEsi) {
+    protokol = protokolEsi[1].toLowerCase() + '://';
+    adres = adres.slice(protokolEsi[0].length);
+  }
+
+  adres = adres.replace(/^\/+/, '');           // "//hub.byomtech.com" artığı
+  adres = adres.replace(/\/{2,}/g, '/');       // gövdedeki çift slash'lar
   adres = adres.replace(/\/+$/, '');
   adres = adres.replace(/\/api(\/v\d+)?$/i, ''); // Kullanıcı ".../api/v1" yapıştırırsa
-  if (!/^https?:\/\//i.test(adres)) {
+  adres = adres.replace(/\/+$/, '');
+  if (!adres) return '';
+
+  if (!protokol) {
     // localhost ve 127.0.0.1 için http, geri kalan her şey için https varsayılır.
-    adres = (/^(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(adres) ? 'http://' : 'https://') + adres;
+    protokol = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(adres) ? 'http://' : 'https://';
   }
-  return adres.replace(/\/+$/, '');
+  return protokol + adres;
+}
+
+/**
+ * Kök adres ile uç yolunu TEK bir slash ile birleştirir.
+ *   adresBirlestir('https://hub.byomtech.com/', '/api/v1/health')
+ *     → 'https://hub.byomtech.com/api/v1/health'
+ * Böylece hiçbir istek "…com//api/v1/…" gibi çift slash'lı bir rotaya gitmez;
+ * kimi sunucular bu yüzden 404 döndürüyordu.
+ */
+function adresBirlestir(taban, yol) {
+  const kok = adresiTemizle(taban);
+  const uc = String(yol || '').trim().replace(/^\/+/, '').replace(/\/{2,}/g, '/');
+  if (!uc) return kok;
+  return kok + '/' + uc;
 }
 
 /** Adresin geçerli bir URL olup olmadığını söyler. */
@@ -92,7 +128,7 @@ function apiTabani() {
   const kayitli = adresiTemizle(oku().apiUrl);
   if (kayitli) return kayitli;
 
-  return app.isPackaged ? VARSAYILAN_URETIM : VARSAYILAN_GELISTIRME;
+  return adresiTemizle(app.isPackaged ? VARSAYILAN_URETIM : VARSAYILAN_GELISTIRME);
 }
 
 /** Adresin nereden geldiğini söyler (Ayarlar ekranında gösterilir). */
@@ -111,5 +147,6 @@ module.exports = {
   apiTabani,
   apiKaynagi,
   adresiTemizle,
+  adresBirlestir,
   adresGecerliMi
 };

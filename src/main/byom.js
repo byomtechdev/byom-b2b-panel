@@ -654,23 +654,102 @@ function lisansKanallariniBagla() {
     return { ok: true, apiUrl: yapilandirma.apiTabani(), kaynak: yapilandirma.apiKaynagi() };
   });
 
-  /** Sunucuya erişilebiliyor mu? (Ayarlar ▸ "Bağlantıyı Test Et") */
+  /**
+   * Sunucuya erişilebiliyor mu? (Ayarlar ▸ "Bağlantıyı Test Et")
+   *
+   * Bu test, LİSANS DOĞRULAMASIYLA AYNI taban adresi ve aynı canlı uç ailesini
+   * kullanır. Eskiden yalnızca /api/v1/health yoklanıyordu; bu uç hub'da
+   * bulunmadığı için sunucu HTML bir 404 sayfası döndürüyor, istemci de bunu
+   * "bu adres BYOM Brain değil" diye ağ sorunu sayıyordu. Sonuç: lisans
+   * kontrolü çalışırken bağlantı testi "ulaşılamadı" diyordu.
+   *
+   * Yoklama sırası (ilk HTTP yanıtı veren kazanır):
+   *   1) GET     /api/v1/health              → varsa en ucuz yanıt
+   *   2) OPTIONS /api/v1/license/validate    → canlı lisans ucunun hafif ön kontrolü
+   *   3) GET     /api/v1/license/validate    → 401/405/400 bile "sunucu ayakta" demek
+   *
+   * Kural: HTTP durumu ne olursa olsun sunucudan bir yanıt gelmesi bağlantının
+   * kurulduğunu kanıtlar. Yalnızca TAŞIMA katmanı hataları (DNS, bağlantı reddi,
+   * TLS, zaman aşımı) "ulaşılamadı" sayılır. 5xx ise ayrı raporlanır: bağlantı
+   * var ama sunucu hata veriyor.
+   */
   ipcMain.handle('byom:baglanti-testi', async function () {
     const api = require('./byom-api');
-    const yanit = await api.istekAt({ yol: '/api/v1/health', metod: 'GET', sureAsimi: 10000 });
+    const taban = yapilandirma.apiTabani();
 
-    if (yanit.ok) return { ok: true, mesaj: 'BYOM Brain sunucusuna ulaşıldı.', apiUrl: yapilandirma.apiTabani() };
+    const yoklamalar = [
+      { yol: '/api/v1/health', metod: 'GET' },
+      { yol: '/api/v1/license/validate', metod: 'OPTIONS' },
+      { yol: '/api/v1/license/validate', metod: 'GET' }
+    ];
 
-    /* /health ucu olmayabilir; sunucunun HTTP yanıt vermesi bile "ayakta"
-       demektir. Ağ sorunu değilse bağlantı kurulmuş sayılır. */
-    if (!yanit.agSorunu) {
+    /* Host hiç çözülmüyorsa / bağlantıyı reddediyorsa başka rota denemenin
+       anlamı yok; ilk hatada çıkılır (kullanıcı boşuna beklemesin). */
+    const rotaDegistirmeninFaydasiYok = /^(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|CERT|SSL|TLS)/i;
+
+    let sonHata = '';
+    let sunucuHatasi = null;
+
+    for (let i = 0; i < yoklamalar.length; i++) {
+      const yoklama = yoklamalar[i];
+      const yanit = await api.istekAt({
+        yol: yoklama.yol,
+        metod: yoklama.metod,
+        sureAsimi: 8000,
+        htmlUyarisi: false          // HTML 404 sayfası ağ sorunu değildir
+      });
+
+      if (yanit.ok) {
+        return {
+          ok: true,
+          mesaj: 'BYOM Brain sunucusuna ulaşıldı (' + yoklama.metod + ' ' + yoklama.yol +
+                 ' → HTTP ' + yanit.durum + ').',
+          apiUrl: taban,
+          uc: yoklama.yol,
+          httpDurum: yanit.durum
+        };
+      }
+
+      if (yanit.agSorunu && !yanit.durum) {
+        // Taşıma katmanı hatası: sunucudan hiç yanıt gelmedi.
+        sonHata = yanit.hata;
+        if (rotaDegistirmeninFaydasiYok.test(String(yanit.kod || ''))) break;
+        continue;
+      }
+
+      if (yanit.durum >= 500) {
+        // Sunucu ayakta ama hata veriyor; daha iyi bir yanıt bulmayı sürdür.
+        sunucuHatasi = yanit;
+        continue;
+      }
+
+      /* 4xx / 3xx: sunucu konuştu → bağlantı sağlıklı. Lisans doğrulaması da
+         aynı tabana gittiği için bu, testin doğru sonucudur. */
       return {
         ok: true,
-        mesaj: 'Sunucuya ulaşıldı (durum kontrolü ucu yok, HTTP ' + yanit.durum + ').',
-        apiUrl: yapilandirma.apiTabani()
+        mesaj: 'BYOM Brain sunucusuna ulaşıldı (' + yoklama.metod + ' ' + yoklama.yol +
+               ' → HTTP ' + yanit.durum + ').\nBağlantı sağlıklı.',
+        apiUrl: taban,
+        uc: yoklama.yol,
+        httpDurum: yanit.durum
       };
     }
-    return { ok: false, hata: yanit.hata, apiUrl: yapilandirma.apiTabani() };
+
+    if (sunucuHatasi) {
+      return {
+        ok: false,
+        hata: 'Sunucuya ulaşıldı ancak BYOM Brain hata döndürüyor (HTTP ' + sunucuHatasi.durum + ').\n' +
+              'Adres doğru; sorun sunucu tarafında. Lütfen daha sonra tekrar deneyin.',
+        apiUrl: taban,
+        httpDurum: sunucuHatasi.durum
+      };
+    }
+
+    return {
+      ok: false,
+      hata: sonHata || 'BYOM Brain sunucusuna ulaşılamadı (' + taban + ').',
+      apiUrl: taban
+    };
   });
 
   /** Panoya kopyala (HWID / lisans anahtarı). */

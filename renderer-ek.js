@@ -756,8 +756,22 @@ async function urunDuzenleAc(id) {
     const fiyatAlani = $('#duzenleFiyat');
     if (fiyatAlani) fiyatAlani.value = fiyatYazi(urun.fiyat);
 
+    /* İndirimli fiyat: üründe indirim yoksa kutu BOŞ kalır — "0,00" yazılsaydı
+       kullanıcı dokunmadan kaydettiğinde ürün bedavaya düşerdi. */
+    const indirimliAlani = $('#duzenleIndirimliFiyat');
+    if (indirimliAlani) {
+      const indirimliDeger = indirimliFiyatCoz(urun.indirimliFiyat);
+      indirimliAlani.value = (indirimliDeger === '') ? '' : fiyatYazi(indirimliDeger);
+    }
+
     const stokAlani = $('#duzenleStok');
     if (stokAlani) stokAlani.value = String(Number(urun.stok || 0));
+
+    const koliAlani = $('#duzenleKoliAdedi');
+    if (koliAlani) {
+      const koliDeger = Math.round(Number(urun.koliAdedi || 1));
+      koliAlani.value = String((isFinite(koliDeger) && koliDeger >= 1) ? koliDeger : 1);
+    }
 
     const kodAlani = $('#duzenleKod');
     if (kodAlani) kodAlani.value = d.duzenleIlkKod;
@@ -831,7 +845,9 @@ async function urunDuzenleKaydet() {
 
   const adAlani = $('#duzenleAd');
   const fiyatAlani = $('#duzenleFiyat');
+  const indirimliAlani = $('#duzenleIndirimliFiyat');
   const stokAlani = $('#duzenleStok');
+  const koliAlani = $('#duzenleKoliAdedi');
   const kodAlani = $('#duzenleKod');
   const aciklamaAlani = $('#duzenleAciklama');
   const durumSec = $('#duzenleDurumSec');
@@ -840,8 +856,12 @@ async function urunDuzenleKaydet() {
 
   const ad = adAlani ? adAlani.value.trim() : '';
   const fiyat = sayiCoz(fiyatAlani ? fiyatAlani.value : '');
+  const indirimliYazi = indirimliAlani ? indirimliAlani.value.trim() : '';
+  const indirimli = indirimliYazi ? sayiCoz(indirimliYazi) : NaN;
   const stokHam = sayiCoz(stokAlani ? stokAlani.value : '');
   const stok = Math.round(stokHam);
+  const koliHam = sayiCoz(koliAlani ? koliAlani.value : '');
+  const koli = isNaN(koliHam) ? 1 : Math.round(koliHam);
   const kod = kodAlani ? kodAlani.value.trim() : '';
   const aciklama = aciklamaAlani ? aciklamaAlani.value.trim() : '';
   const yayinDurumu = (durumSec && durumSec.value === 'draft') ? 'draft' : 'publish';
@@ -863,9 +883,27 @@ async function urunDuzenleKaydet() {
     if (fiyatAlani) fiyatAlani.focus();
     return;
   }
+  if (indirimliYazi && (isNaN(indirimli) || !isFinite(indirimli) || indirimli < 0)) {
+    duzenleUyar('Geçerli bir indirimli fiyat yazın.\nÖrnek: 1990,00\n' +
+                'İndirimi kaldırmak için kutuyu tamamen boşaltın.');
+    if (indirimliAlani) indirimliAlani.focus();
+    return;
+  }
+  if (indirimliYazi && indirimli > fiyat) {
+    duzenleUyar('İndirimli fiyat, normal fiyattan yüksek olamaz.\n' +
+                'Normal fiyat: ' + para(fiyat) + '\n' +
+                'İndirimli fiyat: ' + para(indirimli));
+    if (indirimliAlani) { indirimliAlani.focus(); if (indirimliAlani.select) indirimliAlani.select(); }
+    return;
+  }
   if (isNaN(stok) || !isFinite(stok) || stok < 0) {
     duzenleUyar('Geçerli bir stok adedi yazın.\nÖrnek: 45');
     if (stokAlani) stokAlani.focus();
+    return;
+  }
+  if (!isFinite(koli) || koli < 1) {
+    duzenleUyar('Koli içi adet en az 1 olmalıdır.\nTek tek satılan ürünlerde 1 yazın.');
+    if (koliAlani) koliAlani.focus();
     return;
   }
   if (!yeniGorseller.length && gorselUrl && !/^https?:\/\//i.test(gorselUrl)) {
@@ -928,6 +966,8 @@ async function urunDuzenleKaydet() {
         if (!kayit) return;
         kayit.ad = ad;
         kayit.fiyat = fiyat;
+        kayit.indirimliFiyat = indirimliYazi ? indirimli : '';
+        kayit.koliAdedi = koli;
         kayit.stok = stok;
         kayit.durum = yayinDurumu;
         kayit.gorsel = yeniGorsel;
@@ -945,6 +985,8 @@ async function urunDuzenleKaydet() {
       urunleriCiz('');
 
       bildir('Ürün güncellendi:\n' + ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
+             (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli) : '\nİndirim kaldırıldı') +
+             (koli > 1 ? '\nKoli içi adet: ' + koli : '') +
              (yeniGorseller.length ? '\nGörsel: ' + yeniGorseller.length + ' adet değiştirildi' : '') +
              '\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
 
@@ -956,9 +998,12 @@ async function urunDuzenleKaydet() {
     const govde = {
       name: ad,
       regular_price: fiyat.toFixed(2),
+      /* Kutu boşsa boş dize gider; WooCommerce indirimi böyle kaldırır. */
+      sale_price: indirimliYazi ? indirimli.toFixed(2) : '',
       stock_quantity: stok,
       manage_stock: true,
-      status: yayinDurumu
+      status: yayinDurumu,
+      meta_data: koliMetaVerisi(koli)
     };
 
     if (kodDegistiMi) govde.sku = kod;
@@ -986,10 +1031,12 @@ async function urunDuzenleKaydet() {
       const b2bGovde = {
         name: ad,
         regular_price: fiyat.toFixed(2),
+        sale_price: indirimliYazi ? indirimli.toFixed(2) : '',
         stock_quantity: stok,
         manage_stock: true,
         status: yayinDurumu,
-        description: aciklama
+        description: aciklama,
+        meta_data: koliMetaVerisi(koli)
       };
 
       if (kod) b2bGovde.sku = kod;
@@ -1025,6 +1072,8 @@ async function urunDuzenleKaydet() {
     await urunleriYukle(ekAramaMetni());
 
     bildir('Ürün güncellendi:\n' + ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
+           (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli) : '\nİndirim kaldırıldı') +
+           (koli > 1 ? '\nKoli içi adet: ' + koli : '') +
            (kodDegistiMi && kod ? '\nBarkod/SKU: ' + kod : '') +
            (kategoriDegistiMi && kategoriId ? '\nKategori: ' + kategoriAdi : '') +
            (yeniGorseller.length ? '\nGörsel: ' + yeniGorseller.length + ' adet değiştirildi' : '') +
