@@ -392,24 +392,38 @@ $('#lisansDegistirBtn').addEventListener('click', async function () {
 
 /* --- Kilit ekranından destek talebi --- */
 
+/* Bir talep sunucuya uçarken düğmeye tekrar basılırsa (çift tıklama) aynı
+   talep iki kez açılıyordu. Bu bayrak sonraki tetiklemeleri anında düşürür. */
+let kilitDestekGonderiliyor = false;
+
 $('#kilitDestekGonderBtn').addEventListener('click', async function () {
+  if (kilitDestekGonderiliyor) return;
+
   const btn = $('#kilitDestekGonderBtn');
-  const baslik = $('#kilitDestekBaslik').value.trim();
-  const metin = $('#kilitDestekMetni').value.trim();
+  const baslikKutu = $('#kilitDestekBaslik');
+  const metinKutu = $('#kilitDestekMetni');
+  const baslik = baslikKutu.value.trim();
+  const metin = metinKutu.value.trim();
 
   if (baslik.length < 3) {
     mesajYaz($('#kilitDestekMesaj'), 'Konu başlığı yazın (en az 3 karakter).', 'hata');
-    $('#kilitDestekBaslik').focus();
+    baslikKutu.focus();
     return;
   }
   if (metin.length < 10) {
     mesajYaz($('#kilitDestekMesaj'), 'Durumunuzu biraz daha ayrıntılı yazın (en az 10 karakter).', 'hata');
-    $('#kilitDestekMetni').focus();
+    metinKutu.focus();
     return;
   }
 
+  /* Kilit: düğme tıklanamaz olur, yazı alanları işlem boyunca salt okunur. */
+  kilitDestekGonderiliyor = true;
   btn.disabled = true;
+  btn.style.pointerEvents = 'none';
+  btn.setAttribute('aria-busy', 'true');
   btn.textContent = 'GÖNDERİLİYOR…';
+  baslikKutu.readOnly = true;
+  metinKutu.readOnly = true;
   mesajYaz($('#kilitDestekMesaj'), '', 'bilgi');
 
   try {
@@ -427,8 +441,8 @@ $('#kilitDestekGonderBtn').addEventListener('click', async function () {
     if (sonuc && sonuc.ok) {
       mesajYaz($('#kilitDestekMesaj'),
         'Talebiniz BYOM ekibine iletildi. En kısa sürede dönüş yapılacaktır.', 'basari');
-      $('#kilitDestekBaslik').value = '';
-      $('#kilitDestekMetni').value = '';
+      baslikKutu.value = '';
+      metinKutu.value = '';
     } else {
       mesajYaz($('#kilitDestekMesaj'),
         (sonuc && sonuc.hata) || 'Talep gönderilemedi.',
@@ -437,8 +451,14 @@ $('#kilitDestekGonderBtn').addEventListener('click', async function () {
   } catch (e) {
     mesajYaz($('#kilitDestekMesaj'), 'Talep gönderilemedi: ' + ((e && e.message) || e), 'hata');
   } finally {
+    /* Ağ hatasında da kilit açılır; düğme asla kilitli kalmaz. */
+    kilitDestekGonderiliyor = false;
     btn.disabled = false;
+    btn.style.pointerEvents = '';
+    btn.removeAttribute('aria-busy');
     btn.textContent = 'TALEBİ GÖNDER';
+    baslikKutu.readOnly = false;
+    metinKutu.readOnly = false;
   }
 });
 

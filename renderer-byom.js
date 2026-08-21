@@ -59,6 +59,8 @@
     okunanlar: {},
     yukleniyor: false,
     detayYukleniyor: false,     // Aynı anda iki ayrıntı isteği gitmesin
+    talepGonderiliyor: false,   // Yeni talep isteği uçuyor mu? (çift tıklama kilidi)
+    mesajGonderiliyor: false,   // Yanıt mesajı uçuyor mu? (çift tıklama kilidi)
     formAcik: false,
     listeYuklendi: false,
     tazelemeZaman: null,
@@ -676,6 +678,40 @@
     tazelemeDongusunuAyarla();
   }
 
+  /* --- Gönderim kilidi --- */
+
+  /** Gönder düğmesini ve yazı alanlarını istek boyunca kilitler.
+   *  Kullanıcı üst üste hızlı tıklasa (ya da Ctrl+Enter'a basılı kalsa) bile
+   *  aynı mesaj iki kez sunucuya gitmesin diye:
+   *    – düğme disabled + opacity-50 pointer-events-none olur, dönen ikona geçer,
+   *    – yazı alanları işlem boyunca readonly yapılır.
+   *  Geri döndürdüğü fonksiyon her şeyi eski haline alır; çağıran onu DAİMA
+   *  finally içinden çağırır ki ağ hatasında düğme kilitli kalmasın. */
+  function gonderimiKilitle(btn, kutular, mesaj) {
+    const kutu = (kutular || []).filter(Boolean);
+    const eskiHtml = btn ? btn.innerHTML : '';
+    const eskiSalt = kutu.map(function (k) { return k.readOnly; });
+
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('opacity-50', 'pointer-events-none');
+      btn.setAttribute('aria-busy', 'true');
+      btn.innerHTML = '<span class="donuyor">' + ikon('donen') + '</span>' +
+                      (mesaj ? ' ' + kac(mesaj) : '');
+    }
+    kutu.forEach(function (k) { k.readOnly = true; });
+
+    return function kilidiAc() {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'pointer-events-none');
+        btn.removeAttribute('aria-busy');
+        btn.innerHTML = eskiHtml;
+      }
+      kutu.forEach(function (k, i) { k.readOnly = eskiSalt[i]; });
+    };
+  }
+
   /* --- Sunucu işlemleri --- */
 
   /** Talep listesini çeker. */
@@ -816,23 +852,28 @@
 
   /** Yeni talep gönderir. */
   async function talepGonder() {
+    /* Çift tıklama kilidi: bir istek uçarken gelen tetikleme anında düşer. */
+    if (BYOM.talepGonderiliyor) return;
+
     const btn = secDeg('#destekGonderBtn');
-    const baslik = (secDeg('#destekBaslik') || {}).value || '';
-    const mesaj = (secDeg('#destekMesaj') || {}).value || '';
+    const baslikKutu = secDeg('#destekBaslik');
+    const mesajKutu = secDeg('#destekMesaj');
+    const baslik = (baslikKutu || {}).value || '';
+    const mesaj = (mesajKutu || {}).value || '';
 
     if (baslik.trim().length < 3) {
       uyar('Lütfen bir konu başlığı yazın (en az 3 karakter).', 'uyari');
-      const b = secDeg('#destekBaslik'); if (b) b.focus();
+      if (baslikKutu) baslikKutu.focus();
       return;
     }
     if (mesaj.trim().length < 10) {
       uyar('Sorununuzu biraz daha ayrıntılı anlatın (en az 10 karakter).', 'uyari');
-      const m = secDeg('#destekMesaj'); if (m) m.focus();
+      if (mesajKutu) mesajKutu.focus();
       return;
     }
 
-    const eskiMetin = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'GÖNDERİLİYOR…'; }
+    BYOM.talepGonderiliyor = true;
+    const kilidiAc = gonderimiKilitle(btn, [baslikKutu, mesajKutu], 'GÖNDERİLİYOR…');
 
     try {
       const sonuc = await ipcRenderer.invoke('byom:destek:olustur', {
@@ -856,12 +897,17 @@
     } catch (e) {
       uyar('Destek talebi gönderilemedi: ' + ((e && e.message) || e), 'hata');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = eskiMetin || 'TALEBİ GÖNDER'; }
+      /* Ağ hatasında da kilit açılır; düğme asla kilitli kalmaz. */
+      BYOM.talepGonderiliyor = false;
+      kilidiAc();
     }
   }
 
   /** Açık talebe yanıt yazar. */
   async function yanitGonder() {
+    /* Çift tıklama / Ctrl+Enter tekrarı kilidi: istek uçarken erken çık. */
+    if (BYOM.mesajGonderiliyor) return;
+
     const kutu = secDeg('#destekYanitMetni');
     const btn = secDeg('#destekYanitGonderBtn');
     const metin = kutu ? kutu.value.trim() : '';
@@ -873,7 +919,10 @@
       return;
     }
 
-    if (btn) { btn.disabled = true; btn.textContent = ''; }
+    BYOM.mesajGonderiliyor = true;
+    /* Dar yanıt kutusunda düğme büyümesin diye yalnızca dönen ikon gösterilir. */
+    const kilidiAc = gonderimiKilitle(btn, [kutu], '');
+    let basarili = false;
 
     try {
       const sonuc = await ipcRenderer.invoke('byom:destek:yanit', { id: BYOM.secilenTalepId, mesaj: metin });
@@ -884,13 +933,18 @@
       }
 
       if (kutu) kutu.value = '';
+      basarili = true;
       // Kendi mesajımız: sohbeti tazele ve koşulsuz en alta in.
       await sohbetiTazele({ id: BYOM.secilenTalepId, sessiz: true, zorlaKaydir: true });
       uyar('Mesajınız iletildi.', 'basari');
     } catch (e) {
       uyar('Mesaj gönderilemedi: ' + ((e && e.message) || e), 'hata');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'GÖNDER'; }
+      /* Ağ hatasında da kilit açılır; düğme asla kilitli kalmaz. */
+      BYOM.mesajGonderiliyor = false;
+      kilidiAc();
+      // Başarılıysa odak yazı alanına döner: kullanıcı yazmaya devam edebilsin.
+      if (basarili && kutu) kutu.focus();
     }
   }
 
@@ -971,7 +1025,10 @@
     const yanitKutu = secDeg('#destekYanitMetni');
     if (yanitKutu) {
       yanitKutu.addEventListener('keydown', function (o) {
-        if (o.key === 'Enter' && (o.ctrlKey || o.metaKey)) {
+        if (o.key !== 'Enter') return;
+        /* Gönderim sürerken Enter'a basılı kalınsa bile ikinci istek uçmasın. */
+        if (BYOM.mesajGonderiliyor) { o.preventDefault(); return; }
+        if (o.ctrlKey || o.metaKey) {
           o.preventDefault();
           yanitGonder();
         }
