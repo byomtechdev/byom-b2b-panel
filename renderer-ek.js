@@ -190,20 +190,48 @@ function iskontoRenkSinifi(renk) {
   return harita[renk] || 'text-slate-600 dark:text-slate-300';
 }
 
-/** #iskontoDurum kutusuna renkli bilgi/hata kutusu yazar. */
+/** Durum kutusunun ikonu TÜRDEN gelir; metnin içine gömülmez. */
+const ISKONTO_KUTU_IKONLARI = {
+  bilgi: 'bilgi',
+  basari: 'onay',
+  uyari: 'uyari',
+  hata: 'yasak'
+};
+
+/**
+ * Metne kazara karışmış işaretlemeyi söker.
+ *
+ * Durum kutusuna gelen metinler `kacis` ile kaçırılır; içlerinde `ikon()`
+ * çıktısı gibi bir işaretleme kalırsa ekrana ham `<svg class="ik">…` yazısı
+ * olarak basılırdı ("Sitede henüz rol bazlı matris yok" kutusunda görüldüğü
+ * gibi). İkonlar artık yalnızca HTML üreten yerlerde doğar; buraya gelen her
+ * şey düz metne indirgenir.
+ */
+function duzMetin(deger) {
+  return String(deger === null || deger === undefined ? '' : deger).replace(/<[^>]*>/g, '');
+}
+
+/** #iskontoDurum kutusuna ikonlu, renkli bir bilgilendirme kutusu yazar. */
 function iskontoDurumYaz(tur, baslik, mesaj) {
   const kutu = $('#iskontoDurum');
   if (!kutu) return;
 
   if (!baslik && !mesaj) { kutu.innerHTML = ''; return; }
 
+  const bas = duzMetin(baslik);
+  const met = duzMetin(mesaj);
+
   kutu.innerHTML =
-    '<div class="rounded-2xl border-2 px-5 py-4 ' +
+    '<div class="flex items-start gap-3 rounded-2xl border-2 px-5 py-4 ' +
          (ISKONTO_KUTU_SINIFLARI[tur] || ISKONTO_KUTU_SINIFLARI.bilgi) + '">' +
-      '<div class="text-xl font-black">' + kacis(baslik || '') + '</div>' +
-      (mesaj
-        ? '<div class="mt-1 text-lg font-semibold whitespace-pre-line leading-relaxed">' + kacis(mesaj) + '</div>'
-        : '') +
+      '<span class="shrink-0 mt-0.5">' +
+        ikon(ISKONTO_KUTU_IKONLARI[tur] || ISKONTO_KUTU_IKONLARI.bilgi, 'ik-lg') + '</span>' +
+      '<div class="min-w-0">' +
+        '<div class="text-xl font-black">' + kacis(bas) + '</div>' +
+        (met
+          ? '<div class="mt-1 text-lg font-semibold whitespace-pre-line leading-relaxed">' + kacis(met) + '</div>'
+          : '') +
+      '</div>' +
     '</div>';
 }
 
@@ -474,15 +502,21 @@ function iskontoFormunuOku() {
   };
 }
 
-/** Matrisin okunabilir özeti (bildirimlerde ve durum kutusunda kullanılır). */
+/**
+ * Matrisin okunabilir özeti (bildirimlerde, onay penceresinde ve durum
+ * kutusunda kullanılır).
+ *
+ * Çıktı DÜZ METİNDİR: `rol.simge` / `yon.simge` birer SVG dizesidir ve bu
+ * özet kaçırılarak basıldığı için ekrana ham `<svg class="ik">…` etiketi
+ * olarak sızıyordu. İkonlar yalnızca HTML üreten yerlerde kullanılır.
+ */
 function matrisOzeti(matris) {
   return MATRIS_ROLLERI.map(function (rol) {
     const satir = ODEME_YONTEMLERI.map(function (yon) {
       const h = matris[rol.kod][yon.kod];
-      return yon.simge + ' ' + yon.ad + ': ' +
-             (h.enabled ? '%' + iskontoYazi(h.discount) : 'kapalı');
+      return yon.ad + ': ' + (h.enabled ? '%' + iskontoYazi(h.discount) : 'kapalı');
     }).join('  ·  ');
-    return rol.simge + ' ' + rol.ad + '\n   ' + satir;
+    return rol.ad + '\n   ' + satir;
   }).join('\n');
 }
 

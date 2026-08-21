@@ -4153,42 +4153,50 @@ function uyeleriCiz() {
     const d = bayiDurumBilgisi(u.durum);
     const bekliyorMu = u.durum === 'pending';
 
-    /* Duruma göre eylem düğmeleri */
+    /* Duruma göre eylem düğmeleri.
+       Kart dar olabildiği için düğmeler esnemez ve büyük punto taşımaz:
+       "BAYİLİĞİ ONAYLA · REDDET · SİL" üçlüsü eskiden `flex-1 min-w-56 h-16`
+       ölçüsüyle kartın dışına taşıyordu. Ortak ölçü tek yerden verilir. */
+    const dugmeSinifi = function (renk) {
+      return 'class="' + renk + ' px-3 py-1.5 rounded-xl ' +
+             'text-white text-xs font-semibold transition active:scale-95"';
+    };
+
     let dugmeler;
     if (bekliyorMu) {
       dugmeler =
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
                 'title="Rolü b2b_customer yapar; firma toptan fiyatları görmeye başlar." ' +
-                'class="flex-1 min-w-56 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('onay') + ' BAYİLİĞİ ONAYLA</button>' +
+                dugmeSinifi('bg-emerald-600 hover:bg-emerald-700') + '>' +
+                ikon('onay', 'ik-sm') + ' BAYİLİĞİ ONAYLA</button>' +
         '<button data-eylem="uye-reddet" data-id="' + u.id + '" ' +
-                'class="flex-1 min-w-40 h-16 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('carpi') + ' REDDET</button>';
+                dugmeSinifi('bg-red-600 hover:bg-red-700') + '>' +
+                ikon('carpi', 'ik-sm') + ' REDDET</button>';
     } else if (u.durum === 'approved') {
       dugmeler =
         '<button data-eylem="bayi-detay" data-id="' + u.id + '" ' +
-                'class="flex-1 min-w-48 h-16 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('liste') + ' SİPARİŞ GEÇMİŞİ</button>' +
+                dugmeSinifi('bg-marka-700 hover:bg-marka-800') + '>' +
+                ikon('liste', 'ik-sm') + ' SİPARİŞ GEÇMİŞİ</button>' +
         (durum.b2bVar || durum.ayarlar.demoModu
           ? '<button data-eylem="uye-askiya-al" data-id="' + u.id + '" ' +
-                    'class="h-16 px-6 rounded-2xl bg-slate-600 hover:bg-slate-700 active:scale-95 ' +
-                           'text-white text-xl font-extrabold shadow-lg transition">' + ikon('durakla') + ' ASKIYA AL</button>'
+                    dugmeSinifi('bg-slate-600 hover:bg-slate-700') + '>' +
+                    ikon('durakla', 'ik-sm') + ' ASKIYA AL</button>'
           : '');
     } else {
       dugmeler =
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
-                'class="flex-1 min-w-48 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('onay') + ' ONAYLA</button>' +
+                dugmeSinifi('bg-emerald-600 hover:bg-emerald-700') + '>' +
+                ikon('onay', 'ik-sm') + ' ONAYLA</button>' +
         '<button data-eylem="bayi-detay" data-id="' + u.id + '" ' +
-                'class="h-16 px-6 rounded-2xl bg-slate-600 hover:bg-slate-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('liste') + ' DETAY</button>';
+                dugmeSinifi('bg-slate-600 hover:bg-slate-700') + '>' +
+                ikon('liste', 'ik-sm') + ' DETAY</button>';
     }
 
     /* Kalıcı silme — durumdan bağımsız, her bayi kartında görünür (bkz. uyeSil). */
     dugmeler += '<button data-eylem="uye-sil" data-id="' + u.id + '" ' +
                 'title="Bu müşteriyi/bayiyi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
-                'class="h-16 px-6 rounded-2xl bg-red-800 hover:bg-red-900 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('cop') + ' SİL</button>';
+                dugmeSinifi('bg-red-800 hover:bg-red-900') + '>' +
+                ikon('cop', 'ik-sm') + ' SİL</button>';
 
     return '' +
     '<div data-bayi="' + u.id + '" ' +
@@ -4232,7 +4240,7 @@ function uyeleriCiz() {
       '<div class="text-base text-slate-400 dark:text-slate-500">' +
         ikon('bilgi', 'ik-sm') + ' Karta tıklayarak bayi kartını ve sipariş dökümünü açın</div>' +
 
-      '<div class="flex flex-wrap gap-3 mt-1">' + dugmeler + '</div>' +
+      '<div class="bayi-eylemler flex flex-wrap items-center gap-2 mt-3">' + dugmeler + '</div>' +
     '</div>';
   }).join('');
 }
@@ -5529,14 +5537,19 @@ function modToggleTazele() {
 
   dugme.setAttribute('aria-checked', demo ? 'true' : 'false');
   dugme.className =
-    'relative w-28 h-14 rounded-full transition-colors shrink-0 focus:outline-none focus:ring-4 ' +
+    'relative shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 ' +
     'focus:ring-marka-600/30 ' + (demo ? 'bg-amber-400' : 'bg-emerald-500');
-  topuz.className =
-    'absolute top-1.5 left-1.5 w-11 h-11 rounded-full bg-white shadow-lg transition-transform duration-200 ' +
-    (demo ? '' : 'translate-x-14');
 
-  $('#etiketDemo').className = 'text-xl font-extrabold' + (demo ? '' : ' opacity-40');
-  $('#etiketCanli').className = 'text-xl font-extrabold' + (demo ? ' opacity-40' : '');
+  /* Topuzun açık konumu `mod-topuz-sag` ile verilir; kayma mesafesi anahtarın
+     gerçek genişliğine bağlı olduğu için CSS'te durur. Tailwind'in sabit
+     translate-x-* değeri topuzu anahtarın dışına, "Canlı Mod" yazısının
+     üstüne taşıyordu. */
+  topuz.className =
+    'absolute rounded-full bg-white shadow-lg transition-transform duration-200 ' +
+    (demo ? '' : 'mod-topuz-sag');
+
+  $('#etiketDemo').className = 'mod-etiket' + (demo ? '' : ' opacity-40');
+  $('#etiketCanli').className = 'mod-etiket' + (demo ? ' opacity-40' : '');
 
   $('#modAciklama').innerHTML = demo
     ? 'Şu an <b>Demo Modu</b> açık. Ekrandaki siparişler, ürünler ve üyeler örnek verilerdir; ' +

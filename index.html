@@ -292,14 +292,27 @@
 
   header { background: var(--panel) !important; border-bottom: 1px solid var(--kenar) !important; box-shadow: none !important; }
   header.h-20 { height: 52px !important; padding-left: 14px !important; padding-right: 14px !important; }
-  #firmaVarsayilanSimge, #firmaLogoKutu {
+  #firmaVarsayilanSimge {
     width: 30px !important; height: 30px !important;
     border-radius: var(--kose-kucuk) !important;
     font-size: 0 !important; box-shadow: none !important;
     background: var(--baslik) !important; color: #fff !important;
     border: 0 !important;
   }
-  #firmaLogoKutu { background: var(--panel) !important; border: 1px solid var(--kenar) !important; }
+  /* Firma logosu kare kutuya SIĞDIRILMAZ: kurumsal logolar çoğunlukla yatay
+     dikdörtgendir ve 30×30'luk bir kutuda okunmaz hâle geliyordu. Kutu artık
+     yalnızca yüksekliği sınırlar; genişlik logonun kendi oranından gelir. */
+  #firmaLogoKutu {
+    width: auto !important; height: auto !important;
+    max-height: 40px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+  #firmaLogo { display: block; max-height: 40px !important; width: auto !important; max-width: 220px; object-fit: contain; }
   #firmaVarsayilanSimge .ik { width: 16px; height: 16px; }
   #firmaAdiBaslik { font-size: 14px !important; font-weight: 650 !important; }
 
@@ -315,19 +328,19 @@
   }
 
   /* ---- Sol menü ---- */
-  nav.w-72 { width: 216px !important; background: var(--panel) !important; border-right: 1px solid var(--kenar) !important; padding: 10px !important; gap: 2px !important; }
+  nav.w-72 { width: 248px !important; background: var(--panel) !important; border-right: 1px solid var(--kenar) !important; padding: 10px !important; gap: 4px !important; }
   .menu-btn {
     display: flex !important;
     align-items: center;
-    gap: 9px;
-    padding: 8px 10px !important;
+    gap: 8px;
+    padding: 10px 12px !important;
     border-radius: var(--kose) !important;
     border: 1px solid transparent !important;
     background: transparent !important;
     color: var(--govde) !important;
-    font-size: 12.5px !important;
+    font-size: 13.5px !important;
     font-weight: 550 !important;
-    line-height: 1.35 !important;
+    line-height: 1.4 !important;
     box-shadow: none !important;
     transition: background .12s ease, color .12s ease !important;
   }
@@ -350,7 +363,15 @@
     border-radius: 999px !important;
     box-shadow: none !important;
   }
-  #ayarKilitSimgesi { top: 50% !important; right: 9px !important; transform: translateY(-50%); font-size: 0 !important; color: var(--soluk); }
+  /* Kilit simgesi düğmenin AKIŞINDA durur, mutlak konumlandırılmaz: mutlakken
+     kenar çubuğunun sağ kenarında — kaydırma çubuğunun hemen yanında —
+     düğmeden kopuk, serbest yüzen bir ikon gibi görünüyordu. */
+  #ayarKilitSimgesi {
+    position: static !important;
+    margin-left: auto;
+    display: inline-flex; align-items: center;
+    font-size: 0 !important; color: var(--soluk);
+  }
 
   main { padding: 16px 18px !important; }
 
@@ -458,8 +479,19 @@
   }
 
   /* Aç/Kapa anahtarları (rol bazlı ödeme matrisi + demo/canlı) */
-  #modToggle { width: 42px !important; height: 24px !important; border-radius: 999px !important; }
+  /* Çalışma Modu: "Demo Modu · anahtar · Canlı Mod" tek sırada, sabit boşlukla.
+     Topuzun açık konumu anahtarın GERÇEK genişliğinden hesaplanır
+     (42 − 18 − 3 − 3 = 18px). Tailwind'in translate-x-14 değeri 56px'dir;
+     42px'lik anahtardan taşıp "Canlı Mod" yazısının üstüne biniyordu. */
+  #modAnahtarSatiri { display: inline-flex !important; align-items: center; flex-wrap: nowrap; max-width: 100%; }
+  #modAnahtarSatiri .mod-etiket {
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap; line-height: 1;
+    font-size: 12.5px !important; font-weight: 650 !important;
+  }
+  #modToggle { width: 42px !important; height: 24px !important; border-radius: 999px !important; padding: 0 !important; flex: none !important; }
   #modTopuz { width: 18px !important; height: 18px !important; top: 3px !important; left: 3px !important; box-shadow: var(--golge) !important; }
+  #modTopuz.mod-topuz-sag { transform: translateX(18px) !important; }
 
   /* ==================================================================
      6) TABLOLAR — yüksek yoğunluk, ince ayırıcı, tabular rakam
@@ -514,7 +546,9 @@
   html:not(.dark) .text-marka-700, html:not(.dark) .text-marka-800 { color: var(--aksiyon-koyu) !important; }
 
   /* Rozet gövdesi: ince, sıkı, hizalı */
-  .px-3.py-1, .px-2.py-0\.5, .px-3.py-1\.5 {
+  /* Rozet ölçüleri düğmeleri KAPSAMAZ: aynı sınıf çiftini taşıyan bir düğme
+     1px'lik iç boşluğa düşüp okunmaz hâle gelirdi. */
+  .px-3.py-1:not(button), .px-2.py-0\.5:not(button), .px-3.py-1\.5:not(button) {
     padding: 1px 7px !important;
     border-radius: var(--kose-kucuk) !important;
     font-size: 10.5px !important;
@@ -765,8 +799,17 @@
     border: 1px solid var(--kenar) !important;
   }
 
-  /* Bayi kartındaki düğmeler kartı boydan boya kaplamasın */
+  /* Bayi kartındaki eylem düğmeleri kartı boydan boya kaplamaz ve taşmaz;
+     sığmayan düğme alt satıra iner (bkz. .bayi-eylemler). */
   [data-bayi] button.flex-1 { flex: 0 1 auto !important; min-width: 0 !important; }
+  .bayi-eylemler > button {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    line-height: 1.3 !important;
+    white-space: nowrap;
+    box-shadow: none !important;
+  }
 
   /* Menüde yalnızca AÇIK sekmenin çerçevesi olsun */
   html:not(.dark) .menu-btn:not(.bg-marka-700),
@@ -876,8 +919,8 @@
 
     <div class="flex items-center gap-3 min-w-0">
       <div id="firmaVarsayilanSimge" class="w-14 h-14 rounded-2xl bg-marka-700 text-white grid place-items-center text-3xl shadow-lg shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-paket"></use></svg></div>
-      <div id="firmaLogoKutu" class="hidden w-14 h-14 rounded-2xl bg-white border-2 border-slate-200 dark:border-slate-600 overflow-hidden shadow-lg shrink-0 grid place-items-center">
-        <img id="firmaLogo" alt="Firma logosu" class="max-w-full max-h-full object-contain" />
+      <div id="firmaLogoKutu" class="hidden shrink-0">
+        <img id="firmaLogo" alt="Firma logosu" class="max-h-10 w-auto object-contain" />
       </div>
       <div class="min-w-0">
         <div id="firmaAdiBaslik" class="text-2xl font-black leading-tight truncate">Yükleniyor…</div>
@@ -982,11 +1025,11 @@
            açar; SHA-256 doğrulaması geçilmeden sekmenin içi çizilmez.
            ============================================================ -->
       <button data-sekme="ayarlar" data-kilitli="1"
-              class="menu-btn mt-auto text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+              class="menu-btn mt-auto text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-ayar"></use></svg>
         <span class="align-middle">API & Sistem Ayarları</span>
         <span id="ayarKilitSimgesi"
-              class="absolute top-3 right-3 text-2xl leading-none"
+              class="ml-auto shrink-0 inline-flex items-center leading-none"
               title="Geliştirici kilidi — şifre gerekir"><svg class="ik" aria-hidden="true"><use href="#ik-kilit"></use></svg></span>
       </button>
     </nav>
@@ -1415,16 +1458,16 @@
             <!-- Demo / Canlı anahtarı -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
               <div class="text-xl font-black mb-4">Çalışma Modu</div>
-              <div class="flex items-center gap-5 flex-wrap">
-                <span id="etiketDemo" class="text-xl font-extrabold"><svg class="ik" aria-hidden="true"><use href="#ik-deneme"></use></svg> Demo Modu</span>
+              <div id="modAnahtarSatiri" class="inline-flex items-center gap-3">
+                <span id="etiketDemo" class="mod-etiket"><svg class="ik" aria-hidden="true"><use href="#ik-deneme"></use></svg> Demo Modu</span>
                 <button id="modToggle" type="button" role="switch" aria-checked="true"
-                        class="relative w-28 h-14 rounded-full bg-amber-400 transition-colors shrink-0
-                               focus:outline-none focus:ring-4 focus:ring-marka-600/30">
+                        class="relative shrink-0 rounded-full bg-amber-400 transition-colors
+                               focus:outline-none focus:ring-2 focus:ring-marka-600/30">
                   <span id="modTopuz"
-                        class="absolute top-1.5 left-1.5 w-11 h-11 rounded-full bg-white shadow-lg
+                        class="absolute rounded-full bg-white shadow-lg
                                transition-transform duration-200"></span>
                 </button>
-                <span id="etiketCanli" class="text-xl font-extrabold opacity-40"><svg class="ik" aria-hidden="true"><use href="#ik-kure"></use></svg> Canlı Mod</span>
+                <span id="etiketCanli" class="mod-etiket opacity-40"><svg class="ik" aria-hidden="true"><use href="#ik-kure"></use></svg> Canlı Mod</span>
               </div>
               <p id="modAciklama" class="mt-4 text-lg text-slate-600 dark:text-slate-300 leading-relaxed">
                 Şu an <b>Demo Modu</b> açık. Ekrandaki siparişler, ürünler ve üyeler örnek verilerdir;
