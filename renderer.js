@@ -5155,8 +5155,8 @@ async function depoFisiAc(id) {
  *  "bir kez açtım, hep açık kalsın" davranışı kilidin amacını ortadan kaldırır.
  * ------------------------------------------------------------------------*/
 
-/** SHA-256("ByomAdmin#2026") — varsayılan geliştirici şifresinin özeti. */
-const MASTER_SIFRE_OZETI = 'c20e3740bccb887d2c3a6c6eecbef75a3d00a0944379e4ace7628af7461a9674';
+/** Geliştirici şifresinin SHA-256 özeti. Düz metin hiçbir yerde tutulmaz. */
+const MASTER_SIFRE_OZETI = '5e4a9ff60df0ceef1508059f8a2cfc409c99e20ffee3bc3fb22fc4ee8687aecb';
 
 /** Verilen metnin SHA-256 özeti (küçük harf onaltılık). */
 function sha256Hex(metin) {
