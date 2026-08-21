@@ -4,13 +4,13 @@
  *  Bu dosya index.html içinde renderer.js'ten SONRA yüklenir ve şu yeni
  *  özelliklerin masaüstü tarafını ekler:
  *
- *    A) 💸 İskonto Oranları sekmesi   → GET/POST  wc-b2b/v1/settings/discounts
- *    B) 🧾 Sipariş kartı ödeme rozeti → siparisOdemeRozetiHtml(s)
- *    C) ✏️ Ürün düzenle penceresi     → PUT wc/v3/products/{id} (yedek: wc-b2b/v1)
+ *    A) İskonto Oranları sekmesi   → GET/POST  wc-b2b/v1/settings/discounts
+ *    B) Sipariş kartı ödeme rozeti → siparisOdemeRozetiHtml(s)
+ *    C) Ürün düzenle penceresi     → PUT wc/v3/products/{id} (yedek: wc-b2b/v1)
  *    D) ⋮⋮ Sürükle-bırak sıralama     → POST wc-b2b/v1/products/reorder
  *                                       (yalnızca yeri değişen ürünler gönderilir)
- *    E) 🗑️ Ürün silme                 → DELETE wc/v3/products/{id}?force=true
- *    F) 🚫 Sipariş iptali             → POST wc-b2b/v1/orders/{id}/status
+ *    E) Ürün silme                 → DELETE wc/v3/products/{id}?force=true
+ *    F) Sipariş iptali             → POST wc-b2b/v1/orders/{id}/status
  *                                       (yedek: PUT wc/v3/orders/{id})
  *
  *  renderer.js içindeki üst seviye yardımcılar (durum, $, kacis, para, sayiCoz,
@@ -90,7 +90,7 @@ function ekUrunIndeksi(liste, id) {
 }
 
 /* ==========================================================================
- *  BÖLÜM A — 💸 ROL BAZLI ÖDEME MATRİSİ (İSKONTO / FİYAT AYARLARI)
+ *  BÖLÜM A — ROL BAZLI ÖDEME MATRİSİ (İSKONTO / FİYAT AYARLARI)
  *  ---------------------------------------------------------------------------
  *  Eskiden tek bir oran listesi vardı (Nakit / Kredi Kartı / Vadeli) ve bu
  *  oranlar SİTEDEKİ HERKESE aynı şekilde uygulanıyordu. Oysa aynı mağaza hem
@@ -128,22 +128,22 @@ function ekUrunIndeksi(liste, id) {
 /** Alıcı rolleri — anahtarlar SABİT: individual / corporate. */
 const MATRIS_ROLLERI = [
   {
-    kod: 'individual', ad: 'Bireysel Müşteriler', simge: '👤', renk: 'sky',
+    kod: 'individual', ad: 'Bireysel Müşteriler', simge: ikon('kisi'), renk: 'sky',
     aciklama: 'Sitenizden alışveriş yapan son kullanıcılar (WooCommerce "customer" rolü).'
   },
   {
-    kod: 'corporate', ad: 'Kurumsal Bayiler', simge: '🏢', renk: 'emerald',
+    kod: 'corporate', ad: 'Kurumsal Bayiler', simge: ikon('bina'), renk: 'emerald',
     aciklama: 'Onaylanmış toptan bayiler (b2b_customer rolü).'
   }
 ];
 
 /** Ödeme yöntemleri — anahtarlar SABİT: cash / card / term. */
 const ODEME_YONTEMLERI = [
-  { kod: 'cash', ad: 'Nakit', simge: '💵', renk: 'emerald',
+  { kod: 'cash', ad: 'Nakit', simge: ikon('nakit'), renk: 'emerald',
     aciklama: 'Nakit veya havale/EFT ile peşin ödenen siparişler.' },
-  { kod: 'card', ad: 'Kredi Kartı', simge: '💳', renk: 'sky',
+  { kod: 'card', ad: 'Kredi Kartı', simge: ikon('kart'), renk: 'sky',
     aciklama: 'Sanal POS üzerinden kredi kartı ile tahsil edilen siparişler.' },
-  { kod: 'term', ad: 'Vadeli', simge: '🗓️', renk: 'amber',
+  { kod: 'term', ad: 'Vadeli', simge: ikon('takvim'), renk: 'amber',
     aciklama: 'Cari hesaba vadeli işlenen siparişler. Genellikle %0 bırakılır.' }
 ];
 
@@ -396,7 +396,7 @@ function matrisTablosuCiz(rol) {
       ? '<div class="rounded-xl border-2 border-red-300 dark:border-red-500/40 ' +
              'bg-red-50 dark:bg-red-500/10 p-4 text-lg font-bold ' +
              'text-red-800 dark:text-red-200">' +
-          '⚠️ Bu rol için hiçbir ödeme yöntemi açık değil — bu grup sitenizden ' +
+          ikon('uyari') + ' Bu rol için hiçbir ödeme yöntemi açık değil — bu grup sitenizden ' +
           'sipariş tamamlayamaz.' +
         '</div>'
       : '') +
@@ -521,7 +521,7 @@ function iskontoOnizlemeCiz() {
   kap.innerHTML = '' +
   '<div class="h-full rounded-2xl border-2 border-slate-200 dark:border-slate-700 ' +
        'bg-white dark:bg-slate-800 p-5">' +
-    '<div class="text-lg font-black mb-1">🧮 Örnek Hesap</div>' +
+    '<div class="text-lg font-black mb-1">' + ikon('grafik') + ' Örnek Hesap</div>' +
     '<div class="text-base font-semibold text-slate-500 dark:text-slate-400 mb-3">' +
       'Sepet tutarı ' + kacis(para(ISKONTO_ORNEK_SEPET)) + ' olsaydı, ödenecek tutar:' +
     '</div>' +
@@ -531,8 +531,8 @@ function iskontoOnizlemeCiz() {
           '<tr class="border-b-2 border-slate-300 dark:border-slate-600 ' +
               'text-base font-black text-slate-500 dark:text-slate-400">' +
             '<th class="py-2 pr-4">ÖDEME YÖNTEMİ</th>' +
-            '<th class="py-2 pr-4 text-right">👤 BİREYSEL</th>' +
-            '<th class="py-2 pr-4 text-right">🏢 BAYİ</th>' +
+            '<th class="py-2 pr-4 text-right">' + ikon('kisi', 'ik-sm') + ' BİREYSEL</th>' +
+            '<th class="py-2 pr-4 text-right">' + ikon('bina', 'ik-sm') + ' BAYİ</th>' +
           '</tr>' +
         '</thead>' +
         '<tbody>' + satirlar + '</tbody>' +
@@ -541,7 +541,7 @@ function iskontoOnizlemeCiz() {
     (okunan.gecerliMi
       ? ''
       : '<div class="mt-3 text-base font-bold text-red-600 dark:text-red-400">' +
-        '⚠️ Bir orana geçersiz değer yazıldı; 0 ile 100 arasında bir sayı olmalı.</div>') +
+        ikon('uyari') + ' Bir orana geçersiz değer yazıldı; 0 ile 100 arasında bir sayı olmalı.</div>') +
   '</div>';
 }
 
@@ -585,7 +585,7 @@ async function iskontoSekmesiYukle(zorla) {
   }
 
   d.iskontoYukleniyor = true;
-  iskontoDurumYaz('bilgi', '⏳ Ödeme matrisi getiriliyor…', 'Lütfen bekleyin.');
+  iskontoDurumYaz('bilgi', 'Ödeme matrisi getiriliyor…', 'Lütfen bekleyin.');
 
   try {
     /* ---------- DEMO ---------- */
@@ -596,7 +596,7 @@ async function iskontoSekmesiYukle(zorla) {
       matrisiCiz();
       iskontoDurumYaz(
         'uyari',
-        '🎭 Demo Modu',
+        'Demo Modu',
         'Gördüğünüz matris örnektir. Bu ekranda yapacağınız değişiklikler\n' +
         'sitenize gönderilmez, yalnızca bu pencerede saklanır.'
       );
@@ -608,7 +608,7 @@ async function iskontoSekmesiYukle(zorla) {
       d.odemeMatrisi = matrisNormalle(d.odemeMatrisi);
       d.iskontoYuklendi = true;
       matrisiCiz();
-      iskontoDurumYaz('hata', '❌ B2B Core eklentisi bulunamadı', EK_EKLENTI_YOK_MESAJI);
+      iskontoDurumYaz('hata', 'B2B Core eklentisi bulunamadı', EK_EKLENTI_YOK_MESAJI);
       return;
     }
 
@@ -620,8 +620,8 @@ async function iskontoSekmesiYukle(zorla) {
       matrisiCiz();
       iskontoDurumYaz(
         'hata',
-        '❌ Ödeme matrisi alınamadı',
-        ekHataMetni(cevap) + '\n\nDeğerleri düzenleyip 💾 KAYDET ile yeniden deneyebilirsiniz.'
+        'Ödeme matrisi alınamadı',
+        ekHataMetni(cevap) + '\n\nDeğerleri düzenleyip KAYDET ile yeniden deneyebilirsiniz.'
       );
       bildir('Ödeme matrisi alınamadı:\n' + ekHataMetni(cevap), 'hata');
       return;
@@ -634,7 +634,7 @@ async function iskontoSekmesiYukle(zorla) {
       d.odemeMatrisi = matrisNormalle(hamMatris);
       d.iskontoYuklendi = true;
       matrisiCiz();
-      iskontoDurumYaz('basari', '🌐 Sitedeki güncel matris yüklendi', matrisOzeti(d.odemeMatrisi));
+      iskontoDurumYaz('basari', 'Sitedeki güncel matris yüklendi', matrisOzeti(d.odemeMatrisi));
       return;
     }
 
@@ -649,15 +649,15 @@ async function iskontoSekmesiYukle(zorla) {
 
     iskontoDurumYaz(
       'uyari',
-      'ℹ️ Sitede henüz rol bazlı matris yok',
+      'Sitede henüz rol bazlı matris yok',
       (oranlar
         ? 'Mevcut iskonto oranlarınız KURUMSAL BAYİ satırına taşındı.\n'
         : 'Fabrika ayarları yüklendi.\n') +
-      'Bireysel müşteri satırını gözden geçirip 💾 KAYDET deyin.\n\n' +
+      'Bireysel müşteri satırını gözden geçirip KAYDET deyin.\n\n' +
       matrisOzeti(d.odemeMatrisi)
     );
   } catch (e) {
-    iskontoDurumYaz('hata', '❌ Beklenmeyen hata', String((e && e.message) || e));
+    iskontoDurumYaz('hata', 'Beklenmeyen hata', String((e && e.message) || e));
     bildir('Ödeme matrisi yüklenirken beklenmeyen bir hata oluştu:\n' +
            String((e && e.message) || e), 'hata');
   } finally {
@@ -691,15 +691,15 @@ async function iskontoKaydet() {
   });
 
   const eminMi = await onayla(
-    '💸 Ödeme Matrisini Kaydet',
+    'Ödeme Matrisini Kaydet',
     'Yeni ayarlar:\n' + ozet + '\n\n' +
     (kapaliRoller.length
-      ? '⚠️ DİKKAT: ' + kapaliRoller.map(function (r) { return r.ad; }).join(' ve ') +
+      ? 'DİKKAT: ' + kapaliRoller.map(function (r) { return r.ad; }).join(' ve ') +
         ' için hiçbir ödeme yöntemi açık değil.\nBu grup sitenizden sipariş TAMAMLAYAMAZ.\n\n'
       : '') +
     'Bu ayarlar kaydedildiği anda web sitenizde geçerli olur.' +
-    (ekDemoMu() ? '\n\n🎭 DEMO MODU: sitenizde hiçbir değişiklik yapılmaz.' : ''),
-    '💾 EVET, KAYDET',
+    (ekDemoMu() ? '\n\nDEMO MODU: sitenizde hiçbir değişiklik yapılmaz.' : ''),
+    'EVET, KAYDET',
     false
   );
 
@@ -715,13 +715,13 @@ async function iskontoKaydet() {
       d.odemeMatrisi = matris;
       d.iskontoYuklendi = true;
       matrisiCiz();
-      iskontoDurumYaz('uyari', '🎭 Demo Modu — kaydedildi (yalnızca bu pencerede)', ozet);
+      iskontoDurumYaz('uyari', 'Demo Modu — kaydedildi (yalnızca bu pencerede)', ozet);
       bildir('Ödeme matrisi güncellendi.\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
       return;
     }
 
     if (!ekEklentiVarMi()) {
-      iskontoDurumYaz('hata', '❌ Kaydedilemedi', EK_EKLENTI_YOK_MESAJI);
+      iskontoDurumYaz('hata', 'Kaydedilemedi', EK_EKLENTI_YOK_MESAJI);
       bildir(EK_EKLENTI_YOK_MESAJI, 'hata');
       return;
     }
@@ -734,7 +734,7 @@ async function iskontoKaydet() {
     });
 
     if (!cevap || !cevap.ok) {
-      iskontoDurumYaz('hata', '❌ Kaydedilemedi', ekHataMetni(cevap));
+      iskontoDurumYaz('hata', 'Kaydedilemedi', ekHataMetni(cevap));
       bildir('Ödeme matrisi kaydedilemedi:\n' + ekHataMetni(cevap), 'hata');
       return;
     }
@@ -761,19 +761,19 @@ async function iskontoKaydet() {
     const yeniOzet = matrisOzeti(d.odemeMatrisi);
 
     if (!eskiCevap || !eskiCevap.ok) {
-      iskontoDurumYaz('uyari', '⚠️ Matris kaydedildi, eski oran ucu güncellenemedi',
+      iskontoDurumYaz('uyari', 'Matris kaydedildi, eski oran ucu güncellenemedi',
         yeniOzet + '\n\nEski uç hatası: ' + ekHataMetni(eskiCevap) +
         '\nSitenizin teması matrisi okuyorsa sorun yoktur.');
       bildir('Ödeme matrisi kaydedildi.\n' +
-             '⚠️ Eski iskonto ucu güncellenemedi; teması eski uca bakan siteler\n' +
+             'Eski iskonto ucu güncellenemedi; teması eski uca bakan siteler\n' +
              'değişikliği görmeyebilir.', 'uyari');
       return;
     }
 
-    iskontoDurumYaz('basari', '✅ Ödeme matrisi sitenize kaydedildi', yeniOzet);
+    iskontoDurumYaz('basari', 'Ödeme matrisi sitenize kaydedildi', yeniOzet);
     bildir('Ödeme matrisi güncellendi.\nSitenizde anında geçerli.', 'basari');
   } catch (e) {
-    iskontoDurumYaz('hata', '❌ Beklenmeyen hata', String((e && e.message) || e));
+    iskontoDurumYaz('hata', 'Beklenmeyen hata', String((e && e.message) || e));
     bildir('Ödeme matrisi kaydedilirken beklenmeyen bir hata oluştu:\n' +
            String((e && e.message) || e), 'hata');
   } finally {
@@ -781,23 +781,23 @@ async function iskontoKaydet() {
   }
 }
 /* ==========================================================================
- *  BÖLÜM B — 🧾 SİPARİŞ KARTI ÖDEME ROZETİ
+ *  BÖLÜM B — SİPARİŞ KARTI ÖDEME ROZETİ
  * ========================================================================*/
 
 /** Ödeme tipi → etiket / simge / renk (SÖZLEŞME §5). */
 const ODEME_TIPI_BILGISI = {
   cash: {
-    etiket: 'Nakit Sipariş', simge: '💵',
+    etiket: 'Nakit Sipariş', simge: ikon('nakit'),
     sinif: 'bg-emerald-100 text-emerald-800 border-emerald-300 ' +
            'dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
   },
   card: {
-    etiket: 'Kredi Kartı Sipariş', simge: '💳',
+    etiket: 'Kredi Kartı Sipariş', simge: ikon('kart'),
     sinif: 'bg-sky-100 text-sky-800 border-sky-300 ' +
            'dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30'
   },
   term: {
-    etiket: 'Vadeli Sipariş', simge: '🗓️',
+    etiket: 'Vadeli Sipariş', simge: ikon('takvim'),
     sinif: 'bg-amber-100 text-amber-800 border-amber-300 ' +
            'dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30'
   }
@@ -814,7 +814,7 @@ function siparisOdemeRozetiHtml(s) {
   if (!kod) return '';
 
   const bilgi = ODEME_TIPI_BILGISI[kod] || {
-    etiket: '', simge: '🏷️',
+    etiket: '', simge: ikon('etiket'),
     sinif: 'bg-slate-200 text-slate-800 border-slate-300 ' +
            'dark:bg-slate-600/30 dark:text-slate-200 dark:border-slate-500/40'
   };
@@ -824,7 +824,7 @@ function siparisOdemeRozetiHtml(s) {
   const hamOran = Number(s.odemeIskonto || 0);
   const oran = (isFinite(hamOran) && hamOran > 0) ? hamOran : 0;
 
-  const metin = bilgi.simge + ' ' + etiket +
+  const metin = etiket +
     (oran > 0 ? ' · %' + iskontoYazi(oran) + ' İskonto Uygulandı' : ' · İskonto Uygulanmadı');
 
   const hamTutar = Number(s.odemeIskontoTutar || 0);
@@ -834,11 +834,11 @@ function siparisOdemeRozetiHtml(s) {
 
   return '<span' + baslik + ' class="inline-block mt-1 px-3 py-1 rounded-lg border-2 ' +
          'text-base font-bold whitespace-nowrap ' + bilgi.sinif + '">' +
-         kacis(metin) + '</span>';
+         bilgi.simge + ' ' + kacis(metin) + '</span>';
 }
 
 /* ==========================================================================
- *  BÖLÜM C — ✏️ ÜRÜN DÜZENLE PENCERESİ
+ *  BÖLÜM C — ÜRÜN DÜZENLE PENCERESİ
  * ========================================================================*/
 
 /** #duzenleUyari kutusu. */
@@ -848,7 +848,7 @@ function duzenleUyar(mesaj) {
 
   if (!mesaj) { kutu.classList.add('hidden'); kutu.textContent = ''; return; }
 
-  kutu.textContent = '⚠️ ' + mesaj;
+  kutu.textContent = mesaj;
   kutu.classList.remove('hidden');
 }
 
@@ -900,7 +900,8 @@ function duzenleGorselKutusuCiz() {
         : '') +
       '<button type="button" data-duzenle-gorsel-sil="' + kacis(String(g.id)) + '" title="Kaldır" ' +
               'class="absolute top-1 right-1 w-8 h-8 rounded-lg bg-red-600 hover:bg-red-700 ' +
-                     'text-white text-lg font-black grid place-items-center shadow-lg transition">✖</button>' +
+                     'text-white text-lg font-black grid place-items-center shadow-lg transition">' +
+                     ikon('carpi', 'ik-sm') + '</button>' +
     '</div>';
   }).join('');
 
@@ -908,9 +909,9 @@ function duzenleGorselKutusuCiz() {
 
   html += '<div class="mt-3 text-base font-semibold text-slate-500 dark:text-slate-400 leading-relaxed">' +
     (yeniler.length
-      ? kacis('ℹ️ Kaydettiğinizde ürünün görselleri yukarıdaki ' + yeniler.length +
+      ? kacis('Kaydettiğinizde ürünün görselleri yukarıdaki ' + yeniler.length +
               ' yeni görselle DEĞİŞTİRİLİR. İlk görsel öne çıkan görsel olur.')
-      : kacis('ℹ️ Yeni görsel bırakmazsanız ürünün mevcut görseli olduğu gibi kalır.')) +
+      : kacis('Yeni görsel bırakmazsanız ürünün mevcut görseli olduğu gibi kalır.')) +
     '</div>';
 
   kap.innerHTML = html;
@@ -928,7 +929,7 @@ function duzenleGorselKaldir(gorselId) {
   duzenleGorselKutusuCiz();
   duzenleGorselDurumYaz(
     d.duzenleGorselleri.length
-      ? '✅ ' + d.duzenleGorselleri.length + ' yeni görsel hazır.'
+      ? d.duzenleGorselleri.length + ' yeni görsel hazır.'
       : 'Yeni görsel seçilmedi — mevcut görsel korunacak.',
     d.duzenleGorselleri.length
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -951,7 +952,7 @@ async function duzenleGorselleriYukle(dosyalar) {
   });
 
   if (liste.length === 0) {
-    duzenleGorselDurumYaz('❌ Sadece görsel dosyası (JPG, PNG, WEBP, GIF) bırakabilirsiniz.',
+    duzenleGorselDurumYaz('Sadece görsel dosyası (JPG, PNG, WEBP, GIF) bırakabilirsiniz.',
                           'text-red-600 dark:text-red-400');
     return;
   }
@@ -963,19 +964,19 @@ async function duzenleGorselleriYukle(dosyalar) {
     const dosya = liste[i];
 
     if (dosya.size > EN_BUYUK_GORSEL_MB * 1024 * 1024) {
-      duzenleGorselDurumYaz('❌ "' + dosya.name + '" çok büyük (en fazla ' + EN_BUYUK_GORSEL_MB + ' MB).',
+      duzenleGorselDurumYaz('"' + dosya.name + '" çok büyük (en fazla ' + EN_BUYUK_GORSEL_MB + ' MB).',
                             'text-red-600 dark:text-red-400');
       continue;
     }
 
-    duzenleGorselDurumYaz('⏳ Yükleniyor (' + (i + 1) + '/' + liste.length + '): ' + dosya.name,
+    duzenleGorselDurumYaz('Yükleniyor (' + (i + 1) + '/' + liste.length + '): ' + dosya.name,
                           'text-marka-700 dark:text-marka-300');
 
     let veriAdresi;
     try {
       veriAdresi = await dosyayiVeriAdresineCevir(dosya);
     } catch (e) {
-      duzenleGorselDurumYaz('❌ ' + String((e && e.message) || e), 'text-red-600 dark:text-red-400');
+      duzenleGorselDurumYaz(String((e && e.message) || e), 'text-red-600 dark:text-red-400');
       continue;
     }
 
@@ -994,7 +995,7 @@ async function duzenleGorselleriYukle(dosyalar) {
 
     /* ---------- CANLI ---------- */
     if (!ekEklentiVarMi()) {
-      duzenleGorselDurumYaz('❌ Dosya yükleme için sitenizde "B2B Core" eklentisi gerekir.\n' +
+      duzenleGorselDurumYaz('Dosya yükleme için sitenizde "B2B Core" eklentisi gerekir.\n' +
                             'Eklenti yokken aşağıdaki "Görsel bağlantısı (URL)" alanını kullanın.',
                             'text-red-600 dark:text-red-400');
       return;
@@ -1013,13 +1014,13 @@ async function duzenleGorselleriYukle(dosyalar) {
         }
       });
     } catch (e) {
-      duzenleGorselDurumYaz('❌ "' + dosya.name + '" yüklenemedi: ' + String((e && e.message) || e),
+      duzenleGorselDurumYaz('"' + dosya.name + '" yüklenemedi: ' + String((e && e.message) || e),
                             'text-red-600 dark:text-red-400');
       continue;
     }
 
     if (!cevap || !cevap.ok || !cevap.veri) {
-      duzenleGorselDurumYaz('❌ "' + dosya.name + '" yüklenemedi: ' + ekHataMetni(cevap),
+      duzenleGorselDurumYaz('"' + dosya.name + '" yüklenemedi: ' + ekHataMetni(cevap),
                             'text-red-600 dark:text-red-400');
       continue;
     }
@@ -1036,7 +1037,7 @@ async function duzenleGorselleriYukle(dosyalar) {
   const adet = d.duzenleGorselleri.length;
   duzenleGorselDurumYaz(
     adet
-      ? '✅ ' + adet + ' yeni görsel hazır. Kaydettiğinizde ürünün görselleri bunlarla değiştirilir.'
+      ? adet + ' yeni görsel hazır. Kaydettiğinizde ürünün görselleri bunlarla değiştirilir.'
       : 'Yeni görsel seçilmedi — mevcut görsel korunacak.',
     adet ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
   );
@@ -1047,7 +1048,7 @@ async function duzenleKategorileriYukle(seciliId) {
   const secim = $('#duzenleKategori');
   if (!secim) return;
 
-  secim.innerHTML = '<option value="">⏳ Kategoriler yükleniyor…</option>';
+  secim.innerHTML = '<option value="">Kategoriler yükleniyor…</option>';
 
   let kategoriler = [];
   let hataMi = false;
@@ -1111,7 +1112,7 @@ async function urunDuzenleAc(id) {
     d.duzenleGorselleri = [];
 
     /* --- Başlıklar --- */
-    /* Emoji başlıkta ZATEN var (index.html'deki büyük ✏️ ikonu); burada
+    /* Emoji başlıkta ZATEN var (index.html'deki büyük ikonu); burada
        tekrarlanmaz — "Yeni Ürün Ekle" penceresiyle aynı düzen. */
     const baslik = $('#duzenleBaslik');
     if (baslik) baslik.textContent = 'Ürünü Düzenle';
@@ -1120,8 +1121,8 @@ async function urunDuzenleAc(id) {
     if (altBaslik) {
       altBaslik.textContent = urun.ad + '  ·  #' + urun.id +
         (ekDemoMu()
-          ? '  ·  🎭 Demo Modu (sitenize kaydedilmez)'
-          : '  ·  🌐 Değişiklikler sitenize kaydedilir');
+          ? '  ·  Demo Modu (sitenize kaydedilmez)'
+          : '  ·  Değişiklikler sitenize kaydedilir');
     }
 
     /* --- Alanlar --- */
@@ -1310,7 +1311,7 @@ async function urunDuzenleKaydet() {
 
   if (kategoriDegistiMi && Number(d.duzenleKategoriSayisi || 0) > 1) {
     const eminMi = await onayla(
-      '🗂️ Kategori Değişikliği',
+      'Kategori Değişikliği',
       'Bu ürün şu anda ' + Number(d.duzenleKategoriSayisi) + ' kategoride görünüyor.\n' +
       'Kaydettiğinizde ürün YALNIZCA seçtiğiniz kategoride kalacak, diğerlerinden çıkarılacak.\n\n' +
       'Devam edilsin mi?',
@@ -1542,7 +1543,7 @@ function siralamaGuvenliMi() {
   }
 
   if (d && d.urunYukleniyor) {
-    bildir('⏳ Ürünler hâlâ yükleniyor.\n' +
+    bildir('Ürünler hâlâ yükleniyor.\n' +
            'Liste tamamlanmadan sıralama yapılırsa sıra kayabilir;\n' +
            'yükleme bitince tekrar deneyin.', 'uyari');
     return false;
@@ -1552,7 +1553,7 @@ function siralamaGuvenliMi() {
     bildir('Mağazanızdaki ürünlerin tamamı yüklenemedi' +
            (d.urunlerToplam ? ' (' + (d.urunler || []).length + ' / ' + d.urunlerToplam + ').' : '.') +
            '\n\nEksik liste üzerinde sıralama yapmak, ekranda görünmeyen\n' +
-           'ürünlerin sırasını bozar. Önce 🔄 YENİLE ile listeyi tamamlayın.', 'uyari');
+           'ürünlerin sırasını bozar. Önce YENİLE ile listeyi tamamlayın.', 'uyari');
     return false;
   }
 
@@ -1782,7 +1783,7 @@ async function siraTabaniniOlustur() {
   const d = ekDurum();
   if (!d) return false;
 
-  bildir('⏳ Ürün sıra numaraları ilk kez hazırlanıyor…\nBu işlem yalnızca bir kez yapılır.', 'bilgi');
+  bildir('Ürün sıra numaraları ilk kez hazırlanıyor…\nBu işlem yalnızca bir kez yapılır.', 'bilgi');
 
   /* ---------- DEMO ---------- */
   if (ekDemoMu()) {
@@ -1841,7 +1842,7 @@ async function siraTabaniniOlustur() {
       if (basarisiz === null) return false;   // Hata zaten bildirildi
 
       if (basarisiz.length) {
-        bildir('⚠️ ' + basarisiz.length + ' ürünün sıra numarası yazılamadı.\n' +
+        bildir(basarisiz.length + ' ürünün sıra numarası yazılamadı.\n' +
                'Bu ürünlerin sırası şimdilik eski değeriyle kaldı.', 'uyari');
       }
     }
@@ -1861,7 +1862,7 @@ async function siraTabaniniOlustur() {
 
   siraDegisimleriniKuyrukla(siraYaz(ciftler));
 
-  bildir('ℹ️ B2B Core eklentisi bulunamadı; sıra numaraları WooCommerce ucundan\n' +
+  bildir('B2B Core eklentisi bulunamadı; sıra numaraları WooCommerce ucundan\n' +
          (d.urunler || []).length + ' ürün için tek tek yazılacak.\nBu işlem biraz sürebilir.', 'bilgi');
   return true;
 }
@@ -2142,7 +2143,7 @@ async function siralamayiGonder(hemenMi) {
       demoSiralamasiniYaz(liste);
 
       d.siralamaDegisti = false;
-      bildir('✅ Yeni sıralama kaydedildi.\n' + siraAdetYazi(liste.length) +
+      bildir('Yeni sıralama kaydedildi.\n' + siraAdetYazi(liste.length) +
              '\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
       return;
     }
@@ -2183,9 +2184,9 @@ async function siralamayiGonder(hemenMi) {
 
     d.siralamaDegisti = false;
 
-    bildir('✅ Yeni sıralama siteye gönderildi.\n' +
+    bildir('Yeni sıralama siteye gönderildi.\n' +
            siraAdetYazi(liste.length - basarisiz.length) +
-           (basarisiz.length ? '\n⚠️ ' + basarisiz.length + ' ürün güncellenemedi.' : ''), 'basari');
+           (basarisiz.length ? '\n' + basarisiz.length + ' ürün güncellenemedi.' : ''), 'basari');
   } catch (e) {
     bildir('Sıralama kaydedilirken beklenmeyen bir hata oluştu:\n' +
            String((e && e.message) || e), 'hata');
@@ -2350,7 +2351,7 @@ function urunSiralamasiniBagla() {
 }
 
 /* ==========================================================================
- *  BÖLÜM E — 🗑️ ÜRÜN SİLME
+ *  BÖLÜM E — ÜRÜN SİLME
  *  ---------------------------------------------------------------------------
  *  Ürün hem sitedeki WooCommerce veritabanından hem de masaüstündeki yerel
  *  listeden kaldırılır. Silme kalıcıdır (force=true): WooCommerce'in varsayılan
@@ -2366,7 +2367,7 @@ async function urunSil(id, buton) {
   if (!urun) return;
 
   const eminMi = await onayla(
-    '🗑️ Ürünü Sil',
+    'Ürünü Sil',
     'Bu ürünü silmek istediğinize emin misiniz?\n\n' +
     '"' + urun.ad + '"  ·  Stok Kodu: ' + urun.kod + '\n\n' +
     (ekDemoMu()
@@ -2408,7 +2409,7 @@ async function urunSil(id, buton) {
 
     urunleriCiz(ekDemoMu() ? ekAramaMetni() : '');
 
-    bildir('🗑️ Ürün silindi.\n' + urun.ad +
+    bildir('Ürün silindi.\n' + urun.ad +
            (ekDemoMu()
              ? '\n(Demo Modu — sitenizde değişiklik yapılmadı)'
              : '\nSitenizden de tamamen kaldırıldı.'), 'basari');
@@ -2421,7 +2422,7 @@ async function urunSil(id, buton) {
 }
 
 /* ==========================================================================
- *  BÖLÜM F — 🚫 SİPARİŞ İPTALİ (GEREKÇELİ)
+ *  BÖLÜM F — SİPARİŞ İPTALİ (GEREKÇELİ)
  *  ---------------------------------------------------------------------------
  *  Sipariş SİLİNMEZ; durumu "cancelled" (Sipariş İptal Edildi) yapılır.
  *  Sebep: siparişin veritabanından silinmesi muhasebe/stok geçmişini de
@@ -2505,7 +2506,7 @@ function iptalSebebiSor(s) {
      onay akışına düşülür; özellik kaybolur ama iptal yine de yapılabilir. */
   if (!katman || !metin || !onayBtn || !vazgecBtn) {
     return onayla(
-      '🚫 Siparişi İptal Et',
+      'Siparişi İptal Et',
       'Bu siparişi iptal etmek istediğinize emin misiniz?',
       'EVET, İPTAL ET',
       true
@@ -2698,11 +2699,11 @@ async function siparisIptalEt(id, buton) {
 
     siparisleriCiz();
 
-    bildir('🚫 #' + s.numara + ' iptal edildi.\nGerekçe: ' + sebep +
+    bildir('#' + s.numara + ' iptal edildi.\nGerekçe: ' + sebep +
            (ekDemoMu()
              ? '\n(Demo Modu — sitenizde değişiklik yapılmadı)'
              : '\nGerekçe sipariş notuna işlendi.' +
-               (bilgilendir ? '\n📧 Müşteriye bilgilendirme gönderildi.' : '')), 'basari');
+               (bilgilendir ? '\nMüşteriye bilgilendirme gönderildi.' : '')), 'basari');
   } catch (e) {
     bildir('Sipariş iptal edilirken beklenmeyen bir hata oluştu:\n' +
            String((e && e.message) || e), 'hata');
@@ -2711,7 +2712,7 @@ async function siparisIptalEt(id, buton) {
   }
 }
 /* ==========================================================================
- *  BÖLÜM F2 — 🗑️ SİPARİŞ KALICI SİLME
+ *  BÖLÜM F2 — SİPARİŞ KALICI SİLME
  *  ---------------------------------------------------------------------------
  *  Düğme (renderer.js) yalnızca "İptal Edilenler" sekmesindeki siparişlerde
  *  görünür. Sipariş, ürün silmeyle aynı desende (bkz. urunSil) WooCommerce
@@ -2733,7 +2734,7 @@ async function siparisSil(id, buton) {
   }
 
   const eminMi = await onayla(
-    '🗑️ Siparişi Kalıcı Sil',
+    'Siparişi Kalıcı Sil',
     'Bu siparişi sitenizden KALICI olarak silmek istediğinize emin misiniz?\n\n' +
     '#' + s.numara + '  ·  ' + (s.firma || s.musteri) + '  ·  ' + para(s.tutar) + '\n\n' +
     (ekDemoMu()
@@ -2777,7 +2778,7 @@ async function siparisSil(id, buton) {
     if (typeof siparisleriCiz === 'function') siparisleriCiz();
     if (typeof siparisSekmeleriCiz === 'function') siparisSekmeleriCiz();
 
-    bildir('🗑️ Sipariş kalıcı olarak silindi.\n#' + s.numara +
+    bildir('Sipariş kalıcı olarak silindi.\n#' + s.numara +
            (ekDemoMu()
              ? '\n(Demo Modu — sitenizde değişiklik yapılmadı)'
              : '\nSitenizden de tamamen kaldırıldı.'), 'basari');
@@ -2790,7 +2791,7 @@ async function siparisSil(id, buton) {
 }
 
 /* ==========================================================================
- *  BÖLÜM G — 🗑️ BAYİ (MÜŞTERİ) KALICI SİLME
+ *  BÖLÜM G — BAYİ (MÜŞTERİ) KALICI SİLME
  *  ---------------------------------------------------------------------------
  *  Bayi kartındaki durumdan (bekliyor/onaylı/reddedilmiş/askıda) bağımsız
  *  olarak her zaman görünür: müşteri hesabı WooCommerce çekirdek ucundan
@@ -2808,7 +2809,7 @@ async function uyeSil(id, buton) {
   if (!u) return;
 
   const eminMi = await onayla(
-    '🗑️ Müşteriyi Kalıcı Sil',
+    'Müşteriyi Kalıcı Sil',
     'Bu müşteriyi/bayiyi sitenizden KALICI olarak silmek istediğinize emin misiniz?\n\n' +
     (u.firma || u.ad) + (u.eposta ? '  ·  ' + u.eposta : '') + '\n\n' +
     (ekDemoMu()
@@ -2856,7 +2857,7 @@ async function uyeSil(id, buton) {
 
     if (typeof uyeleriCiz === 'function') uyeleriCiz();
 
-    bildir('🗑️ Müşteri kalıcı olarak silindi.\n' + (u.firma || u.ad) +
+    bildir('Müşteri kalıcı olarak silindi.\n' + (u.firma || u.ad) +
            (ekDemoMu()
              ? '\n(Demo Modu — sitenizde değişiklik yapılmadı)'
              : '\nSitenizden de tamamen kaldırıldı.'), 'basari');
@@ -2869,7 +2870,7 @@ async function uyeSil(id, buton) {
 }
 
 /* ==========================================================================
- *  BÖLÜM G2 — 🖼️ WEB VİTRİNİ (kampanyalı ürünler + banner/slider)
+ *  BÖLÜM G2 — WEB VİTRİNİ (kampanyalı ürünler + banner/slider)
  *  ---------------------------------------------------------------------------
  *  Veri b2b-core'un theme-config uçlarına (GET/POST /wc-b2b/v1/theme-config)
  *  "showcase" anahtarı altında kaydedilir. Eklentide bu alan için özel bir uç
@@ -2912,7 +2913,7 @@ async function vitrinSekmesiYukle(zorla) {
   if (d.vitrin.yuklendi && !zorla) return;
 
   d.vitrin.yukleniyor = true;
-  vitrinDurumYaz('bilgi', '⏳ Vitrin verileri getiriliyor…', '');
+  vitrinDurumYaz('bilgi', 'Vitrin verileri getiriliyor…', '');
 
   /* Ürün seçici arama kutusu için ürün listesi lazım. */
   if ((!d.urunler || !d.urunler.length) && typeof urunleriYukle === 'function') {
@@ -2934,7 +2935,7 @@ async function vitrinSekmesiYukle(zorla) {
       d.vitrin.yuklendi = true;
       vitrinUrunListesiCiz();
       vitrinBannerListesiCiz();
-      vitrinDurumYaz('uyari', '🎭 Demo Modu',
+      vitrinDurumYaz('uyari', 'Demo Modu',
         'Örnek vitrin verisi gösteriliyor. Bu ekrandaki değişiklikler sitenize gönderilmez.');
       return;
     }
@@ -2944,7 +2945,7 @@ async function vitrinSekmesiYukle(zorla) {
       d.vitrin.yuklendi = true;
       vitrinUrunListesiCiz();
       vitrinBannerListesiCiz();
-      vitrinDurumYaz('hata', '❌ B2B Core eklentisi bulunamadı', EK_EKLENTI_YOK_MESAJI);
+      vitrinDurumYaz('hata', 'B2B Core eklentisi bulunamadı', EK_EKLENTI_YOK_MESAJI);
       return;
     }
 
@@ -2954,7 +2955,7 @@ async function vitrinSekmesiYukle(zorla) {
       d.vitrin.yuklendi = true;
       vitrinUrunListesiCiz();
       vitrinBannerListesiCiz();
-      vitrinDurumYaz('hata', '❌ Vitrin verileri alınamadı', ekHataMetni(cevap));
+      vitrinDurumYaz('hata', 'Vitrin verileri alınamadı', ekHataMetni(cevap));
       return;
     }
 
@@ -3001,10 +3002,10 @@ async function vitrinSekmesiYukle(zorla) {
     d.vitrin.yuklendi = true;
     vitrinUrunListesiCiz();
     vitrinBannerListesiCiz();
-    vitrinDurumYaz('basari', '✅ Vitrin verileri yüklendi',
+    vitrinDurumYaz('basari', 'Vitrin verileri yüklendi',
       d.vitrin.featured.length + ' öne çıkan ürün, ' + d.vitrin.banners.length + ' banner bulundu.');
   } catch (e) {
-    vitrinDurumYaz('hata', '❌ Beklenmeyen hata', String((e && e.message) || e));
+    vitrinDurumYaz('hata', 'Beklenmeyen hata', String((e && e.message) || e));
   } finally {
     d.vitrin.yukleniyor = false;
   }
@@ -3037,10 +3038,10 @@ function vitrinUrunListesiCiz() {
         '<div class="text-sm text-slate-500 dark:text-slate-400 truncate">Kod: ' + kacis(u.kod || '—') + '</div>' +
       '</div>' +
       '<div class="flex items-center gap-1 shrink-0">' +
-        vitrinSiraDugmesiHtml('vitrin-urun-yukari', '▲', i === 0) +
-        vitrinSiraDugmesiHtml('vitrin-urun-asagi', '▼', sonMu) +
+        vitrinSiraDugmesiHtml('vitrin-urun-yukari', ikon('yukariOk', 'ik-sm'), i === 0) +
+        vitrinSiraDugmesiHtml('vitrin-urun-asagi', ikon('asagiOk', 'ik-sm'), sonMu) +
         '<button data-eylem="vitrin-urun-cikar" title="Vitrinden çıkar" ' +
-                'class="w-9 h-9 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black transition">✕</button>' +
+                'class="w-9 h-9 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black transition">' + ikon('carpi', 'ik-sm') + '</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -3144,7 +3145,7 @@ function vitrinBannerListesiCiz() {
 
   if (!d.vitrin.banners.length) {
     kap.innerHTML = '<div class="text-base text-slate-400 dark:text-slate-500 italic py-4 text-center">' +
-      'Henüz banner eklenmedi. "➕ BANNER EKLE" ile görsel yükleyin.</div>';
+      'Henüz banner eklenmedi. "BANNER EKLE" ile görsel yükleyin.</div>';
     return;
   }
 
@@ -3163,10 +3164,10 @@ function vitrinBannerListesiCiz() {
                       'border-2 border-slate-300 dark:border-slate-600 outline-none focus:border-marka-600" />' +
       '</div>' +
       '<div class="flex flex-col gap-1 shrink-0">' +
-        vitrinSiraDugmesiHtml('banner-yukari', '▲', i === 0) +
-        vitrinSiraDugmesiHtml('banner-asagi', '▼', sonMu) +
+        vitrinSiraDugmesiHtml('banner-yukari', ikon('yukariOk', 'ik-sm'), i === 0) +
+        vitrinSiraDugmesiHtml('banner-asagi', ikon('asagiOk', 'ik-sm'), sonMu) +
         '<button data-eylem="banner-sil" title="Kaldır" ' +
-                'class="w-9 h-9 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black transition">✕</button>' +
+                'class="w-9 h-9 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black transition">' + ikon('carpi', 'ik-sm') + '</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -3259,7 +3260,7 @@ async function vitrinGonder() {
   if (!d) return;
 
   if (ekDemoMu()) {
-    bildir('🎭 Demo Modu: vitrin sitenize gönderilmez.', 'uyari');
+    bildir('Demo Modu: vitrin sitenize gönderilmez.', 'uyari');
     return;
   }
   if (!ekEklentiVarMi()) {
@@ -3272,16 +3273,16 @@ async function vitrinGonder() {
   const favicon = String(ayarlar.yerelFavicon || '').trim();
 
   const eminMi = await onayla(
-    '🚀 Vitrini Web Sitesine Gönder',
+    'Vitrini Web Sitesine Gönder',
     d.vitrin.featured.length + ' öne çıkan ürün ve ' + d.vitrin.banners.length + ' banner ' +
     'sitenizin yapılandırmasına kaydedilecek.' +
     ((logo || favicon)
       ? '\n\nMarka görselleri de gönderilecek: ' +
-        [logo ? '🖼️ logo' : '', favicon ? '🔖 favicon' : ''].filter(Boolean).join(' + ') + '.'
+        [logo ? 'logo' : '', favicon ? 'favicon' : ''].filter(Boolean).join(' + ') + '.'
       : '') +
     '\n\nBu verinin ana sayfada GÖRÜNMESİ, sitenizin temasının bu alanları\n' +
     'okuyacak şekilde güncellenmiş olmasına bağlıdır.',
-    '🚀 EVET, GÖNDER',
+    'EVET, GÖNDER',
     false
   );
   if (!eminMi) return;
@@ -3331,17 +3332,17 @@ async function vitrinGonder() {
     const cevap = await b2b('theme-config', { metod: 'POST', govde: govde, sureAsimi: 30000 });
 
     if (!cevap || !cevap.ok) {
-      vitrinDurumYaz('hata', '❌ Gönderilemedi', ekHataMetni(cevap));
+      vitrinDurumYaz('hata', 'Gönderilemedi', ekHataMetni(cevap));
       bildir('Vitrin gönderilemedi:\n' + ekHataMetni(cevap), 'hata');
       return;
     }
 
-    vitrinDurumYaz('basari', '✅ Gönderildi',
+    vitrinDurumYaz('basari', 'Gönderildi',
       'Vitrin verisi sitenizin yapılandırmasına kaydedildi.' +
       ((logo || favicon) ? '\nMarka görselleri de gönderildi.' : ''));
-    bildir('🚀 Vitrin sitenize gönderildi.', 'basari');
+    bildir('Vitrin sitenize gönderildi.', 'basari');
   } catch (e) {
-    vitrinDurumYaz('hata', '❌ Beklenmeyen hata', String((e && e.message) || e));
+    vitrinDurumYaz('hata', 'Beklenmeyen hata', String((e && e.message) || e));
   } finally {
     geriAl();
   }
@@ -3608,7 +3609,7 @@ function ekOlaylariBagla() {
       }
 
       duzenleUyar('');
-      duzenleGorselDurumYaz('🔗 Kaydettiğinizde ürün görseli bu bağlantıdan alınacak.',
+      duzenleGorselDurumYaz('Kaydettiğinizde ürün görseli bu bağlantıdan alınacak.',
                             'text-marka-700 dark:text-marka-300');
     });
   }

@@ -65,17 +65,23 @@ function bekle(ms) {
   return new Promise(function (c) { setTimeout(c, ms); });
 }
 
-/** İnternet gerekmeyen renkli ürün görseli üretir (emoji + arka plan). */
-function svgGorsel(emoji, renk) {
+/**
+ * İnternet gerekmeyen yer tutucu ürün görseli üretir.
+ * Renkli emoji yerine tek renkli bir koli çizimi basar: kurumsal arayüzde
+ * ürün listesi, emoji kalabalığı yerine sakin bir gri yüzeyle açılır.
+ */
+function svgGorsel() {
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">' +
-    '<rect width="160" height="160" rx="24" fill="' + renk + '"/>' +
-    '<text x="80" y="108" font-size="74" text-anchor="middle">' + emoji + '</text>' +
-    '</svg>';
+    '<rect width="160" height="160" rx="8" fill="#f1f5f9"/>' +
+    '<g fill="none" stroke="#94a3b8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M118 58 80 80 42 58"/><path d="M80 80v46"/>' +
+    '<path d="M120 104V56a7 7 0 0 0-3.6-6.1l-33-18.3a7 7 0 0 0-6.8 0l-33 18.3A7 7 0 0 0 40 56v48a7 7 0 0 0 3.6 6.1l33 18.3a7 7 0 0 0 6.8 0l33-18.3A7 7 0 0 0 120 104Z"/>' +
+    '</g></svg>';
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 
-const YEDEK_GORSEL = svgGorsel('📦', '#e2e8f0');
+const YEDEK_GORSEL = svgGorsel();
 
 /** Sağ altta büyük puntolu bildirim gösterir. */
 function bildir(mesaj, tur) {
@@ -85,14 +91,14 @@ function bildir(mesaj, tur) {
     uyari: 'bg-amber-500 border-amber-600',
     bilgi: 'bg-slate-800 border-slate-900'
   };
-  const simgeler = { basari: '✅', hata: '❌', uyari: '⚠️', bilgi: 'ℹ️' };
+  const simgeler = { basari: ikon('onay'), hata: ikon('carpi'), uyari: ikon('uyari'), bilgi: ikon('bilgi') };
   const t = tur || 'bilgi';
 
   const kutu = document.createElement('div');
   kutu.className =
     'bildirim-giris pointer-events-auto max-w-lg rounded-2xl border-2 shadow-2xl px-6 py-5 ' +
     'text-white text-lg font-bold whitespace-pre-line ' + (renkler[t] || renkler.bilgi);
-  kutu.innerHTML = '<span class="text-2xl mr-2">' + simgeler[t] + '</span>' + kacis(mesaj);
+  kutu.innerHTML = '<span class="bildirim-ikon">' + simgeler[t] + '</span>' + kacis(mesaj);
   $('#bildirimAlani').appendChild(kutu);
 
   const sure = t === 'hata' ? 8000 : 3800;
@@ -199,7 +205,7 @@ function durumPenceresi(secenek) {
 
     $('#kargoModalBaslik').textContent = secenek.baslik || 'Durumu Güncelle';
     $('#kargoModalAciklama').textContent = secenek.aciklama || '';
-    onayBtn.textContent = secenek.onayMetni || '✅ DURUMU GÜNCELLE';
+    onayBtn.textContent = secenek.onayMetni || 'DURUMU GÜNCELLE';
 
     $('#kargoFirma').value = secenek.carrier || '';
     $('#kargoTakip').value = secenek.tracking || '';
@@ -246,7 +252,7 @@ function yukleniyorHtml(mesaj) {
   return (
     '<div class="bg-white dark:bg-slate-800 rounded-2xl p-10 border-2 border-slate-200 dark:border-slate-700 ' +
     'text-center text-xl font-bold text-slate-500 dark:text-slate-400">' +
-    '<span class="donuyor text-3xl mr-2">⏳</span>' + kacis(mesaj || 'Yükleniyor…') +
+    '<span class="donuyor mr-2">' + ikon('donen') + '</span>' + kacis(mesaj || 'Yükleniyor…') +
     '</div>'
   );
 }
@@ -268,7 +274,7 @@ function butonuMesgulEt(buton, mesaj) {
   const eskiMetin = buton.innerHTML;
   const eskiSinif = buton.className;
   buton.disabled = true;
-  buton.innerHTML = '<span class="donuyor">⏳</span> ' + (mesaj || 'İŞLENİYOR…');
+  buton.innerHTML = '<span class="donuyor">' + ikon('donen') + '</span> ' + (mesaj || 'İŞLENİYOR…');
   return function () {
     buton.disabled = false;
     buton.innerHTML = eskiMetin;
@@ -281,21 +287,21 @@ function butonuMesgulEt(buton, mesaj) {
  * ========================================================================*/
 
 const DEMO_URUNLER = [
-  { id: 901, ad: 'Bosch GSB 13 RE Darbeli Matkap 600W',        kod: 'BSH-GSB13RE',    fiyat: 2450.00, stok: 42,  durum: 'publish', gorsel: svgGorsel('🛠️', '#dbeafe') },
-  { id: 902, ad: 'Makita HP1630 Darbeli Matkap 710W',           kod: 'MKT-HP1630',     fiyat: 2890.00, stok: 18,  durum: 'publish', gorsel: svgGorsel('🔩', '#dcfce7') },
-  { id: 903, ad: 'İzeltaş Kargaburun Pense 180 mm',             kod: 'IZL-KRG180',     fiyat: 385.50,  stok: 156, durum: 'publish', gorsel: svgGorsel('🔧', '#fef3c7') },
-  { id: 904, ad: 'Stanley Şerit Metre 5 m x 25 mm',             kod: 'STN-SM5',        fiyat: 289.90,  stok: 240, durum: 'publish', gorsel: svgGorsel('📏', '#fae8ff') },
-  { id: 905, ad: 'Çelik Vida 4x40 mm (1000 Adet Kutu)',         kod: 'VDA-4X40-1000',  fiyat: 720.00,  stok: 85,  durum: 'publish', gorsel: svgGorsel('🔩', '#e0e7ff') },
-  { id: 906, ad: 'Plastik Dübel 8 mm (500 Adet Poşet)',         kod: 'DBL-8-500',      fiyat: 195.00,  stok: 320, durum: 'publish', gorsel: svgGorsel('🧷', '#ffe4e6') },
-  { id: 907, ad: 'Akfix 100E Şeffaf Silikon 310 ml',            kod: 'AKF-100E',       fiyat: 118.75,  stok: 480, durum: 'publish', gorsel: svgGorsel('🧴', '#cffafe') },
-  { id: 908, ad: 'Profesyonel Silikon Tabancası',               kod: 'SLK-TBC-PRO',    fiyat: 265.00,  stok: 64,  durum: 'publish', gorsel: svgGorsel('🔫', '#fee2e2') },
-  { id: 909, ad: 'Kale Çelik Kapı Kilidi 3 Anahtarlı',          kod: 'KLK-CK3',        fiyat: 1150.00, stok: 27,  durum: 'publish', gorsel: svgGorsel('🔐', '#e2e8f0') },
-  { id: 910, ad: 'NYA Elektrik Kablosu 2.5 mm (100 m Makara)',  kod: 'KBL-NYA25-100',  fiyat: 3240.00, stok: 12,  durum: 'publish', gorsel: svgGorsel('🔌', '#fef9c3') },
-  { id: 911, ad: 'LED Ampul E27 12W Beyaz (10\'lu Paket)',      kod: 'LED-E27-12-10',  fiyat: 340.00,  stok: 190, durum: 'publish', gorsel: svgGorsel('💡', '#fef08a') },
-  { id: 912, ad: 'Tork Anahtarı Seti 8 Parça 1/2"',             kod: 'TRK-SET8',       fiyat: 1875.00, stok: 9,   durum: 'publish', gorsel: svgGorsel('⚙️', '#d1fae5') },
-  { id: 913, ad: 'Alüminyum Merdiven 8 Basamaklı',              kod: 'MRD-ALM8',       fiyat: 2130.00, stok: 15,  durum: 'publish', gorsel: svgGorsel('🪜', '#e0f2fe') },
-  { id: 914, ad: 'İş Eldiveni Nitril Kaplı (12 Çift)',          kod: 'ELD-NTR-12',     fiyat: 410.00,  stok: 275, durum: 'publish', gorsel: svgGorsel('🧤', '#ede9fe') },
-  { id: 915, ad: 'Sezonluk Bahçe Hortumu 20 m',                 kod: 'BHC-HRT20',      fiyat: 890.00,  stok: 0,   durum: 'draft',   gorsel: svgGorsel('🚿', '#dcfce7') }
+  { id: 901, ad: 'Bosch GSB 13 RE Darbeli Matkap 600W',        kod: 'BSH-GSB13RE',    fiyat: 2450.00, stok: 42,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 902, ad: 'Makita HP1630 Darbeli Matkap 710W',           kod: 'MKT-HP1630',     fiyat: 2890.00, stok: 18,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 903, ad: 'İzeltaş Kargaburun Pense 180 mm',             kod: 'IZL-KRG180',     fiyat: 385.50,  stok: 156, durum: 'publish', gorsel: svgGorsel() },
+  { id: 904, ad: 'Stanley Şerit Metre 5 m x 25 mm',             kod: 'STN-SM5',        fiyat: 289.90,  stok: 240, durum: 'publish', gorsel: svgGorsel() },
+  { id: 905, ad: 'Çelik Vida 4x40 mm (1000 Adet Kutu)',         kod: 'VDA-4X40-1000',  fiyat: 720.00,  stok: 85,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 906, ad: 'Plastik Dübel 8 mm (500 Adet Poşet)',         kod: 'DBL-8-500',      fiyat: 195.00,  stok: 320, durum: 'publish', gorsel: svgGorsel() },
+  { id: 907, ad: 'Akfix 100E Şeffaf Silikon 310 ml',            kod: 'AKF-100E',       fiyat: 118.75,  stok: 480, durum: 'publish', gorsel: svgGorsel() },
+  { id: 908, ad: 'Profesyonel Silikon Tabancası',               kod: 'SLK-TBC-PRO',    fiyat: 265.00,  stok: 64,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 909, ad: 'Kale Çelik Kapı Kilidi 3 Anahtarlı',          kod: 'KLK-CK3',        fiyat: 1150.00, stok: 27,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 910, ad: 'NYA Elektrik Kablosu 2.5 mm (100 m Makara)',  kod: 'KBL-NYA25-100',  fiyat: 3240.00, stok: 12,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 911, ad: 'LED Ampul E27 12W Beyaz (10\'lu Paket)',      kod: 'LED-E27-12-10',  fiyat: 340.00,  stok: 190, durum: 'publish', gorsel: svgGorsel() },
+  { id: 912, ad: 'Tork Anahtarı Seti 8 Parça 1/2"',             kod: 'TRK-SET8',       fiyat: 1875.00, stok: 9,   durum: 'publish', gorsel: svgGorsel() },
+  { id: 913, ad: 'Alüminyum Merdiven 8 Basamaklı',              kod: 'MRD-ALM8',       fiyat: 2130.00, stok: 15,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 914, ad: 'İş Eldiveni Nitril Kaplı (12 Çift)',          kod: 'ELD-NTR-12',     fiyat: 410.00,  stok: 275, durum: 'publish', gorsel: svgGorsel() },
+  { id: 915, ad: 'Sezonluk Bahçe Hortumu 20 m',                 kod: 'BHC-HRT20',      fiyat: 890.00,  stok: 0,   durum: 'draft',   gorsel: svgGorsel() }
 ];
 
 /* Demo kalemlerine benzersiz kimlik verir. Gerçek siparişlerde bu değer
@@ -630,7 +636,7 @@ function durumBilgisi(kod) {
 const SIPARIS_SEKMELERI = [
   {
     kod: 'active',
-    simge: '📦',
+    simge: ikon('paket'),
     etiket: 'Aktif Siparişler',
     aciklama: 'Henüz kargolanmamış tüm siparişler',
     durumlar: ['pending', 'on-hold', 'processing', 'order-ready', 'b2b-received', 'b2b-preparing', 'b2b-ready'],
@@ -639,7 +645,7 @@ const SIPARIS_SEKMELERI = [
   },
   {
     kod: 'shipped',
-    simge: '🚚',
+    simge: ikon('kamyon'),
     etiket: 'Kargodakiler',
     aciklama: 'Kargoya / ambara verilmiş siparişler',
     durumlar: ['shipped', 'b2b-shipped'],
@@ -647,7 +653,7 @@ const SIPARIS_SEKMELERI = [
   },
   {
     kod: 'delivered',
-    simge: '🏁',
+    simge: ikon('bayrak'),
     etiket: 'Teslim Edilenler',
     aciklama: 'Bayinin teslim aldığını bildirdiği siparişler',
     durumlar: ['delivered', 'completed'],
@@ -662,7 +668,7 @@ const SIPARIS_SEKMELERI = [
        (active/shipped/delivered) tanır; bu sekme için doğrudan `status`
        gönderilir. */
     kod: 'cancelled',
-    simge: '🚫',
+    simge: ikon('yasak'),
     etiket: 'İptal Edilenler',
     aciklama: 'İptal edilmiş siparişler — buradan kalıcı olarak silinebilir',
     durumlar: ['cancelled'],
@@ -678,17 +684,17 @@ function sekmeTanimi(kod) {
 /** Sipariş kartındaki tek-tık durum butonları. `yedek`, eklenti yoksa kullanılır. */
 const DURUM_DUGMELERI = [
   {
-    kod: 'order-ready', yedek: 'processing', simge: '✅', etiket: 'SİPARİŞ HAZIR',
+    kod: 'order-ready', yedek: 'processing', simge: ikon('onay'), etiket: 'SİPARİŞ HAZIR',
     renk: 'bg-purple-600 hover:bg-purple-700', kargoSor: false,
     aciklama: 'Sipariş hazırlandı, sevkiyat bekliyor.'
   },
   {
-    kod: 'shipped', yedek: 'completed', simge: '🚚', etiket: 'KARGOYA VERİLDİ',
+    kod: 'shipped', yedek: 'completed', simge: ikon('kamyon'), etiket: 'KARGOYA VERİLDİ',
     renk: 'bg-sky-600 hover:bg-sky-700', kargoSor: true,
     aciklama: 'Sipariş kargoya veya ambara teslim edildi.'
   },
   {
-    kod: 'delivered', yedek: 'completed', simge: '🏁', etiket: 'TESLİM EDİLDİ',
+    kod: 'delivered', yedek: 'completed', simge: ikon('bayrak'), etiket: 'TESLİM EDİLDİ',
     renk: 'bg-emerald-600 hover:bg-emerald-700', kargoSor: false,
     aciklama: 'Sipariş bayiye teslim edildi.'
   }
@@ -696,19 +702,19 @@ const DURUM_DUGMELERI = [
 
 /** Sipariş listesi üstündeki durum süzgeci düğmeleri (sekme içinde daraltma). */
 const SIPARIS_SUZGECLERI_B2B = [
-  { kod: '', simge: '📋', etiket: 'Tümü' },
-  { kod: 'processing', simge: '🆕', etiket: 'Alındı / Hazırlanıyor' },
-  { kod: 'order-ready', simge: '✅', etiket: 'Sipariş Hazır' },
-  { kod: 'shipped', simge: '🚚', etiket: 'Kargoda' },
-  { kod: 'delivered', simge: '🏁', etiket: 'Teslim Edildi' }
+  { kod: '', simge: ikon('liste'), etiket: 'Tümü' },
+  { kod: 'processing', simge: ikon('yeniKayit'), etiket: 'Alındı / Hazırlanıyor' },
+  { kod: 'order-ready', simge: ikon('onay'), etiket: 'Sipariş Hazır' },
+  { kod: 'shipped', simge: ikon('kamyon'), etiket: 'Kargoda' },
+  { kod: 'delivered', simge: ikon('bayrak'), etiket: 'Teslim Edildi' }
 ];
 
 const SIPARIS_SUZGECLERI_WOO = [
-  { kod: '', simge: '📋', etiket: 'Tümü' },
-  { kod: 'pending', simge: '🆕', etiket: 'Ödeme Bekliyor' },
-  { kod: 'processing', simge: '🔨', etiket: 'Hazırlanıyor' },
-  { kod: 'on-hold', simge: '⏸️', etiket: 'Beklemede' },
-  { kod: 'completed', simge: '🏁', etiket: 'Tamamlandı' }
+  { kod: '', simge: ikon('liste'), etiket: 'Tümü' },
+  { kod: 'pending', simge: ikon('yeniKayit'), etiket: 'Ödeme Bekliyor' },
+  { kod: 'processing', simge: ikon('ayar'), etiket: 'Hazırlanıyor' },
+  { kod: 'on-hold', simge: ikon('durakla'), etiket: 'Beklemede' },
+  { kod: 'completed', simge: ikon('bayrak'), etiket: 'Tamamlandı' }
 ];
 
 /* ==========================================================================
@@ -726,17 +732,17 @@ const SIPARIS_SUZGECLERI_WOO = [
 
 const TESLIM_DURUMLARI = {
   delivered: {
-    etiket: 'Teslim Alındı', simge: '✅',
+    etiket: 'Teslim Alındı', simge: ikon('onay'),
     sinif: 'bg-emerald-100 text-emerald-800 border-emerald-300 ' +
            'dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
   },
   not_delivered: {
-    etiket: 'Teslim Edilemedi', simge: '⛔',
+    etiket: 'Teslim Edilemedi', simge: ikon('yasak'),
     sinif: 'bg-red-100 text-red-800 border-red-300 ' +
            'dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30'
   },
   bekliyor: {
-    etiket: 'Onay Bekliyor', simge: '⏳',
+    etiket: 'Onay Bekliyor', simge: ikon('saat'),
     sinif: 'bg-slate-200 text-slate-700 border-slate-300 ' +
            'dark:bg-slate-600/30 dark:text-slate-200 dark:border-slate-500/40'
   }
@@ -778,10 +784,10 @@ function teslimRozetiHtml(s) {
 
 /** Sipariş listesi üstündeki teslim durumu süzgeci. */
 const TESLIM_SUZGECLERI = [
-  { kod: '', simge: '🚚', etiket: 'Teslim: Tümü' },
-  { kod: 'bekliyor', simge: '⏳', etiket: 'Onay Bekliyor' },
-  { kod: 'delivered', simge: '✅', etiket: 'Teslim Alındı' },
-  { kod: 'not_delivered', simge: '⛔', etiket: 'Teslim Edilemedi' }
+  { kod: '', simge: ikon('kamyon'), etiket: 'Teslim: Tümü' },
+  { kod: 'bekliyor', simge: ikon('saat'), etiket: 'Onay Bekliyor' },
+  { kod: 'delivered', simge: ikon('onay'), etiket: 'Teslim Alındı' },
+  { kod: 'not_delivered', simge: ikon('yasak'), etiket: 'Teslim Edilemedi' }
 ];
 
 /* ==========================================================================
@@ -805,12 +811,12 @@ const TESLIM_SUZGECLERI = [
 
 const ALICI_TIPLERI = {
   individual: {
-    kod: 'individual', etiket: 'MÜŞTERİ', simge: '👤',
+    kod: 'individual', etiket: 'MÜŞTERİ', simge: ikon('kisi'),
     sinif: 'bg-sky-100 text-sky-800 border-sky-400 ' +
            'dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/40'
   },
   corporate: {
-    kod: 'corporate', etiket: 'BAYİ', simge: '🏢',
+    kod: 'corporate', etiket: 'BAYİ', simge: ikon('bina'),
     sinif: 'bg-emerald-100 text-emerald-800 border-emerald-400 ' +
            'dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40'
   }
@@ -894,7 +900,7 @@ function posRozetiHtml(s) {
          'class="inline-block mt-1 px-3 py-1 rounded-lg border-2 text-base font-bold whitespace-nowrap ' +
          'bg-emerald-100 text-emerald-800 border-emerald-400 ' +
          'dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40">' +
-         '💳 [POS Onaylı]' + (kod ? ' · ' + kacis(kod) : '') + '</span>';
+         ikon('kart') + ' [POS Onaylı]' + (kod ? ' · ' + kacis(kod) : '') + '</span>';
 }
 
 /**
@@ -959,7 +965,7 @@ function bayiIskontoHtml(u) {
     '</button>' +
 
     '<div class="min-w-0">' +
-      '<div class="text-lg font-extrabold">🏷️ Özel İskonto</div>' +
+      '<div class="text-lg font-extrabold">' + ikon('yuzde') + ' Özel İskonto</div>' +
       '<div class="text-base font-semibold ' +
            (acik ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400') + '">' +
         (acik
@@ -984,7 +990,7 @@ function bayiIskontoHtml(u) {
 
     '<button data-eylem="iskonto-kaydet" data-id="' + u.id + '" ' +
             'class="h-12 px-6 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95 ' +
-                   'text-white text-lg font-extrabold shadow-md transition shrink-0">💾 KAYDET</button>' +
+                   'text-white text-lg font-extrabold shadow-md transition shrink-0">' + ikon('kaydet') + ' KAYDET</button>' +
 
     '<div data-iskonto-durum="' + u.id + '" class="w-full text-base font-bold"></div>' +
   '</div>';
@@ -1006,10 +1012,10 @@ function oranYaz(oran) {
  * karar bekleyen başvurular gelir; bekleyen sekmesi kırmızı sayaç taşır.
  */
 const UYE_SUZGECLERI = [
-  { kod: 'all', simge: '👥', etiket: 'Tüm Müşteriler' },
-  { kod: 'approved', simge: '✅', etiket: 'Onaylı Bayiler' },
-  { kod: 'pending', simge: '⏳', etiket: 'Onay Bekleyenler' },
-  { kod: 'rejected', simge: '❌', etiket: 'Reddedilen' }
+  { kod: 'all', simge: ikon('kullanicilar'), etiket: 'Tüm Müşteriler' },
+  { kod: 'approved', simge: ikon('onay'), etiket: 'Onaylı Bayiler' },
+  { kod: 'pending', simge: ikon('saat'), etiket: 'Onay Bekleyenler' },
+  { kod: 'rejected', simge: ikon('carpi'), etiket: 'Reddedilen' }
 ];
 
 /* ==========================================================================
@@ -1766,7 +1772,7 @@ function lisansGunSayisi() {
 
 /**
  * Üst çubuktaki firma simgesini günceller: sitedeki logo varsa öncelikli,
- * yoksa Ayarlar'dan yüklenen yerel logo, o da yoksa varsayılan 🔧 simgesi.
+ * yoksa Ayarlar'dan yüklenen yerel logo, o da yoksa varsayılan simgesi.
  */
 function firmaLogosunuUygula() {
   const kutu = $('#firmaLogoKutu');
@@ -1828,35 +1834,35 @@ function ustCubuguTazele() {
   const rozet = $('#lisansRozet');
   let metin, sinif;
   if (gun > 30) {
-    metin = '🟢 Aktif — Yıllık Bakım: ' + gun + ' Gün Kaldı';
+    metin = 'Aktif — Yıllık Bakım: ' + gun + ' Gün Kaldı';
     sinif = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30';
   } else if (gun > 0) {
-    metin = '🟠 Aktif — Yıllık Bakım: ' + gun + ' Gün Kaldı';
+    metin = 'Aktif — Yıllık Bakım: ' + gun + ' Gün Kaldı';
     sinif = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30';
   } else {
-    metin = '🔴 Bakım Süresi Doldu — Yenileyin';
+    metin = 'Bakım Süresi Doldu — Yenileyin';
     sinif = 'bg-red-50 text-red-800 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30';
   }
-  rozet.textContent = metin;
+  rozet.innerHTML = ikon('nokta', 'ik-nokta') + ' ' + kacis(metin);
   rozet.className = 'hidden sm:flex items-center gap-2 h-12 px-4 rounded-xl font-bold text-base border-2 ' + sinif;
 
   /* --- API bağlantı rozeti --- */
   const apiRozet = $('#apiRozet');
   let apiMetin, apiSinif;
   if (durum.ayarlar.demoModu) {
-    apiMetin = '🟡 DEMO MODU';
+    apiMetin = 'DEMO MODU';
     apiSinif = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30';
   } else if (durum.canliBaglantiTamam && durum.b2bVar) {
-    apiMetin = '🟢 CANLI — B2B Core Bağlı';
+    apiMetin = 'CANLI — B2B Core Bağlı';
     apiSinif = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30';
   } else if (durum.canliBaglantiTamam) {
-    apiMetin = '🟠 CANLI — Eklenti Yok (WooCommerce)';
+    apiMetin = 'CANLI — Eklenti Yok (WooCommerce)';
     apiSinif = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30';
   } else {
-    apiMetin = '🔴 CANLI — Bağlantı Yok';
+    apiMetin = 'CANLI — Bağlantı Yok';
     apiSinif = 'bg-red-50 text-red-800 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30';
   }
-  apiRozet.textContent = apiMetin;
+  apiRozet.innerHTML = ikon('nokta', 'ik-nokta') + ' ' + kacis(apiMetin);
   apiRozet.className = 'flex items-center gap-2 h-12 px-4 rounded-xl font-bold text-base border-2 ' + apiSinif;
 
   /* --- Ayarlar sekmesindeki lisans detayı --- */
@@ -1870,7 +1876,8 @@ function ustCubuguTazele() {
 
     detay.innerHTML =
       '<div class="flex justify-between border-b border-slate-200 dark:border-slate-700 py-2">' +
-        '<span class="font-bold">Durum</span><span>' + (gun > 0 ? '🟢 Aktif' : '🔴 Süresi Doldu') + '</span></div>' +
+        '<span class="font-bold">Durum</span><span>' + ikon('nokta', 'ik-nokta') + ' ' +
+        (gun > 0 ? 'Aktif' : 'Süresi Doldu') + '</span></div>' +
       '<div class="flex justify-between border-b border-slate-200 dark:border-slate-700 py-2">' +
         '<span class="font-bold">Bakım Bitiş Tarihi</span><span>' + kacis(tarihYaz(lisansBitisTarihi())) + '</span></div>' +
       '<div class="flex justify-between border-b border-slate-200 dark:border-slate-700 py-2">' +
@@ -1929,7 +1936,7 @@ function sekmeAc(ad) {
 }
 
 /* ==========================================================================
- *  BÖLÜM 7 — 📦 SİPARİŞLER (canlı kontrol + durum güncelleme)
+ *  BÖLÜM 7 — SİPARİŞLER (canlı kontrol + durum güncelleme)
  * ========================================================================*/
 
 /**
@@ -2022,7 +2029,7 @@ function teslimSuzgecleriCiz() {
 function sonKontrolTazele() {
   const kutu = $('#siparisSonKontrol');
   if (!kutu) return;
-  kutu.textContent = durum.sonKontrol ? '🕐 Son kontrol: ' + saatYaz(durum.sonKontrol) : '';
+  kutu.textContent = durum.sonKontrol ? 'Son kontrol: ' + saatYaz(durum.sonKontrol) : '';
 }
 
 /**
@@ -2157,7 +2164,7 @@ async function siparisleriYukle(sessizMi) {
      * süzülür: ilk sayfada dönen ve artık sekmeye ait olmayan siparişler
      * anında düşer.
      *
-     * ACIK YUKLEME (ilk açılış, 🔄 YENİLE, sekme/süzgeç değişimi) — TAM LISTE.
+     * ACIK YUKLEME (ilk açılış, YENİLE, sekme/süzgeç değişimi) — TAM LISTE.
      */
     if (sessizMi && durum.siparisler.length && !durum.siparisSuzgec) {
       const tekSayfa = await (alan === 'b2b' ? b2b : woo)('orders', {
@@ -2211,7 +2218,7 @@ async function siparisleriYukle(sessizMi) {
       sonKontrolTazele();
 
       if (yeniler.length && oncekiIdler.length) {
-        bildir('🔔 ' + yeniler.length + ' yeni sipariş geldi!\n' +
+        bildir(yeniler.length + ' yeni sipariş geldi!\n' +
                yeniler.slice(0, 3).map(function (s) { return '#' + s.numara + ' · ' + (s.firma || s.musteri); }).join('\n'),
                'basari');
       }
@@ -2242,7 +2249,7 @@ async function siparisleriYukle(sessizMi) {
       if (!sessizMi) {
         durum.siparisler = [];
         durum.siparislerToplam = 0;
-        kap.innerHTML = bosHtml('🔌', 'Siparişler alınamadı', cevap.hata);
+        kap.innerHTML = bosHtml(ikon('priz'), 'Siparişler alınamadı', cevap.hata);
         $('#ozetToplam').textContent = '—';
         $('#ozetBekleyen').textContent = '—';
         $('#ozetTutar').textContent = '—';
@@ -2269,7 +2276,7 @@ async function siparisleriYukle(sessizMi) {
         return oncekiIdler.indexOf(String(s.id)) === -1;
       });
       if (yeniler.length) {
-        bildir('🔔 ' + yeniler.length + ' yeni sipariş geldi!\n' +
+        bildir(yeniler.length + ' yeni sipariş geldi!\n' +
                yeniler.slice(0, 3).map(function (s) { return '#' + s.numara + ' · ' + (s.firma || s.musteri); }).join('\n'),
                'basari');
       }
@@ -2277,11 +2284,11 @@ async function siparisleriYukle(sessizMi) {
 
     /* Liste eksikse SESSIZCE geçilmez: özet kartlar yanıltıcı olurdu. */
     if (!sessizMi && cevap.eksik) {
-      bildir('⚠️ Siparişlerin tamamı getirilemedi.\n' +
+      bildir('Siparişlerin tamamı getirilemedi.\n' +
              durum.siparisler.length + ' / ' + durum.siparislerToplam + ' sipariş yüklendi: ' +
-             (cevap.hata || '') + '\n🔄 YENİLE ile tekrar deneyin.', 'uyari');
+             (cevap.hata || '') + '\nYENİLE ile tekrar deneyin.', 'uyari');
     } else if (!sessizMi && cevap.kesildi) {
-      bildir('ℹ️ En yeni ' + durum.siparisler.length + ' sipariş yüklendi.\n' +
+      bildir('En yeni ' + durum.siparisler.length + ' sipariş yüklendi.\n' +
              'Sitenizde toplam ' + durum.siparislerToplam + ' sipariş var; daha eskileri\n' +
              'listelenmedi. Aradığınız siparişi bulmak için durum süzgecini kullanın.', 'bilgi');
     }
@@ -2342,7 +2349,7 @@ function durumDugmesiHtml(s, tanim) {
          'title="' + kacis(ipucu) + '" ' +
          'class="h-14 px-5 rounded-2xl text-white text-lg font-extrabold shadow-md transition active:scale-95 ' +
          sinif +
-         '">' + tanim.simge + ' ' + kacis(tanim.etiket) + (aktifMi ? ' ✓' : '') + '</button>';
+         '">' + tanim.simge + ' ' + kacis(tanim.etiket) + (aktifMi ? ' ' + ikon('onay', 'ik-sm') : '') + '</button>';
 }
 
 function siparisleriCiz() {
@@ -2370,24 +2377,24 @@ function siparisleriCiz() {
   if (liste.length === 0) {
     if (durum.teslimSuzgec) {
       const teslimTanim = TESLIM_SUZGECLERI.filter(function (f) { return f.kod === durum.teslimSuzgec; })[0];
-      kap.innerHTML = bosHtml('🚚',
+      kap.innerHTML = bosHtml(ikon('kamyon'),
         'Bu teslim durumunda sipariş yok',
         'Süzgeç: ' + ((teslimTanim && teslimTanim.etiket) || durum.teslimSuzgec) + '\n' +
-        '"🚚 Teslim: Tümü" düğmesiyle bütün siparişleri görebilirsiniz.');
+        '"Teslim: Tümü" düğmesiyle bütün siparişleri görebilirsiniz.');
       return;
     }
 
     const sekme = sekmeTanimi(durum.siparisSekme);
 
     if (durum.siparisSuzgec) {
-      kap.innerHTML = bosHtml('📭', 'Bu durumda sipariş yok',
-        'Süzgeci "📋 Tümü" yaparak bu sekmedeki bütün siparişleri görebilirsiniz.');
+      kap.innerHTML = bosHtml(ikon('kutuBos'), 'Bu durumda sipariş yok',
+        'Süzgeci "Tümü" yaparak bu sekmedeki bütün siparişleri görebilirsiniz.');
       return;
     }
 
     const bosMetin = {
-      active: 'Hazırlanmayı bekleyen sipariş yok. 👏\nYeni sipariş geldiğinde burada listelenecek.',
-      shipped: 'Şu an yolda olan sipariş yok.\nBir siparişi "🚚 KARGOYA VERİLDİ" yaptığınızda buraya düşer.',
+      active: 'Hazırlanmayı bekleyen sipariş yok.\nYeni sipariş geldiğinde burada listelenecek.',
+      shipped: 'Şu an yolda olan sipariş yok.\nBir siparişi "KARGOYA VERİLDİ" yaptığınızda buraya düşer.',
       delivered: 'Henüz teslim edilmiş sipariş yok.\nBayi web sitesinden "Siparişi Teslim Aldım" dediğinde sipariş buraya geçer.'
     };
 
@@ -2403,7 +2410,7 @@ function siparisleriCiz() {
 
     const kargoBilgisi = (s.kargo || s.takip)
       ? '<div class="text-base font-bold text-sky-700 dark:text-sky-300 mt-1">' +
-          '🚚 ' + kacis(s.kargo || 'Kargo') + (s.takip ? ' · Takip: ' + kacis(s.takip) : '') +
+          ikon('kamyon') + ' ' + kacis(s.kargo || 'Kargo') + (s.takip ? ' · Takip: ' + kacis(s.takip) : '') +
         '</div>'
       : '';
 
@@ -2425,11 +2432,12 @@ function siparisleriCiz() {
             aliciRozetiHtml(s) +
             '<span class="min-w-0 text-xl font-extrabold truncate">' + kacis(s.firma || s.musteri) + '</span>' +
           '</div>' +
-          (s.firma ? '<div class="text-base font-semibold text-slate-500 dark:text-slate-400 truncate">👤 ' + kacis(s.musteri) + '</div>' : '') +
+          (s.firma ? '<div class="text-base font-semibold text-slate-500 dark:text-slate-400 truncate">' +
+             ikon('kisi') + ' ' + kacis(s.musteri) + '</div>' : '') +
           '<div class="text-base text-slate-500 dark:text-slate-400 mt-1">' +
-            '📅 ' + kacis(tarihYaz(s.tarih, true)) +
-            '  ·  📦 ' + s.kalemler.length + ' çeşit / ' + adetToplam + ' adet' +
-            (s.telefon ? '  ·  📞 ' + kacis(s.telefon) : '') +
+            ikon('takvim') + ' ' + kacis(tarihYaz(s.tarih, true)) +
+            '  ·  ' + ikon('paket') + ' ' + s.kalemler.length + ' çeşit / ' + adetToplam + ' adet' +
+            (s.telefon ? '  ·  ' + ikon('telefon') + ' ' + kacis(s.telefon) : '') +
           '</div>' +
           kargoBilgisi +
         '</div>' +
@@ -2458,7 +2466,7 @@ function siparisleriCiz() {
                     'title="Koliye fiilen konulan adetleri girin; tutar ve KDV yeniden hesaplanır." ' +
                     'class="h-14 px-5 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95 ' +
                            'text-white text-lg font-extrabold shadow-md transition">' +
-              '📝 SİPARİŞİ HAZIRLA &amp; REVİZE ET' +
+              ikon('kalem') + ' SİPARİŞİ HAZIRLA &amp; REVİZE ET' +
             '</button>'
           : '') +
 
@@ -2467,13 +2475,13 @@ function siparisleriCiz() {
         '<button data-eylem="fis" data-id="' + s.id + '" ' +
                 'class="h-14 px-5 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
                        'text-white text-lg font-extrabold shadow-md transition">' +
-          '🖨️ DEPO FİŞİ' +
+          ikon('yazici') + ' DEPO FİŞİ' +
         '</button>' +
 
         (s.bayiId
           ? '<button data-eylem="siparis-bayi" data-id="' + s.bayiId + '" ' +
                     'class="h-14 px-5 rounded-2xl bg-slate-700 hover:bg-slate-800 active:scale-95 ' +
-                           'text-white text-lg font-extrabold shadow-md transition">🏢 BAYİ KARTI</button>'
+                           'text-white text-lg font-extrabold shadow-md transition">' + ikon('bina') + ' BAYİ KARTI</button>'
           : '') +
 
         /* İptal: sipariş silinmez, "Sipariş İptal Edildi" durumuna alınır.
@@ -2484,7 +2492,7 @@ function siparisleriCiz() {
                     'class="h-14 px-5 rounded-2xl border-2 border-red-300 dark:border-red-500/40 ' +
                            'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 ' +
                            'hover:bg-red-100 dark:hover:bg-red-500/20 active:scale-95 ' +
-                           'text-lg font-extrabold shadow-sm transition">🚫 SİPARİŞİ İPTAL ET</button>'
+                           'text-lg font-extrabold shadow-sm transition">' + ikon('yasak') + ' SİPARİŞİ İPTAL ET</button>'
           : '') +
 
         /* Kalıcı silme — YALNIZCA iptal edilmiş siparişlerde görünür.
@@ -2495,14 +2503,14 @@ function siparisleriCiz() {
                     'title="Siparişi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
                     'class="h-14 px-5 rounded-2xl bg-red-700 hover:bg-red-800 active:scale-95 ' +
                            'text-white text-lg font-extrabold shadow-md transition">' +
-              '🗑️ SİPARİŞİ KALICI SİL</button>'
+              ikon('cop') + ' SİPARİŞİ KALICI SİL</button>'
           : '') +
 
         '<button data-eylem="siparis-detay" data-id="' + s.id + '" ' +
                 'class="ml-auto h-14 px-5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 ' +
                        'bg-slate-50 dark:bg-slate-900 text-lg font-extrabold transition ' +
                        'hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95">' +
-          '📋 ÜRÜN DÖKÜMÜ' +
+          ikon('liste') + ' ÜRÜN DÖKÜMÜ' +
         '</button>' +
       '</div>' +
 
@@ -2514,7 +2522,7 @@ function siparisleriCiz() {
         (s.notlar
           ? '<div class="mt-3 rounded-xl border-2 border-dashed border-amber-300 dark:border-amber-500/40 ' +
                 'bg-amber-50 dark:bg-amber-500/10 p-4 text-lg">' +
-              '<b>🗒️ Sipariş Notu:</b> ' + kacis(s.notlar) + '</div>'
+              '<b>' + ikon('not') + ' Sipariş Notu:</b> ' + kacis(s.notlar) + '</div>'
           : '') +
       '</div>' +
 
@@ -2568,7 +2576,7 @@ function revizeRozetiHtml(s) {
          'text-base font-bold whitespace-nowrap ' +
          'bg-amber-100 text-amber-800 border-amber-300 ' +
          'dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30">' +
-         '📝 Revize Edildi</span>';
+         ikon('kalem') + ' Revize Edildi</span>';
 }
 
 /** Revize penceresini kapatır. */
@@ -2673,13 +2681,13 @@ function revizeModaliAc(id) {
 
   if (kimliksiz) {
     bildir('Sipariş kalemleri kimlikleri olmadan geldi; revize yapılamıyor.\n' +
-           '🔄 YENİLE ile listeyi tazeleyin.', 'hata');
+           'YENİLE ile listeyi tazeleyin.', 'hata');
     return;
   }
 
   durum.revizeSiparis = s;
 
-  $('#revizeModalBaslik').textContent = '📝 Siparişi Hazırla & Revize Et';
+  $('#revizeModalBaslik').textContent = 'Siparişi Hazırla & Revize Et';
   $('#revizeModalAciklama').textContent =
     '#' + s.numara + ' · ' + (s.firma || s.musteri) +
     '  ·  ' + s.kalemler.length + ' çeşit';
@@ -2786,10 +2794,10 @@ async function revizeyiOnayla(buton) {
 
   if (toplamAdet === 0) {
     const eminMi = await onayla(
-      '⚠️ Tüm Adetler Sıfır',
+      'Tüm Adetler Sıfır',
       'Siparişteki bütün ürünlerin adedini 0 yaptınız.\n\n' +
       'Bu, siparişin içini boşaltır ve tutarı sıfırlar. Siparişi iptal etmek istiyorsanız\n' +
-      '"🚫 SİPARİŞİ İPTAL ET" düğmesini kullanmalısınız.\n\nYine de devam edilsin mi?',
+      '"SİPARİŞİ İPTAL ET" düğmesini kullanmalısınız.\n\nYine de devam edilsin mi?',
       'EVET, DEVAM ET',
       true
     );
@@ -2940,7 +2948,7 @@ async function revizeyiOnayla(buton) {
              ' satırın adedi güncellendi; tutar ve KDV yeniden hesaplandı.'
            : 'Adetlerde değişiklik yok.') +
          (gercekDurum ? '\nDurum: ' + durumBilgisi(gercekDurum).etiket : '') +
-         (durumDegisti && bildirilsinMi ? '\n📧 Bayiye bilgilendirme e-postası gönderildi.' : ''),
+         (durumDegisti && bildirilsinMi ? '\nBayiye bilgilendirme e-postası gönderildi.' : ''),
          'basari');
 }
 
@@ -2962,20 +2970,20 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
   let ek;
   if (tanim.kargoSor) {
     ek = await durumPenceresi({
-      baslik: '🚚 Kargoya Verildi Olarak İşaretle',
+      baslik: 'Kargoya Verildi Olarak İşaretle',
       aciklama: '#' + s.numara + ' · ' + (s.firma || s.musteri),
       kargoGoster: true,
-      onayMetni: '🚚 KARGOYA VERİLDİ',
+      onayMetni: 'KARGOYA VERİLDİ',
       carrier: s.kargo,
       tracking: s.takip,
       bildir: durum.ayarlar.durumEpostasi !== false
     });
   } else {
     ek = await durumPenceresi({
-      baslik: tanim.simge + ' ' + tanim.etiket,
+      baslik: tanim.etiket,
       aciklama: '#' + s.numara + ' · ' + (s.firma || s.musteri) + '\n' + tanim.aciklama,
       kargoGoster: false,
-      onayMetni: tanim.simge + ' ' + tanim.etiket + ' YAP',
+      onayMetni: tanim.etiket + ' YAP',
       bildir: durum.ayarlar.durumEpostasi !== false
     });
   }
@@ -3100,7 +3108,7 @@ function otoYenileyiAyarla() {
 }
 
 /* ==========================================================================
- *  BÖLÜM 8 — 🏷️ ÜRÜN & STOK
+ *  BÖLÜM 8 — ÜRÜN & STOK
  * ========================================================================*/
 
 async function urunleriYukle(aramaMetni) {
@@ -3198,7 +3206,7 @@ async function urunleriYukle(aramaMetni) {
     durum.urunler = [];
     durum.urunlerToplam = 0;
     durum.urunlerTamYuklendi = false;
-    kap.innerHTML = bosHtml('🔌', 'Ürünler alınamadı', cevap.hata);
+    kap.innerHTML = bosHtml(ikon('priz'), 'Ürünler alınamadı', cevap.hata);
     return;
   }
 
@@ -3214,11 +3222,11 @@ async function urunleriYukle(aramaMetni) {
   urunleriCiz('');  // Canlı modda arama sunucuda yapıldı, tekrar süzmeye gerek yok
 
   if (cevap.eksik) {
-    bildir('⚠️ Ürünlerin tamamı getirilemedi.\n' +
+    bildir('Ürünlerin tamamı getirilemedi.\n' +
            durum.urunler.length + ' / ' + durum.urunlerToplam + ' ürün yüklendi: ' +
            (cevap.hata || '') +
            '\n\nListe eksik olduğu için sıralama (sürükle-bırak) geçici olarak kapalıdır.\n' +
-           '🔄 YENİLE ile tekrar deneyin.', 'uyari');
+           'YENİLE ile tekrar deneyin.', 'uyari');
   }
 }
 
@@ -3257,8 +3265,8 @@ function urunleriCiz(arama) {
 
   if (liste.length === 0) {
     kap.innerHTML = anahtar
-      ? bosHtml('🔎', 'Aramanıza uygun ürün bulunamadı', 'Farklı bir kelime veya stok kodu deneyin.')
-      : bosHtml('🏷️', 'Ürün bulunamadı', 'Sitenizdeki ürünler burada listelenecek.\n➕ YENİ ÜRÜN EKLE ile ürün ekleyebilirsiniz.');
+      ? bosHtml(ikon('ara'), 'Aramanıza uygun ürün bulunamadı', 'Farklı bir kelime veya stok kodu deneyin.')
+      : bosHtml(ikon('etiket'), 'Ürün bulunamadı', 'Sitenizdeki ürünler burada listelenecek.\nYENİ ÜRÜN EKLE ile ürün ekleyebilirsiniz.');
     return;
   }
 
@@ -3283,7 +3291,7 @@ function urunleriCiz(arama) {
                      'grid place-items-center text-2xl leading-none select-none ' +
                      'bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 text-slate-500 ' +
                      'dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 dark:text-slate-300 transition">' +
-        '⠿' +
+        ikon('tutamak', 'ik-lg') +
       '</button>' +
 
       '<img src="' + kacis(u.gorsel) + '" alt="" loading="lazy" ' +
@@ -3295,7 +3303,7 @@ function urunleriCiz(arama) {
           (gizliMi ? ' <span class="text-base font-bold text-slate-500">(sitede görünmüyor)</span>' : '') +
         '</div>' +
         '<div class="text-base font-semibold text-slate-500 dark:text-slate-400 mt-1">' +
-          '🔖 Stok Kodu: ' + kacis(u.kod) +
+          ikon('barkod') + ' Stok Kodu: ' + kacis(u.kod) +
           '  ·  <span class="' + stokRengi + '">Mevcut: ' + u.stok + ' adet</span>' +
         '</div>' +
       '</div>' +
@@ -3321,7 +3329,7 @@ function urunleriCiz(arama) {
       '<button data-eylem="urun-kaydet" data-id="' + u.id + '" ' +
               'class="shrink-0 w-full xl:w-auto h-14 px-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 ' +
                      'active:scale-95 text-white text-xl font-extrabold shadow-lg transition">' +
-        '💾 KAYDET' +
+        ikon('kaydet') + ' KAYDET' +
       '</button>' +
 
       /* Tüm alanları (görsel, ad, barkod, kategori...) düzenleme paneli */
@@ -3329,7 +3337,7 @@ function urunleriCiz(arama) {
               'title="Görsel, ad, barkod ve kategoriyi düzenle" ' +
               'class="shrink-0 w-full xl:w-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 ' +
                      'active:scale-95 text-white text-xl font-extrabold shadow-lg transition">' +
-        '✏️ DÜZENLE' +
+        ikon('kalem') + ' DÜZENLE' +
       '</button>' +
 
       /* Kalıcı silme. Ürünü gizlemek isteyen kullanıcı için soldaki
@@ -3341,7 +3349,7 @@ function urunleriCiz(arama) {
                      'dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 ' +
                      'hover:bg-red-100 dark:hover:bg-red-500/20 active:scale-95 ' +
                      'text-xl font-extrabold shadow-sm transition">' +
-        '🗑️ ÜRÜNÜ SİL' +
+        ikon('cop') + ' ÜRÜNÜ SİL' +
       '</button>' +
     '</div>';
   }).join('');
@@ -3367,7 +3375,7 @@ async function urunKaydet(id, buton) {
 
   const eskiMetin = buton.innerHTML;
   buton.disabled = true;
-  buton.innerHTML = '<span class="donuyor">⏳</span> KAYDEDİLİYOR';
+  buton.innerHTML = '<span class="donuyor">' + ikon('donen') + '</span> KAYDEDİLİYOR';
   buton.className = buton.className.replace('bg-emerald-600 hover:bg-emerald-700', 'bg-slate-500');
 
   let basarili = true;
@@ -3390,12 +3398,12 @@ async function urunKaydet(id, buton) {
   if (basarili) {
     urun.fiyat = fiyat;
     urun.stok = stok;
-    buton.innerHTML = '✅ KAYDEDİLDİ';
+    buton.innerHTML = ikon('onay') + ' KAYDEDİLDİ';
     buton.className = buton.className.replace('bg-slate-500', 'bg-emerald-700');
     bildir(urun.ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
            (durum.ayarlar.demoModu ? '\n(Demo Modu — sitede değişiklik yapılmadı)' : '\nSitede güncellendi.'), 'basari');
   } else {
-    buton.innerHTML = '❌ KAYDEDİLEMEDİ';
+    buton.innerHTML = ikon('carpi') + ' KAYDEDİLEMEDİ';
     buton.className = buton.className.replace('bg-slate-500', 'bg-red-600');
     bildir('Güncelleme başarısız:\n' + hataMesaji, 'hata');
   }
@@ -3420,7 +3428,7 @@ async function urunGorunurlukDegistir(id, buton) {
   const gizlenecekMi = urun.durum === 'publish';
 
   const eminMi = await onayla(
-    gizlenecekMi ? '🙈 Ürünü Gizle' : '🌐 Ürünü Yayınla',
+    gizlenecekMi ? 'Ürünü Gizle' : 'Ürünü Yayınla',
     '"' + urun.ad + '"\n\n' +
     (gizlenecekMi
       ? 'Ürün TASLAK yapılacak ve sitenizden tamamen kaldırılacak.\nMüşterileriniz bu ürünü göremeyecek.'
@@ -3471,7 +3479,7 @@ async function urunGorunurlukDegistir(id, buton) {
 
   urunleriCiz(durum.ayarlar.demoModu ? $('#urunArama').value : '');
 
-  bildir(urun.ad + '\n' + (gizlenecekMi ? '🙈 Ürün gizlendi (taslak).' : '🌐 Ürün yayınlandı.') +
+  bildir(urun.ad + '\n' + (gizlenecekMi ? 'Ürün gizlendi (taslak).' : 'Ürün yayınlandı.') +
          (durum.ayarlar.demoModu ? '\n(Demo Modu)' : ''),
          gizlenecekMi ? 'uyari' : 'basari');
 }
@@ -3486,7 +3494,7 @@ const EN_BUYUK_GORSEL_MB = 12;
 function urunEkleUyar(mesaj) {
   const kutu = $('#urunEkleUyari');
   if (!mesaj) { kutu.classList.add('hidden'); return; }
-  kutu.textContent = '⚠️ ' + mesaj;
+  kutu.textContent = mesaj;
   kutu.classList.remove('hidden');
 }
 
@@ -3525,7 +3533,7 @@ function gorselOnizlemeCiz() {
         : '') +
       '<button data-gorsel-sil="' + kacis(String(g.id)) + '" title="Kaldır" ' +
               'class="absolute top-1 right-1 w-8 h-8 rounded-lg bg-red-600 hover:bg-red-700 text-white ' +
-                     'text-lg font-black grid place-items-center shadow-lg transition">✖</button>' +
+                     'text-lg font-black grid place-items-center shadow-lg transition">' + ikon('carpi', 'ik-sm') + '</button>' +
     '</div>';
   }).join('');
 }
@@ -3540,7 +3548,7 @@ async function gorselleriYukle(dosyalar) {
   });
 
   if (liste.length === 0) {
-    gorselDurumYaz('❌ Sadece görsel dosyası (JPG, PNG, WEBP, GIF) bırakabilirsiniz.', 'text-red-600 dark:text-red-400');
+    gorselDurumYaz('Sadece görsel dosyası (JPG, PNG, WEBP, GIF) bırakabilirsiniz.', 'text-red-600 dark:text-red-400');
     return;
   }
 
@@ -3550,19 +3558,19 @@ async function gorselleriYukle(dosyalar) {
     const dosya = liste[i];
 
     if (dosya.size > EN_BUYUK_GORSEL_MB * 1024 * 1024) {
-      gorselDurumYaz('❌ "' + dosya.name + '" çok büyük (en fazla ' + EN_BUYUK_GORSEL_MB + ' MB).',
+      gorselDurumYaz('"' + dosya.name + '" çok büyük (en fazla ' + EN_BUYUK_GORSEL_MB + ' MB).',
                      'text-red-600 dark:text-red-400');
       continue;
     }
 
-    gorselDurumYaz('⏳ Yükleniyor (' + (i + 1) + '/' + liste.length + '): ' + dosya.name,
+    gorselDurumYaz('Yükleniyor (' + (i + 1) + '/' + liste.length + '): ' + dosya.name,
                    'text-marka-700 dark:text-marka-300');
 
     let veriAdresi;
     try {
       veriAdresi = await dosyayiVeriAdresineCevir(dosya);
     } catch (e) {
-      gorselDurumYaz('❌ ' + e.message, 'text-red-600 dark:text-red-400');
+      gorselDurumYaz(String(e.message), 'text-red-600 dark:text-red-400');
       continue;
     }
 
@@ -3581,7 +3589,7 @@ async function gorselleriYukle(dosyalar) {
 
     /* ---------- CANLI ---------- */
     if (!durum.b2bVar) {
-      gorselDurumYaz('❌ Dosya yükleme için sitenizde "B2B Core" eklentisi gerekir.\n' +
+      gorselDurumYaz('Dosya yükleme için sitenizde "B2B Core" eklentisi gerekir.\n' +
                      'Eklenti yokken aşağıdaki "Görsel bağlantısı (URL)" alanını kullanın.',
                      'text-red-600 dark:text-red-400');
       return;
@@ -3599,7 +3607,7 @@ async function gorselleriYukle(dosyalar) {
     });
 
     if (!cevap.ok) {
-      gorselDurumYaz('❌ "' + dosya.name + '" yüklenemedi: ' + cevap.hata, 'text-red-600 dark:text-red-400');
+      gorselDurumYaz('"' + dosya.name + '" yüklenemedi: ' + cevap.hata, 'text-red-600 dark:text-red-400');
       continue;
     }
 
@@ -3613,7 +3621,7 @@ async function gorselleriYukle(dosyalar) {
   }
 
   const adet = durum.yuklenenGorseller.length;
-  gorselDurumYaz(adet ? '✅ ' + adet + ' görsel hazır. İlk görsel öne çıkan görsel olacak.' : '',
+  gorselDurumYaz(adet ? adet + ' görsel hazır. İlk görsel öne çıkan görsel olacak.' : '',
                  'text-emerald-600 dark:text-emerald-400');
 }
 
@@ -3623,7 +3631,7 @@ function gorselKaldir(gorselId) {
   });
   gorselOnizlemeCiz();
   gorselDurumYaz(durum.yuklenenGorseller.length
-    ? '✅ ' + durum.yuklenenGorseller.length + ' görsel hazır.'
+    ? durum.yuklenenGorseller.length + ' görsel hazır.'
     : '', 'text-emerald-600 dark:text-emerald-400');
 }
 
@@ -3647,13 +3655,13 @@ async function urunModaliAc() {
 
   const modEtiketi = $('#urunModalMod');
   if (durum.ayarlar.demoModu) {
-    modEtiketi.textContent = '🎭 Demo Modu — ürün sadece bu ekrana eklenir, sitenize kaydedilmez';
+    modEtiketi.textContent = 'Demo Modu — ürün sadece bu ekrana eklenir, sitenize kaydedilmez';
     modEtiketi.className = 'text-base font-bold text-amber-600 dark:text-amber-400';
   } else if (durum.b2bVar) {
-    modEtiketi.textContent = '🌐 Canlı Mod — ürün ve görselleri WooCommerce sitenize GERÇEKTEN eklenecek';
+    modEtiketi.textContent = 'Canlı Mod — ürün ve görselleri WooCommerce sitenize GERÇEKTEN eklenecek';
     modEtiketi.className = 'text-base font-bold text-emerald-600 dark:text-emerald-400';
   } else {
-    modEtiketi.textContent = '🟠 Canlı Mod (B2B Core eklentisi yok) — dosya yükleme kapalı, sadece görsel bağlantısı kullanılabilir';
+    modEtiketi.textContent = 'Canlı Mod (B2B Core eklentisi yok) — dosya yükleme kapalı, sadece görsel bağlantısı kullanılabilir';
     modEtiketi.className = 'text-base font-bold text-amber-600 dark:text-amber-400';
   }
 
@@ -3662,7 +3670,7 @@ async function urunModaliAc() {
 
   // Kategorileri getir (WooCommerce çekirdek ucu — her iki modda da çalışır)
   const secim = $('#yeniKategori');
-  secim.innerHTML = '<option value="">⏳ Kategoriler yükleniyor…</option>';
+  secim.innerHTML = '<option value="">Kategoriler yükleniyor…</option>';
 
   let kategoriler = DEMO_KATEGORILER;
   if (!durum.ayarlar.demoModu) {
@@ -3751,9 +3759,9 @@ async function urunEkle() {
       id: yeniId, ad: ad, kod: kod || '-', fiyat: fiyat, stok: stok, durum: 'publish',
       indirimliFiyat: indirimliYazi ? indirimli : '',
       koliAdedi: koli,
-      gorsel: (yuklenenler[0] && yuklenenler[0].onizleme) || gorselUrl || svgGorsel('🆕', '#dcfce7')
+      gorsel: (yuklenenler[0] && yuklenenler[0].onizleme) || gorselUrl || svgGorsel()
     };
-    DEMO_URUNLER.unshift(yeni);              // "🔄 YENİLE" sonrası da görünsün
+    DEMO_URUNLER.unshift(yeni);              // "YENİLE" sonrası da görünsün
     durum.urunler.unshift(Object.assign({}, yeni));
 
     geriAl();
@@ -3852,7 +3860,7 @@ function yeniUrunuVurgula(id) {
 }
 
 /* ==========================================================================
- *  BÖLÜM 9 — 👥 B2B ÜYE ONAYLARI VE BAYİ KARTI
+ *  BÖLÜM 9 — B2B ÜYE ONAYLARI VE BAYİ KARTI
  * ========================================================================*/
 
 function uyeSuzgecleriCiz() {
@@ -4001,7 +4009,7 @@ async function uyeleriYukle() {
         durum.bekleyenUyeSayisi = 0;
         uyeSayaciTazele();
         kap.innerHTML = '<div class="xl:col-span-2">' +
-          bosHtml('🔌', 'Başvurular alınamadı', basvuru.hata) + '</div>';
+          bosHtml(ikon('priz'), 'Başvurular alınamadı', basvuru.hata) + '</div>';
         return;
       }
 
@@ -4029,7 +4037,7 @@ async function uyeleriYukle() {
       durum.uyeler = [];
       durum.uyelerToplam = 0;
       uyeSayaciTazele();
-      kap.innerHTML = '<div class="xl:col-span-2">' + bosHtml('🔌', 'Bayiler alınamadı', cevap.hata) + '</div>';
+      kap.innerHTML = '<div class="xl:col-span-2">' + bosHtml(ikon('priz'), 'Bayiler alınamadı', cevap.hata) + '</div>';
       return;
     }
 
@@ -4044,7 +4052,7 @@ async function uyeleriYukle() {
     uyeleriCiz();
 
     if (cevap.eksik) {
-      bildir('⚠️ Bayilerin tamamı getirilemedi.\n' +
+      bildir('Bayilerin tamamı getirilemedi.\n' +
              durum.uyeler.length + ' / ' + durum.uyelerToplam + ' kayıt yüklendi: ' +
              (cevap.hata || ''), 'uyari');
     }
@@ -4068,7 +4076,7 @@ async function uyeleriYukle() {
     durum.uyeler = [];
     durum.uyelerToplam = 0;
     uyeSayaciTazele();
-    kap.innerHTML = '<div class="xl:col-span-2">' + bosHtml('🔌', 'Üyeler alınamadı', cevap.hata) + '</div>';
+    kap.innerHTML = '<div class="xl:col-span-2">' + bosHtml(ikon('priz'), 'Üyeler alınamadı', cevap.hata) + '</div>';
     return;
   }
 
@@ -4107,7 +4115,7 @@ function basvuruKunyesiHtml(u) {
   '<div class="rounded-2xl border-2 border-amber-200 dark:border-amber-500/30 ' +
        'bg-amber-50/60 dark:bg-amber-500/5 p-4">' +
     '<div class="text-base font-black text-amber-800 dark:text-amber-300 mb-2">' +
-      '📄 KURUMSAL BAŞVURU BİLGİLERİ</div>' +
+      ikon('not') + ' KURUMSAL BAŞVURU BİLGİLERİ</div>' +
     '<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-lg">' +
       satir('Firma Ünvanı', u.firma, true) +
       satir('Vergi Dairesi', u.vergiDairesi) +
@@ -4128,14 +4136,14 @@ function uyeleriCiz() {
     const suzgecAdi = (UYE_SUZGECLERI.filter(function (f) { return f.kod === durum.uyeSuzgec; })[0] || {}).etiket || '';
     const aciklama = durum.uyeSuzgec === 'pending'
       ? (durum.b2bVar || durum.ayarlar.demoModu
-          ? 'Tüm başvuruları değerlendirdiniz. 👏'
-          : 'Onay bekleyen üye görünmüyor.\n\nBaşvurular listelenmiyorsa: ⚙️ Ayarlar → 🧩 Gelişmiş bölümünden\n' +
+          ? 'Tüm başvuruları değerlendirdiniz. '
+          : 'Onay bekleyen üye görünmüyor.\n\nBaşvurular listelenmiyorsa: Ayarlar → Gelişmiş bölümünden\n' +
             'sitenizin kullandığı B2B alan adını kontrol edin.\n(Şu anki alan: "' + durum.ayarlar.b2bAlan +
             '", beklenen değer: "' + durum.ayarlar.b2bBekliyor + '")')
       : '"' + suzgecAdi + '" süzgecine uyan bayi bulunamadı.';
 
     kap.innerHTML = '<div class="xl:col-span-2">' +
-      bosHtml(durum.uyeSuzgec === 'pending' ? '🎉' : '🔎',
+      bosHtml(durum.uyeSuzgec === 'pending' ? ikon('parlak') : ikon('ara'),
               durum.uyeSuzgec === 'pending' ? 'Onay bekleyen başvuru yok' : 'Kayıt bulunamadı',
               aciklama) + '</div>';
     return;
@@ -4152,35 +4160,35 @@ function uyeleriCiz() {
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
                 'title="Rolü b2b_customer yapar; firma toptan fiyatları görmeye başlar." ' +
                 'class="flex-1 min-w-56 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">✅ BAYİLİĞİ ONAYLA</button>' +
+                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('onay') + ' BAYİLİĞİ ONAYLA</button>' +
         '<button data-eylem="uye-reddet" data-id="' + u.id + '" ' +
                 'class="flex-1 min-w-40 h-16 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">❌ REDDET</button>';
+                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('carpi') + ' REDDET</button>';
     } else if (u.durum === 'approved') {
       dugmeler =
         '<button data-eylem="bayi-detay" data-id="' + u.id + '" ' +
                 'class="flex-1 min-w-48 h-16 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">📋 SİPARİŞ GEÇMİŞİ</button>' +
+                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('liste') + ' SİPARİŞ GEÇMİŞİ</button>' +
         (durum.b2bVar || durum.ayarlar.demoModu
           ? '<button data-eylem="uye-askiya-al" data-id="' + u.id + '" ' +
                     'class="h-16 px-6 rounded-2xl bg-slate-600 hover:bg-slate-700 active:scale-95 ' +
-                           'text-white text-xl font-extrabold shadow-lg transition">⏸️ ASKIYA AL</button>'
+                           'text-white text-xl font-extrabold shadow-lg transition">' + ikon('durakla') + ' ASKIYA AL</button>'
           : '');
     } else {
       dugmeler =
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
                 'class="flex-1 min-w-48 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">✅ ONAYLA</button>' +
+                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('onay') + ' ONAYLA</button>' +
         '<button data-eylem="bayi-detay" data-id="' + u.id + '" ' +
                 'class="h-16 px-6 rounded-2xl bg-slate-600 hover:bg-slate-700 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">📋 DETAY</button>';
+                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('liste') + ' DETAY</button>';
     }
 
     /* Kalıcı silme — durumdan bağımsız, her bayi kartında görünür (bkz. uyeSil). */
     dugmeler += '<button data-eylem="uye-sil" data-id="' + u.id + '" ' +
                 'title="Bu müşteriyi/bayiyi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
                 'class="h-16 px-6 rounded-2xl bg-red-800 hover:bg-red-900 active:scale-95 ' +
-                       'text-white text-xl font-extrabold shadow-lg transition">🗑️ SİL</button>';
+                       'text-white text-xl font-extrabold shadow-lg transition">' + ikon('cop') + ' SİL</button>';
 
     return '' +
     '<div data-bayi="' + u.id + '" ' +
@@ -4189,10 +4197,11 @@ function uyeleriCiz() {
 
       '<div class="flex items-start gap-4">' +
         '<div class="w-14 h-14 rounded-2xl bg-marka-100 dark:bg-marka-900/40 text-marka-700 dark:text-marka-300 ' +
-             'grid place-items-center text-3xl shrink-0">🏢</div>' +
+             'grid place-items-center text-3xl shrink-0">' + ikon('bina', 'ik-lg') + '</div>' +
         '<div class="min-w-0">' +
           '<div class="text-xl font-black leading-tight truncate">' + kacis(u.firma || u.ad) + '</div>' +
-          '<div class="text-lg font-bold text-marka-700 dark:text-marka-300 truncate">👤 ' + kacis(u.ad) + '</div>' +
+          '<div class="text-lg font-bold text-marka-700 dark:text-marka-300 truncate">' +
+          ikon('kisi') + ' ' + kacis(u.ad) + '</div>' +
         '</div>' +
         '<span class="ml-auto shrink-0 px-3 py-1 rounded-lg border-2 text-base font-bold ' + d.sinif + '">' +
           kacis(d.etiket) + '</span>' +
@@ -4220,7 +4229,8 @@ function uyeleriCiz() {
       /* Bayiye özel iskonto anahtarı + oran kutusu (yalnızca onaylı/askıdaki bayilerde) */
       bayiIskontoHtml(u) +
 
-      '<div class="text-base text-slate-400 dark:text-slate-500">👆 Karta tıklayarak bayi kartını ve sipariş dökümünü açın</div>' +
+      '<div class="text-base text-slate-400 dark:text-slate-500">' +
+        ikon('bilgi', 'ik-sm') + ' Karta tıklayarak bayi kartını ve sipariş dökümünü açın</div>' +
 
       '<div class="flex flex-wrap gap-3 mt-1">' + dugmeler + '</div>' +
     '</div>';
@@ -4263,7 +4273,7 @@ async function bayiIskontoKaydet(id, buton, sessiz) {
 
   /* Anahtar açık ama oran 0 ise indirim uygulanmaz; kullanıcı bunu bilsin. */
   if (u.iskontoAktif && oran === 0) {
-    durumYaz('⚠️ Anahtar açık ama oran %0 — fiyatlarda değişiklik olmaz.', 'uyari');
+    durumYaz('Anahtar açık ama oran %0 — fiyatlarda değişiklik olmaz.', 'uyari');
   }
 
   const geriAl = buton ? butonuMesgulEt(buton, 'KAYDEDİLİYOR…') : function () {};
@@ -4275,7 +4285,7 @@ async function bayiIskontoKaydet(id, buton, sessiz) {
     u.iskontoGecerli = u.iskontoAktif ? oran : 0;
     geriAl();
     uyeleriCiz();
-    if (!sessiz) bildir((u.firma || u.ad) + '\n🏷️ İskonto kaydedildi.\n(Demo Modu)', 'basari');
+    if (!sessiz) bildir((u.firma || u.ad) + '\nİskonto kaydedildi.\n(Demo Modu)', 'basari');
     return true;
   }
 
@@ -4316,8 +4326,8 @@ async function bayiIskontoKaydet(id, buton, sessiz) {
   if (!sessiz) {
     bildir((u.firma || u.ad) + '\n' +
            (u.iskontoAktif
-             ? '🏷️ Özel iskonto AÇIK — %' + oranYaz(u.iskontoOran) + '\nBayi siteye girdiğinde indirimli fiyatları görecek.'
-             : '🏷️ Özel iskonto KAPALI — bayi genel site fiyatını görecek.'),
+             ? 'Özel iskonto AÇIK — %' + oranYaz(u.iskontoOran) + '\nBayi siteye girdiğinde indirimli fiyatları görecek.'
+             : 'Özel iskonto KAPALI — bayi genel site fiyatını görecek.'),
            'basari');
   }
 
@@ -4344,7 +4354,7 @@ async function bayiIskontoAnahtari(id) {
 
   if (!acilacak) {
     const eminMi = await onayla(
-      '🏷️ Özel İskontoyu Kapat',
+      'Özel İskontoyu Kapat',
       '"' + (u.firma || u.ad) + '" için özel iskonto kapatılacak.\n\n' +
       'Bayi bundan sonra GENEL SİTE FİYATINI görecek. Oran silinmez, sadece devre dışı kalır.' +
       (durum.ayarlar.demoModu ? '\n\n(Demo Modu: sitenizde hiçbir değişiklik yapılmaz.)' : ''),
@@ -4381,15 +4391,15 @@ async function bayiIskontoAnahtari(id) {
     u.iskontoOran = oncekiOran;
     uyeleriCiz();
 
-    bildir((u.firma || u.ad) + '\n⚠️ İskonto ayarı SİTEYE İŞLENEMEDİ.\n' +
+    bildir((u.firma || u.ad) + '\nİskonto ayarı SİTEYE İŞLENEMEDİ.\n' +
            'Anahtar eski konumuna geri alındı; kartdaki hata mesajına bakın.', 'hata');
     return;
   }
 
   bildir((u.firma || u.ad) + '\n' +
          (u.iskontoAktif
-           ? '🏷️ Özel iskonto AÇILDI — %' + oranYaz(u.iskontoOran)
-           : '🏷️ Özel iskonto KAPATILDI.'),
+           ? 'Özel iskonto AÇILDI — %' + oranYaz(u.iskontoOran)
+           : 'Özel iskonto KAPATILDI.'),
          u.iskontoAktif ? 'basari' : 'uyari');
 }
 
@@ -4408,13 +4418,13 @@ async function uyeKarar(id, onayMi) {
 
   if (onayMi) {
     const onaylandi = await onayla(
-      '✅ Bayiliği Onayla',
+      'Bayiliği Onayla',
       '"' + (uye.firma || uye.ad) + '" firmasını TOPTAN BAYİ olarak onaylıyorsunuz.\n\n' +
       'Kullanıcının rolü "' + B2B_BAYI_ROLU + '" yapılacak; sitenizde toptan fiyatları\n' +
       'görebilecek ve sipariş verebilecek.' +
       (durum.ayarlar.onayEpostasi !== false
-        ? '\n\n📧 Firmaya "Bayiliğiniz Onaylanmıştır" e-postası gönderilecek.'
-        : '\n\n📧 E-posta gönderilmeyecek (⚙️ Ayarlar\'dan açabilirsiniz).') +
+        ? '\n\nFirmaya "Bayiliğiniz Onaylanmıştır" e-postası gönderilecek.'
+        : '\n\nE-posta gönderilmeyecek (Ayarlar\'dan açabilirsiniz).') +
       (durum.ayarlar.demoModu ? '\n\n(Demo Modu: sitenizde hiçbir değişiklik yapılmaz.)' : ''),
       'EVET, ONAYLA',
       false
@@ -4422,11 +4432,11 @@ async function uyeKarar(id, onayMi) {
     if (!onaylandi) return;
   } else {
     redSebebi = await metinSor(
-      '❌ Başvuruyu Reddet',
+      'Başvuruyu Reddet',
       '"' + (uye.firma || uye.ad) + '" firmasının bayilik başvurusunu reddediyorsunuz.\n' +
       'Red sebebini yazabilirsiniz (firmaya gönderilecek e-postada yer alır):',
       '',
-      '❌ EVET, REDDET'
+      'EVET, REDDET'
     );
     if (redSebebi === null) return;
   }
@@ -4446,7 +4456,7 @@ async function uyeKarar(id, onayMi) {
     });
     uyeleriCiz();
     bildir((uye.firma || uye.ad) + '\n' +
-           (onayMi ? '✅ Bayilik onaylandı.' : '❌ Başvuru reddedildi.') + '\n(Demo Modu)',
+           (onayMi ? 'Bayilik onaylandı.' : 'Başvuru reddedildi.') + '\n(Demo Modu)',
            onayMi ? 'basari' : 'uyari');
     return;
   }
@@ -4529,9 +4539,9 @@ async function uyeKarar(id, onayMi) {
 
   bildir((uye.firma || uye.ad) + '\n' +
          (onayMi
-           ? '✅ Bayilik onaylandı' + (basvuruMu ? ' (rol: ' + B2B_BAYI_ROLU + ').' : ' (approved_dealer).') +
-             (durum.b2bVar && durum.ayarlar.onayEpostasi !== false ? '\n📧 Bilgilendirme e-postası gönderildi.' : '')
-           : '❌ Başvuru reddedildi.'),
+           ? 'Bayilik onaylandı' + (basvuruMu ? ' (rol: ' + B2B_BAYI_ROLU + ').' : ' (approved_dealer).') +
+             (durum.b2bVar && durum.ayarlar.onayEpostasi !== false ? '\nBilgilendirme e-postası gönderildi.' : '')
+           : 'Başvuru reddedildi.'),
          onayMi ? 'basari' : 'uyari');
 
   /*
@@ -4552,7 +4562,7 @@ async function bayiAskiyaAl(id) {
   if (!uye) return;
 
   const eminMi = await onayla(
-    '⏸️ Bayiyi Askıya Al',
+    'Bayiyi Askıya Al',
     '"' + (uye.firma || uye.ad) + '" askıya alınacak.\n\n' +
     'Bayi rolü korunur ancak toptan fiyat ve sepet erişimi kapanır.' +
     (durum.ayarlar.demoModu ? '\n\n(Demo Modu: sitenizde hiçbir değişiklik yapılmaz.)' : ''),
@@ -4577,7 +4587,7 @@ async function bayiAskiyaAl(id) {
   else durum.uyeler = durum.uyeler.filter(function (u) { return String(u.id) !== String(id); });
 
   uyeleriCiz();
-  bildir((uye.firma || uye.ad) + '\n⏸️ Bayi askıya alındı.' +
+  bildir((uye.firma || uye.ad) + '\nBayi askıya alındı.' +
          (durum.ayarlar.demoModu ? '\n(Demo Modu)' : ''), 'uyari');
 }
 
@@ -4636,7 +4646,7 @@ async function bayiDetayiAc(id) {
     if (siparisCevap.ok) {
       siparisler = (siparisCevap.veri || []).map(b2bSiparisNormalle);
     } else {
-      govde.innerHTML = bosHtml('🔌', 'Sipariş geçmişi alınamadı', siparisCevap.hata);
+      govde.innerHTML = bosHtml(ikon('priz'), 'Sipariş geçmişi alınamadı', siparisCevap.hata);
     }
   } else {
     /* ---------- YEDEK YOL (WooCommerce) ---------- */
@@ -4668,7 +4678,7 @@ async function bayiDetayiAc(id) {
   const d = bayiDurumBilgisi(bayi.durum);
 
   $('#bayiModalBaslik').textContent = bayi.firma || bayi.ad || 'Bayi Kartı';
-  $('#bayiModalAltBaslik').textContent = '👤 ' + (bayi.ad || '—') + '  ·  ' + d.etiket;
+  $('#bayiModalAltBaslik').textContent = (bayi.ad || '—') + '  ·  ' + d.etiket;
 
   /* --- Sipariş dökümü tablosu --- */
   const siparisTablosu = siparisler.length
@@ -4698,21 +4708,22 @@ async function bayiDetayiAc(id) {
                 '<td class="p-3 text-right">' +
                   '<button data-eylem="bayi-fis" data-id="' + s.id + '" ' +
                           'class="h-11 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold ' +
-                                 'text-base transition active:scale-95">🖨️ FİŞ</button>' +
+                                 'text-base transition active:scale-95">' + ikon('yazici', 'ik-sm') + ' FİŞ</button>' +
                 '</td>' +
               '</tr>';
             }).join('') +
           '</tbody>' +
         '</table>' +
       '</div>'
-    : bosHtml('📭', 'Bu bayinin siparişi yok', 'Bayi sipariş verdiğinde geçmişi burada listelenecek.');
+    : bosHtml(ikon('kutuBos'), 'Bu bayinin siparişi yok', 'Bayi sipariş verdiğinde geçmişi burada listelenecek.');
 
   /* --- Kayıtlı sepet (b2b-core) --- */
   const sepet = bayi.sepet;
   const sepetKutusu = (sepet && sepet.items && sepet.items.length)
     ? '<div class="rounded-2xl border-2 border-dashed border-marka-300 dark:border-marka-700 ' +
           'bg-marka-50 dark:bg-marka-900/20 p-5">' +
-        '<div class="text-xl font-black mb-3">🛒 Bayinin Bekleyen Sepeti (' + sepet.items.length + ' çeşit)</div>' +
+        '<div class="text-xl font-black mb-3">' + ikon('sepet', 'ik-lg') +
+      ' Bayinin Bekleyen Sepeti (' + sepet.items.length + ' çeşit)</div>' +
         '<div class="flex flex-col gap-1 text-lg">' +
           sepet.items.map(function (k) {
             return '<div class="flex justify-between gap-4">' +
@@ -4758,7 +4769,7 @@ async function bayiDetayiAc(id) {
     sepetKutusu +
 
     '<div>' +
-      '<div class="text-xl font-black mb-3">📋 Geçmiş Sipariş Dökümü</div>' +
+      '<div class="text-xl font-black mb-3">' + ikon('liste', 'ik-lg') + ' Geçmiş Sipariş Dökümü</div>' +
       siparisTablosu +
     '</div>';
 
@@ -4769,13 +4780,13 @@ async function bayiDetayiAc(id) {
     eylemler.push(
       '<button data-eylem="bayi-modal-onayla" data-id="' + bayi.id + '" ' +
               'class="flex-1 min-w-56 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
-                     'text-white text-xl font-extrabold shadow-lg transition">✅ TEK TIKLA ONAYLA</button>');
+                     'text-white text-xl font-extrabold shadow-lg transition">' + ikon('onay') + ' TEK TIKLA ONAYLA</button>');
   }
   if (bayi.durum === 'pending') {
     eylemler.push(
       '<button data-eylem="bayi-modal-reddet" data-id="' + bayi.id + '" ' +
               'class="flex-1 min-w-40 h-16 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
-                     'text-white text-xl font-extrabold shadow-lg transition">❌ REDDET</button>');
+                     'text-white text-xl font-extrabold shadow-lg transition">' + ikon('carpi') + ' REDDET</button>');
   }
   eylemler.push(
     '<button data-eylem="bayi-modal-kapat" ' +
@@ -4786,7 +4797,7 @@ async function bayiDetayiAc(id) {
 }
 
 /* ==========================================================================
- *  BÖLÜM 10 — 🖨️ DEPO FİŞİ (A4, KOMPAKT — sıfır kağıt israfı)
+ *  BÖLÜM 10 — DEPO FİŞİ (A4, KOMPAKT — sıfır kağıt israfı)
  *
  *  Sütun sırası:
  *  [Görsel] | [☐ Tik] | [Ürün Adı] | [Barkod/SKU] | [Adet] | [Birim Fiyat] | [Toplam]
@@ -4820,8 +4831,8 @@ function fisSatiriHtml(parcalar) {
 /**
  * Depo fişinin ALICI KÜNYESİ — alıcı tipine göre TAMAMEN farklı alanlar basar.
  *
- *   👤 Bireysel müşteri : Ad-Soyad · T.C. Kimlik No (varsa) · Teslimat Adresi · Telefon
- *   🏢 Kurumsal bayi    : Firma Ünvanı · Vergi Dairesi · Vergi No · Cari Adres · Telefon
+ *   Bireysel müşteri : Ad-Soyad · T.C. Kimlik No (varsa) · Teslimat Adresi · Telefon
+ *   Kurumsal bayi    : Firma Ünvanı · Vergi Dairesi · Vergi No · Cari Adres · Telefon
  *
  * İki şablonu tek bir "hepsini bas" bloğunda birleştirmek yanlış olurdu:
  * bireysel siparişin fişinde boş vergi alanları, kurumsal siparişin fişinde
@@ -4852,6 +4863,20 @@ function fisKunyesiHtml(s) {
     fisSatiriHtml([fisAlaniHtml('T.C. Kimlik No', s.tcKimlik)]) +
     fisSatiriHtml([fisAlaniHtml('Teslimat Adresi', s.adres)]);
 }
+
+/** Fiş penceresi kendi belgesinde açıldığı için ikonlar gömülü gelir. */
+function fisIkonu(govde, boyut) {
+  return '<svg width="' + (boyut || 15) + '" height="' + (boyut || 15) + '" viewBox="0 0 24 24" ' +
+         'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" ' +
+         'stroke-linejoin="round" style="vertical-align:-3px">' + govde + '</svg>';
+}
+
+const FIS_IKONLARI = {
+  yazici: '<path d="M7 9.2V3.8h10v5.4"/><path d="M6 9.2h12a2.5 2.5 0 0 1 2.5 2.5v4.1H3.5v-4.1A2.5 2.5 0 0 1 6 9.2Z"/><rect x="7" y="14" width="10" height="6.4" rx="1"/>',
+  belge:  '<path d="M14 3.6H7.2a2 2 0 0 0-2 2v12.8a2 2 0 0 0 2 2h9.6a2 2 0 0 0 2-2V8.4Z"/><path d="M14 3.6v4.8h4.8"/><path d="M8.6 13h6.8M8.6 16.4h4.6"/>',
+  carpi:  '<path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/>',
+  paket:  '<path d="M20.4 7.4 12 12 3.6 7.4"/><path d="M12 12v9.3"/><path d="M20 16.1V7.9a1.5 1.5 0 0 0-.8-1.3l-6.5-3.6a1.5 1.5 0 0 0-1.4 0L4.8 6.6A1.5 1.5 0 0 0 4 7.9v8.2a1.5 1.5 0 0 0 .8 1.3l6.5 3.6a1.5 1.5 0 0 0 1.4 0l6.5-3.6a1.5 1.5 0 0 0 .8-1.3Z"/>'
+};
 
 function depoFisiHtml(s) {
   const cesit = s.kalemler.length;
@@ -4895,15 +4920,16 @@ function depoFisiHtml(s) {
 
 '  /* ---- Üst araç çubuğu (kağıda YANSIMAZ) ---- */' +
 '  .arac { position: sticky; top:0; z-index:10; display:flex; gap:10px; align-items:center;' +
-'          padding:11px 15px; background:#0f172a; box-shadow:0 4px 18px rgba(0,0,0,.35); }' +
-'  .arac .baslik { color:#cbd5e1; font-size:15px; font-weight:700; margin-right:auto; }' +
-'  .arac button { font-size:16px; font-weight:800; padding:13px 22px; border:0; border-radius:12px;' +
+'          padding:8px 12px; background:#0f172a; box-shadow:0 1px 2px rgba(0,0,0,.25); }' +
+'  .arac .baslik { color:#cbd5e1; font-size:12.5px; font-weight:600; margin-right:auto; }' +
+'  .arac button { display:inline-flex; align-items:center; gap:6px;' +
+'                 font-size:13px; font-weight:600; padding:8px 14px; border:0; border-radius:6px;' +
 '                 color:#fff; cursor:pointer; transition:filter .15s, transform .1s; }' +
 '  .arac button:hover { filter:brightness(1.12); }' +
 '  .arac button:active { transform:scale(.96); }' +
-'  .b-yazdir { background:#dc2626; }' +
-'  .b-pdf { background:#059669; }' +
-'  .b-kapat { background:#475569; }' +
+'  .b-yazdir { background:#2563eb; }' +
+'  .b-pdf { background:#334155; }' +
+'  .b-kapat { background:#334155; }' +
 
 '  /* ---- A4 sayfa ----' +
 '     Ölçüler değişkenle veriliyor: kalem sayısı arttıkça .orta / .sik kademesi' +
@@ -4923,7 +4949,7 @@ function depoFisiHtml(s) {
 '         border:1px solid #e2e8f0; border-radius:3px; padding:3px 6px; margin-bottom:4px; }' +
 '  .ust-sol { display:flex; align-items:center; gap:7px; min-width:0; }' +
 '  .logo { flex:0 0 26px; width:26px; height:26px; border:1px solid #e2e8f0; border-radius:4px;' +
-'          background:#f8fafc; font-size:15px; line-height:24px; text-align:center; }' +
+'          background:#f8fafc; color:#475569; display:flex; align-items:center; justify-content:center; }' +
 '  .firma { font-size:12px; font-weight:800; line-height:1.2; }' +
 '  .fis-turu { font-size:8.5px; font-weight:700; letter-spacing:.6px; color:#64748b; }' +
 '  .ust-sag { text-align:right; font-size:10px; line-height:1.35; white-space:nowrap; }' +
@@ -5007,11 +5033,11 @@ function depoFisiHtml(s) {
 '</style></head><body>' +
 
 '<div class="arac yazdirma-yok">' +
-'  <div class="baslik">📄 Depo Toplama Fişi &nbsp;·&nbsp; Sipariş #' + kacis(s.numara) +
+'  <div class="baslik">' + fisIkonu(FIS_IKONLARI.belge) + ' Depo Toplama Fişi &nbsp;·&nbsp; Sipariş #' + kacis(s.numara) +
 '    &nbsp;·&nbsp; ' + cesit + ' kalem</div>' +
-'  <button class="b-yazdir" id="btnYazdir">🖨️ YAZDIR</button>' +
-'  <button class="b-pdf" id="btnPdf">📄 PDF OLARAK KAYDET</button>' +
-'  <button class="b-kapat" id="btnKapat">✖ KAPAT</button>' +
+'  <button class="b-yazdir" id="btnYazdir">' + fisIkonu(FIS_IKONLARI.yazici) + ' YAZDIR</button>' +
+'  <button class="b-pdf" id="btnPdf">' + fisIkonu(FIS_IKONLARI.belge) + ' PDF OLARAK KAYDET</button>' +
+'  <button class="b-kapat" id="btnKapat">' + fisIkonu(FIS_IKONLARI.carpi) + ' KAPAT</button>' +
 '</div>' +
 
 '<div class="sayfa' + yogunluk + '">' +
@@ -5019,7 +5045,7 @@ function depoFisiHtml(s) {
 /* ---- Tek şerit, 2 sütunlu mini başlık: solda firma, sağda sipariş/tarih/bayi ---- */
 '  <div class="ust">' +
 '    <div class="ust-sol">' +
-'      <div class="logo">🔧</div>' +
+'      <div class="logo">' + fisIkonu(FIS_IKONLARI.paket, 16) + '</div>' +
 '      <div>' +
 '        <div class="firma">' + kacis(durum.ayarlar.firmaAdi || 'FİRMA ADI') + '</div>' +
 '        <div class="fis-turu">DEPO &amp; SEVK FİŞİ &nbsp;·&nbsp; ' +
@@ -5130,13 +5156,13 @@ async function depoFisiAc(id) {
 }
 
 /* ==========================================================================
- *  BÖLÜM 11 — ⚙️ AYARLAR
+ *  BÖLÜM 11 — AYARLAR
  * ========================================================================*/
 
 /* --------------------------------------------------------------------------
  *  GELİŞTİRİCİ KİLİDİ (MASTER LOCK)
  *  --------------------------------------------------------------------------
- *  "⚙️ API & Sistem Ayarları" sekmesi menünün en altındadır, kilit ikonu
+ *  "API & Sistem Ayarları" sekmesi menünün en altındadır, kilit ikonu
  *  taşır ve şifre doğrulanmadan İÇERİĞİ HİÇ ÇİZİLMEZ.
  *
  *  Neden gerekli: panel mağazanın kasasında, depoda, tezgâhta açık durur.
@@ -5187,7 +5213,7 @@ function masterKilidiUygula() {
   if (icerik) icerik.classList.toggle('hidden', !acik);
 
   if (simge) {
-    simge.textContent = acik ? '🔓' : '🔒';
+    simge.innerHTML = ikon(acik ? 'kilitAcik' : 'kilit');
     simge.title = acik
       ? 'Geliştirici kilidi bu oturum için açık'
       : 'Geliştirici kilidi — şifre gerekir';
@@ -5212,7 +5238,7 @@ function kilitPenceresiniKapat() {
   if (katman) katman.classList.add('hidden');
   /* Şifre DOM'da asılı kalmasın. */
   if (girdi) { girdi.value = ''; girdi.type = 'password'; }
-  if (gosterBtn) gosterBtn.textContent = '👁️';
+  if (gosterBtn) gosterBtn.innerHTML = ikon('goz');
   kilitUyar('');
 }
 
@@ -5263,7 +5289,7 @@ function masterKilidiSor() {
       if (!masterSifreDogruMu(deger)) {
         /* Kaç deneme yapıldığı söylenmez ve hesap kilitlenmez: bu bir kaza
            önleyicidir, kaba kuvvet saldırısına karşı bir savunma değil. */
-        kilitUyar('❌ Şifre hatalı.\nDoğru şifreyi bilmiyorsanız kurulumu yapan geliştirici ile görüşün.');
+        kilitUyar('Şifre hatalı.\nDoğru şifreyi bilmiyorsanız kurulumu yapan geliştirici ile görüşün.');
         girdi.value = '';
         girdi.focus();
         return;
@@ -5274,7 +5300,7 @@ function masterKilidiSor() {
       /* Anahtar kutuları kilit açılana kadar boş bırakılıyordu; şimdi doldur. */
       ayarFormunuDoldur();
       bitir(true);
-      bildir('🔓 Geliştirici kilidi açıldı.\nUygulamayı kapatınca yeniden şifre sorulur.', 'basari');
+      bildir('Geliştirici kilidi açıldı.\nUygulamayı kapatınca yeniden şifre sorulur.', 'basari');
     }
 
     function iptal() { bitir(false); }
@@ -5355,7 +5381,7 @@ async function yerelLogoYukle(dosya) {
     durum.ayarlar = await ipcRenderer.invoke('ayar:yaz', { yerelLogo: veriAdresi });
     logoOnizlemeGuncelle();
     firmaLogosunuUygula();
-    bildir('🖼️ Yerel logo kaydedildi.' +
+    bildir('Yerel logo kaydedildi.' +
            (durum.ayarlar.siteLogosu ? '\n(Sitenizin logosu bulunduğu için üst çubukta öncelikli gösterilir.)' : ''),
            'basari');
   } catch (e) {
@@ -5374,7 +5400,7 @@ async function yerelLogoKaldir() {
  *  SİTE FAVICON'U
  *  --------------------------------------------------------------------------
  *  Logo ile aynı desende çalışır: dosya base64'e çevrilip ayarlar.json'a
- *  yazılır, "🚀 DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER" ile theme-config'in
+ *  yazılır, "DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER" ile theme-config'in
  *  `branding.favicon` alanına iletilir (bkz. renderer-ek.js → vitrinGonder).
  *
  *  Boyut sınırı logodan küçüktür (1 MB): favicon her sayfa isteğinde
@@ -5426,8 +5452,8 @@ async function faviconYukle(dosya) {
     const veriAdresi = await dosyayiVeriAdresineCevir(dosya);
     durum.ayarlar = await ipcRenderer.invoke('ayar:yaz', { yerelFavicon: veriAdresi });
     faviconOnizlemeGuncelle();
-    bildir('🔖 Favicon kaydedildi.\n' +
-           'Sitede görünmesi için "🚀 DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER" deyin.', 'basari');
+    bildir('Favicon kaydedildi.\n' +
+           'Sitede görünmesi için "DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER" deyin.', 'basari');
   } catch (e) {
     bildir('Favicon yüklenemedi:\n' + String((e && e.message) || e), 'hata');
   }
@@ -5448,7 +5474,7 @@ function alanMaskele(deger) {
 
 /**
  * Bağlantı kilidini arayüze uygular: kilitliyken Site Adresi / Consumer Key /
- * Secret kutuları salt okunur olur, anahtarlar maskelenir ve "🔓 KİLİDİ AÇ"
+ * Secret kutuları salt okunur olur, anahtarlar maskelenir ve "KİLİDİ AÇ"
  * kutusu görünür. Amaç kullanıcının ya da bayi sahibi çalışan birinin
  * doğrulanmış bir bağlantıyı yanlışlıkla bozmasını önlemek (bkz. main.js
  * varsayilanAyarlar → apiKilitli notu).
@@ -5484,7 +5510,7 @@ function apiKilidiniUygula() {
     csBtn.disabled = kilitli;
     csBtn.classList.toggle('opacity-60', kilitli);
     csBtn.classList.toggle('cursor-not-allowed', kilitli);
-    csBtn.textContent = '👁️';
+    csBtn.innerHTML = ikon('goz');
   }
 }
 
@@ -5579,12 +5605,12 @@ async function baglantiTestEt() {
 
   dugme.disabled = true;
   const eski = dugme.innerHTML;
-  dugme.innerHTML = '<span class="donuyor">⏳</span> TEST EDİLİYOR…';
+  dugme.innerHTML = '<span class="donuyor">' + ikon('donen') + '</span> TEST EDİLİYOR…';
 
   kutu.classList.remove('hidden');
   kutu.className = 'rounded-xl p-4 text-lg font-semibold whitespace-pre-line bg-slate-100 dark:bg-slate-900 ' +
                    'border-2 border-slate-300 dark:border-slate-600';
-  kutu.textContent = '⏳ Sitenize bağlanılıyor…';
+  kutu.textContent = 'Sitenize bağlanılıyor…';
 
   /* 1) Önce B2B Core eklentisinin /ping ucu denenir */
   const pingCevap = await b2b('ping');
@@ -5604,7 +5630,7 @@ async function baglantiTestEt() {
       const st = statCevap.veri;
       const bekleyenBayi = (st.dealers && st.dealers.pending) || 0;
       const onayliBayi = (st.dealers && st.dealers.approved) || 0;
-      ozet = '\n\n📊 Sitedeki durum:' +
+      ozet = '\n\nSitedeki durum:' +
              '\n   · Onay bekleyen bayi: ' + bekleyenBayi +
              '\n   · Onaylı bayi: ' + onayliBayi +
              '\n   · Bugünkü sipariş: ' + (st.orders_today || 0);
@@ -5612,14 +5638,14 @@ async function baglantiTestEt() {
 
     kutu.className = 'rounded-xl p-4 text-lg font-semibold whitespace-pre-line bg-emerald-50 text-emerald-900 ' +
                      'border-2 border-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-200 dark:border-emerald-500/30';
-    kutu.textContent = '✅ BAĞLANTI BAŞARILI!\n\n' +
-      '🔌 B2B Core eklentisi bulundu (sürüm ' + (p.version || '?') + ')\n' +
-      '🏪 Site: ' + (p.site || '—') + '\n' +
-      '🛒 WooCommerce: ' + (p.wc_version || '—') + '\n' +
-      '👤 Bağlanan kullanıcı: ' + (p.user || '—') + '\n' +
-      '💰 Para birimi: ' + (p.currency || '—') +
+    kutu.textContent = 'BAĞLANTI BAŞARILI!\n\n' +
+      'B2B Core eklentisi bulundu (sürüm ' + (p.version || '?') + ')\n' +
+      'Site: ' + (p.site || '—') + '\n' +
+      'WooCommerce: ' + (p.wc_version || '—') + '\n' +
+      'Bağlanan kullanıcı: ' + (p.user || '—') + '\n' +
+      'Para birimi: ' + (p.currency || '—') +
       ozet +
-      (durum.ayarlar.demoModu ? '\n\nℹ️ Canlı verileri görmek için yukarıdaki anahtarı "Canlı Mod"a alın.' : '');
+      (durum.ayarlar.demoModu ? '\n\nCanlı verileri görmek için yukarıdaki anahtarı "Canlı Mod"a alın.' : '');
 
     bildir('Bağlantı başarılı — B2B Core bağlı!', 'basari');
     dugme.disabled = false;
@@ -5642,7 +5668,7 @@ async function baglantiTestEt() {
 
     kutu.className = 'rounded-xl p-4 text-lg font-semibold whitespace-pre-line bg-amber-50 text-amber-900 ' +
                      'border-2 border-amber-300 dark:bg-amber-500/10 dark:text-amber-200 dark:border-amber-500/30';
-    kutu.textContent = '🟠 WOOCOMMERCE BAĞLANTISI BAŞARILI — ANCAK B2B CORE EKLENTİSİ YOK\n\n' +
+    kutu.textContent = 'WOOCOMMERCE BAĞLANTISI BAŞARILI — ANCAK B2B CORE EKLENTİSİ YOK\n\n' +
       'Anahtarlarınız çalışıyor' + (wooCevap.toplam ? ' (sitede ' + wooCevap.toplam + ' sipariş bulundu)' : '') + '.\n\n' +
       'Şu özellikler için sitenizde "B2B Core" eklentisinin kurulu ve etkin olması gerekir:\n' +
       '   · Bayi başvurularının onaylanması (approved_dealer)\n' +
@@ -5656,14 +5682,14 @@ async function baglantiTestEt() {
     durum.canliBaglantiTamam = false;
     kutu.className = 'rounded-xl p-4 text-lg font-semibold whitespace-pre-line bg-red-50 text-red-900 ' +
                      'border-2 border-red-300 dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30';
-    kutu.textContent = '❌ BAĞLANTI KURULAMADI\n\n' + wooCevap.hata;
+    kutu.textContent = 'BAĞLANTI KURULAMADI\n\n' + wooCevap.hata;
     bildir('Bağlantı kurulamadı.', 'hata');
   }
 
   ustCubuguTazele();
 }
 
-/** Demo ↔ Canlı geçişi. Canlıya geçerken uyarı gösterir ve verileri tazeler. */
+/** Demo Canlı geçişi. Canlıya geçerken uyarı gösterir ve verileri tazeler. */
 async function moduDegistir() {
   const demoyaMiGeciyor = !durum.ayarlar.demoModu;
 
@@ -5674,7 +5700,7 @@ async function moduDegistir() {
       return;
     }
     const eminMi = await onayla(
-      '🌐 Canlı Moda Geçiş',
+      'Canlı Moda Geçiş',
       'Canlı modda gördüğünüz bütün bilgiler GERÇEK sitenizden gelir.\n\n' +
       'Yapacağınız sipariş durumu, bayi onayı, fiyat ve stok değişiklikleri siteye ANINDA işlenir.\n\nDevam edilsin mi?',
       'EVET, CANLI MODA GEÇ',
@@ -5725,7 +5751,7 @@ async function moduDegistir() {
 function temayiUygula() {
   const koyu = durum.ayarlar.tema === 'koyu';
   document.documentElement.classList.toggle('dark', koyu);
-  $('#temaBtn').textContent = koyu ? '☀️' : '🌙';
+  $('#temaBtn').innerHTML = ikon(koyu ? 'gunes' : 'ay');
 }
 
 /* Ölçeğin kendisi index.html'in başındaki betikte uygulanır (açılışta ekran
@@ -6135,13 +6161,13 @@ function olaylariBagla() {
   $('#csGosterBtn').addEventListener('click', function () {
     const kutu = $('#girdiCs');
     kutu.type = kutu.type === 'password' ? 'text' : 'password';
-    $('#csGosterBtn').textContent = kutu.type === 'password' ? '👁️' : '🙈';
+    $('#csGosterBtn').innerHTML = ikon(kutu.type === 'password' ? 'goz' : 'gozKapali');
   });
 
   /* --- Bağlantı kilidi --- */
   $('#apiKilitAcBtn').addEventListener('click', async function () {
     const eminMi = await onayla(
-      '🔓 Bağlantı Kilidini Aç',
+      'Bağlantı Kilidini Aç',
       'Site adresi ve API anahtarları tekrar düzenlenebilir hale gelecek.\n\n' +
       'Bu alanları yalnızca gerçekten değiştirmeniz gerekiyorsa açın; ' +
       'doğrulanmış bir bağlantının yanlışlıkla bozulması sitenizle iletişimi keser.',
@@ -6161,7 +6187,7 @@ function olaylariBagla() {
     $('#firmaAdiBaslik').textContent = $('#girdiFirmaAdi').value || 'Firma Adı Girilmedi';
   });
 
-  /* --- Marka görselleri (🖼️ Web Vitrini sekmesinde) --- */
+  /* --- Marka görselleri (Web Vitrini sekmesinde) --- */
   $('#logoYukleBtn').addEventListener('click', function () { $('#logoDosyaSec').click(); });
   $('#logoDosyaSec').addEventListener('change', function (o) {
     const dosya = o.target.files && o.target.files[0];
@@ -6184,7 +6210,7 @@ function olaylariBagla() {
   $('#kilitSifreGosterBtn').addEventListener('click', function () {
     const kutu = $('#kilitSifre');
     kutu.type = kutu.type === 'password' ? 'text' : 'password';
-    $('#kilitSifreGosterBtn').textContent = kutu.type === 'password' ? '👁️' : '🙈';
+    $('#kilitSifreGosterBtn').innerHTML = ikon(kutu.type === 'password' ? 'goz' : 'gozKapali');
     kutu.focus();
   });
 
@@ -6253,7 +6279,7 @@ async function baslat() {
   if (durum.ayarlar.demoModu) {
     setTimeout(function () {
       bildir('DEMO MODU açık.\nGördüğünüz veriler örnektir, sitenizde değişiklik yapılmaz.\n' +
-             'Gerçek verileriniz için ⚙️ Ayarlar sekmesini kullanın.', 'uyari');
+             'Gerçek verileriniz için Ayarlar sekmesini kullanın.', 'uyari');
     }, 900);
   }
 }

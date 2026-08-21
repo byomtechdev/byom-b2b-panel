@@ -100,10 +100,10 @@ function kilidiCiz(veri) {
   const lisans = ozet.lisans || {};
 
   const simgeler = {
-    expired: '⌛', suspended: '⛔', invalid_hwid: '🖥️',
-    not_found: '❓', baglanti: '📡', bilinmiyor: '⚠️'
+    expired: 'saat', suspended: 'yasak', invalid_hwid: 'ekran',
+    not_found: 'soru', baglanti: 'anten', bilinmiyor: 'uyari'
   };
-  $('#kilitSimge').textContent = simgeler[veri.sebep] || '🔒';
+  $('#kilitSimge').innerHTML = ikon(simgeler[veri.sebep] || 'kilit', 'ik-xl');
   $('#kilitBaslik').textContent = veri.baslik || 'Lisans doğrulanamadı';
   $('#kilitAciklama').textContent = veri.aciklama || '';
 
@@ -247,7 +247,7 @@ $$('[data-kopyala]').forEach(function (btn) {
 
     await ipcRenderer.invoke('byom:panoya-kopyala', metin);
     const eski = btn.textContent;
-    btn.textContent = '✅ KOPYALANDI';
+    btn.textContent = 'KOPYALANDI';
     setTimeout(function () { btn.textContent = eski; }, 1600);
   });
 });
@@ -292,7 +292,7 @@ async function aktivasyonuGonder() {
   }
 
   btn.disabled = true;
-  btn.textContent = '⏳ DOĞRULANIYOR…';
+  btn.textContent = 'DOĞRULANIYOR…';
   mesajYaz($('#aktivasyonMesaj'), '', 'bilgi');
 
   try {
@@ -303,8 +303,8 @@ async function aktivasyonuGonder() {
     });
 
     if (sonuc && sonuc.ok) {
-      mesajYaz($('#aktivasyonMesaj'), '✅ Lisansınız etkinleştirildi. Uygulama açılıyor…', 'basari');
-      btn.textContent = '✅ ETKİNLEŞTİRİLDİ';
+      mesajYaz($('#aktivasyonMesaj'), 'Lisansınız etkinleştirildi. Uygulama açılıyor…', 'basari');
+      btn.textContent = 'ETKİNLEŞTİRİLDİ';
       setTimeout(function () { ipcRenderer.invoke('byom:uygulamayi-ac'); }, 900);
       return;
     }
@@ -316,9 +316,9 @@ async function aktivasyonuGonder() {
   } catch (e) {
     mesajYaz($('#aktivasyonMesaj'), 'Beklenmeyen hata: ' + ((e && e.message) || e), 'hata');
   } finally {
-    if (btn.textContent !== '✅ ETKİNLEŞTİRİLDİ') {
+    if (btn.textContent !== 'ETKİNLEŞTİRİLDİ') {
       btn.disabled = false;
-      btn.textContent = '🚀 LİSANSI ETKİNLEŞTİR';
+      btn.textContent = 'LİSANSI ETKİNLEŞTİR';
     }
   }
 }
@@ -361,7 +361,7 @@ $('#apiTestBtn').addEventListener('click', async function () {
   try {
     const sonuc = await ipcRenderer.invoke('byom:baglanti-testi');
     mesajYaz($('#apiMesaj'),
-      (sonuc && sonuc.ok ? '✅ ' + sonuc.mesaj : '❌ ' + ((sonuc && sonuc.hata) || 'Bağlanılamadı.')) +
+      ((sonuc && sonuc.ok) ? sonuc.mesaj : ((sonuc && sonuc.hata) || 'Bağlanılamadı.')) +
       '\nAdres: ' + ((sonuc && sonuc.apiUrl) || '—'),
       sonuc && sonuc.ok ? 'basari' : 'hata');
   } finally {
@@ -375,12 +375,12 @@ $('#apiTestBtn').addEventListener('click', async function () {
 $('#tekrarDeneBtn').addEventListener('click', async function () {
   const btn = $('#tekrarDeneBtn');
   btn.disabled = true;
-  btn.textContent = '⏳ KONTROL EDİLİYOR…';
+  btn.textContent = 'KONTROL EDİLİYOR…';
   try {
     await ipcRenderer.invoke('byom:yeniden-dogrula', { sessiz: false });
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔄 TEKRAR DENE';
+    btn.textContent = 'TEKRAR DENE';
   }
 });
 
@@ -409,7 +409,7 @@ $('#kilitDestekGonderBtn').addEventListener('click', async function () {
   }
 
   btn.disabled = true;
-  btn.textContent = '⏳ GÖNDERİLİYOR…';
+  btn.textContent = 'GÖNDERİLİYOR…';
   mesajYaz($('#kilitDestekMesaj'), '', 'bilgi');
 
   try {
@@ -426,7 +426,7 @@ $('#kilitDestekGonderBtn').addEventListener('click', async function () {
 
     if (sonuc && sonuc.ok) {
       mesajYaz($('#kilitDestekMesaj'),
-        '✅ Talebiniz BYOM ekibine iletildi. En kısa sürede dönüş yapılacaktır.', 'basari');
+        'Talebiniz BYOM ekibine iletildi. En kısa sürede dönüş yapılacaktır.', 'basari');
       $('#kilitDestekBaslik').value = '';
       $('#kilitDestekMetni').value = '';
     } else {
@@ -438,7 +438,7 @@ $('#kilitDestekGonderBtn').addEventListener('click', async function () {
     mesajYaz($('#kilitDestekMesaj'), 'Talep gönderilemedi: ' + ((e && e.message) || e), 'hata');
   } finally {
     btn.disabled = false;
-    btn.textContent = '📨 TALEBİ GÖNDER';
+    btn.textContent = 'TALEBİ GÖNDER';
   }
 });
 

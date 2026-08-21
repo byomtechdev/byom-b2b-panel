@@ -100,12 +100,12 @@ function varsayilanAyarlar() {
     cs: '',
     // Bağlantı doğrulandıktan sonra Site Adresi / Consumer Key / Secret kutuları
     // kilitlenir (salt okunur + maskeli). Kullanıcı ya da bayi sahibi çalışan bir
-    // bağlantıyı yanlışlıkla bozmasın diye. Kilit "🔓 KİLİDİ AÇ" ile kaldırılır.
+    // bağlantıyı yanlışlıkla bozmasın diye. Kilit "KİLİDİ AÇ" ile kaldırılır.
     apiKilitli: false,
     // Bağlantı kurulduğunda sitenin b2b-core theme-config'inden çekilen logo
     // adresi (bkz. siteLogosunuGetir). Sitede/eklentide logo yoksa boş kalır.
     siteLogosu: '',
-    // Site logosu yoksa/çekilemezse "🖼️ Web Vitrini" sekmesinden yüklenen
+    // Site logosu yoksa/çekilemezse "Web Vitrini" sekmesinden yüklenen
     // yerel logo (data:image/... base64) — bkz. yerelLogoYukle.
     yerelLogo: '',
     // Sitenin tarayıcı sekmesi simgesi (favicon). Yine Web Vitrini sekmesinden
@@ -299,10 +299,10 @@ async function apiIstek(istek) {
   const cs = String(istek.cs || ayarlar.cs || '').trim();
 
   if (!hamTaban) {
-    return { ok: false, durum: 0, hata: 'Site adresi girilmemiş.\n⚙️ Ayarlar sekmesinden WooCommerce site adresini yazın.' };
+    return { ok: false, durum: 0, hata: 'Site adresi girilmemiş.\nAyarlar sekmesinden WooCommerce site adresini yazın.' };
   }
   if (!ck || !cs) {
-    return { ok: false, durum: 0, hata: 'Consumer Key ve Consumer Secret girilmemiş.\n⚙️ Ayarlar sekmesinden anahtarları yapıştırın.' };
+    return { ok: false, durum: 0, hata: 'Consumer Key ve Consumer Secret girilmemiş.\nAyarlar sekmesinden anahtarları yapıştırın.' };
   }
 
   const alan = API_ALANLARI[istek.alan] || istek.alan || API_ALANLARI.woo;
@@ -559,11 +559,11 @@ autoUpdater.on('update-downloaded', async function (bilgi) {
 
   const secim = await dialog.showMessageBox(pencere, {
     type: 'info',
-    title: '🔄 Güncelleme Hazır',
+    title: 'Güncelleme Hazır',
     message: 'B2B Yönetim Paneli' + (surum ? ' ' + surum : '') + ' sürümü indirildi.',
     detail: 'Yeni sürümü kurmak için uygulama birkaç saniyeliğine kapanıp yeniden açılacak.\n' +
             'Devam eden bir işleminiz varsa önce tamamlayın.\n\nŞimdi kurulsun mu?',
-    buttons: ['🔁 ŞİMDİ YENİDEN BAŞLAT VE KUR', 'DAHA SONRA'],
+    buttons: ['ŞİMDİ YENİDEN BAŞLAT VE KUR', 'DAHA SONRA'],
     defaultId: 0,
     cancelId: 1,
     noLink: true
@@ -590,7 +590,7 @@ function otomatikGuncellemeyiBaslat() {
 
   setTimeout(function () {
     autoUpdater.checkForUpdatesAndNotify({
-      title: '🔄 Güncelleme Hazır',
+      title: 'Güncelleme Hazır',
       body: 'B2B Yönetim Paneli {version} indirildi ve uygulamadan çıkıldığında otomatik kurulacak.'
     }).catch(function (e) {
       console.warn('[Güncelleme] checkForUpdatesAndNotify başarısız:', (e && e.message) || e);

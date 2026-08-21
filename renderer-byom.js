@@ -4,12 +4,12 @@
  *  İki iş yapar:
  *
  *   1) LİSANS ROZETİ
- *      Üst çubuktaki lisans rozetini ve ⚙️ Ayarlar sekmesindeki "BYOM Brain
+ *      Üst çubuktaki lisans rozetini ve Ayarlar sekmesindeki "BYOM Brain
  *      Lisansı" kartını merkezî sunucudan gelen GERÇEK veriyle doldurur.
  *      renderer.js'in ustCubuguTazele fonksiyonu sarmalanır; böylece o dosyada
  *      değişiklik yapmadan rozet BYOM verisiyle güncellenir.
  *
- *   2) 🎧 BYOM DESTEK SEKMESİ
+ *   2) BYOM DESTEK SEKMESİ
  *      Müşteri masaüstünden destek talebi açar, adminin cevaplarını sohbet
  *      görünümünde okur ve yanıt yazar. Yalnızca KENDİ talepleri listelenir
  *      (istekler lisans anahtarına bağlı olarak ana süreçten gider).
@@ -49,10 +49,10 @@
     suzgec: 'acik',          // acik | kapali | hepsi
     yeniOncelik: 'normal',
     oncelikler: [
-      { kod: 'low', etiket: 'Düşük', simge: '🟢' },
-      { kod: 'normal', etiket: 'Normal', simge: '🔵' },
-      { kod: 'high', etiket: 'Yüksek', simge: '🟠' },
-      { kod: 'urgent', etiket: 'Acil', simge: '🔴' }
+      { kod: 'low', etiket: 'Düşük', simge: ikon('nokta', 'ik-nokta text-slate-400') },
+      { kod: 'normal', etiket: 'Normal', simge: ikon('nokta', 'ik-nokta text-sky-500') },
+      { kod: 'high', etiket: 'Yüksek', simge: ikon('nokta', 'ik-nokta text-amber-500') },
+      { kod: 'urgent', etiket: 'Acil', simge: ikon('nokta', 'ik-nokta text-red-500') }
     ],
     /* Bu oturumda açılıp okunan talepler: { talepId: sonMesajZamani }.
        Liste sunucudan tazelendiğinde "yeni cevap" işareti geri gelmesin diye. */
@@ -81,12 +81,12 @@
 
   /** Talep durumlarının Türkçe karşılıkları ve renkleri. */
   const DURUM_GORUNUM = {
-    open: { etiket: 'Açık', simge: '🟡', sinif: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' },
-    pending: { etiket: 'Yanıt Bekliyor', simge: '🟡', sinif: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' },
-    in_progress: { etiket: 'İnceleniyor', simge: '🔵', sinif: 'bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300' },
-    answered: { etiket: 'Yanıtlandı', simge: '🟢', sinif: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' },
-    resolved: { etiket: 'Çözüldü', simge: '✅', sinif: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' },
-    closed: { etiket: 'Kapatıldı', simge: '⚪', sinif: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300' }
+    open: { etiket: 'Açık', simge: ikon('nokta', 'ik-nokta'), sinif: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' },
+    pending: { etiket: 'Yanıt Bekliyor', simge: ikon('nokta', 'ik-nokta'), sinif: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' },
+    in_progress: { etiket: 'İnceleniyor', simge: ikon('nokta', 'ik-nokta'), sinif: 'bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300' },
+    answered: { etiket: 'Yanıtlandı', simge: ikon('nokta', 'ik-nokta'), sinif: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' },
+    resolved: { etiket: 'Çözüldü', simge: ikon('onay', 'ik-sm'), sinif: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' },
+    closed: { etiket: 'Kapatıldı', simge: ikon('nokta', 'ik-nokta'), sinif: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300' }
   };
 
   const KAPALI_DURUMLAR = ['closed', 'resolved'];
@@ -154,25 +154,25 @@
     let sinif;
 
     if (l.cevrimdisi) {
-      metin = '📡 Çevrimdışı Lisans' + (l.cevrimdisiKalanGun !== undefined ? ' — ' + l.cevrimdisiKalanGun + ' Gün' : '');
+      metin = 'Çevrimdışı Lisans' + (l.cevrimdisiKalanGun !== undefined ? ' — ' + l.cevrimdisiKalanGun + ' Gün' : '');
       sinif = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30';
     } else if (l.durum === 'expiring_soon' || (gun !== null && gun <= 30 && gun > 0)) {
-      metin = '🟠 BYOM Lisans — ' + (gun === null ? 'Bitmek Üzere' : gun + ' Gün Kaldı');
+      metin = 'BYOM Lisans — ' + (gun === null ? 'Bitmek Üzere' : gun + ' Gün Kaldı');
       sinif = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30';
     } else if (l.durum === 'active') {
-      metin = '🟢 BYOM Lisans Aktif' + (gun === null ? '' : ' — ' + gun + ' Gün');
+      metin = 'BYOM Lisans Aktif' + (gun === null ? '' : ' — ' + gun + ' Gün');
       sinif = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30';
     } else {
-      metin = '🔴 BYOM Lisans Sorunlu';
+      metin = 'BYOM Lisans Sorunlu';
       sinif = 'bg-red-50 text-red-800 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30';
     }
 
-    rozet.textContent = metin;
+    rozet.innerHTML = ikon('nokta', 'ik-nokta') + ' ' + kac(metin);
     rozet.className = 'hidden sm:flex items-center gap-2 h-12 px-4 rounded-xl font-bold text-base border-2 ' + sinif;
     rozet.title = 'BYOM Brain lisansı' +
       (l.bitisTarihi ? '\nBitiş: ' + tarih(l.bitisTarihi) : '') +
       (l.sonDogrulama ? '\nSon doğrulama: ' + tarih(l.sonDogrulama, true) : '') +
-      '\nDetay için ⚙️ Ayarlar sekmesine bakın.';
+      '\nDetay için Ayarlar sekmesine bakın.';
     return true;
   }
 
@@ -188,7 +188,7 @@
     };
   }
 
-  /** ⚙️ Ayarlar sekmesindeki BYOM kartını doldurur. */
+  /** Ayarlar sekmesindeki BYOM kartını doldurur. */
   function ayarKartiniCiz() {
     const detay = secDeg('#byomLisansDetay');
     const rozet = secDeg('#byomDurumRozeti');
@@ -196,17 +196,17 @@
 
     const l = BYOM.lisans || {};
     const durumMetni = {
-      active: ['🟢 Aktif', 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'],
-      expiring_soon: ['🟠 Yakında Bitiyor', 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'],
-      expired: ['🔴 Süresi Doldu', 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300'],
-      suspended: ['⛔ Askıya Alındı', 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300'],
-      invalid_hwid: ['🖥️ Donanım Uyuşmuyor', 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300'],
-      not_found: ['❓ Bulunamadı', 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300']
+      active: [ikon('nokta', 'ik-nokta') + ' Aktif', 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'],
+      expiring_soon: [ikon('nokta', 'ik-nokta') + ' Yakında Bitiyor', 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'],
+      expired: [ikon('nokta', 'ik-nokta') + ' Süresi Doldu', 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300'],
+      suspended: [ikon('yasak', 'ik-sm') + ' Askıya Alındı', 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300'],
+      invalid_hwid: [ikon('ekran', 'ik-sm') + ' Donanım Uyuşmuyor', 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300'],
+      not_found: [ikon('soru', 'ik-sm') + ' Bulunamadı', 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300']
     };
-    const gorunum = durumMetni[l.durum] || ['— Bilinmiyor', 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'];
+    const gorunum = durumMetni[l.durum] || ['Bilinmiyor', 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'];
 
     if (rozet) {
-      rozet.textContent = l.cevrimdisi ? '📡 Çevrimdışı' : gorunum[0];
+      rozet.innerHTML = l.cevrimdisi ? (ikon('anten', 'ik-sm') + ' Çevrimdışı') : gorunum[0];
       rozet.className = 'ml-auto text-sm font-extrabold px-3 py-1 rounded-lg ' +
         (l.cevrimdisi ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' : gorunum[1]);
     }
@@ -227,7 +227,8 @@
     html += satir('Son Doğrulama', l.sonDogrulama ? tarih(l.sonDogrulama, true) : '—');
     if (l.cevrimdisi) {
       html += '<div class="mt-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 ' +
-              'text-sm font-bold leading-relaxed">📡 Sunucuya ulaşılamadığı için çevrimdışı izinle çalışıyorsunuz' +
+              'text-sm font-bold leading-relaxed">' + ikon('anten', 'ik-sm') +
+              ' Sunucuya ulaşılamadığı için çevrimdışı izinle çalışıyorsunuz' +
               (l.cevrimdisiKalanGun !== undefined ? ' (kalan: ' + l.cevrimdisiKalanGun + ' gün)' : '') + '.</div>';
     }
 
@@ -315,7 +316,7 @@
   });
 
   /* ==========================================================================
-   *  BÖLÜM 2 — 🎧 BYOM DESTEK SEKMESİ
+   *  BÖLÜM 2 — BYOM DESTEK SEKMESİ
    * ========================================================================*/
 
   /** Sekme üstündeki lisans/firma bilgisi. */
@@ -414,7 +415,7 @@
 
     if (BYOM.yukleniyor && !BYOM.talepler.length) {
       kap.innerHTML = '<div class="p-6 text-center text-lg font-bold text-slate-400">' +
-                      '<span class="donuyor inline-block">⏳</span><br>Talepler yükleniyor…</div>';
+                      '<span class="donuyor inline-block">' + ikon('donen') + '</span><br>Talepler yükleniyor…</div>';
       return;
     }
 
@@ -425,7 +426,7 @@
         (BYOM.talepler.length
           ? 'Bu süzgeçte talep yok.'
           : 'Henüz destek talebiniz yok.<br><br>Bir sorunuz veya sorununuz olduğunda<br>' +
-            '<b>➕ YENİ DESTEK TALEBİ</b> düğmesine basın.') +
+            '<b>YENİ DESTEK TALEBİ</b> düğmesine basın.') +
         '</div>';
       return;
     }
@@ -532,10 +533,10 @@
       BYOM.sohbetImzasi = '';
       sohbet.innerHTML =
         '<div class="m-auto text-center max-w-md">' +
-          '<div class="text-6xl mb-4">🎧</div>' +
+          '<div class="text-6xl mb-4">' + ikon('kulaklik', 'ik-xxl') + '</div>' +
           '<div class="text-2xl font-black mb-3">BYOM Destek Masası</div>' +
           '<p class="text-lg leading-relaxed text-slate-500 dark:text-slate-400">' +
-            'Sol taraftan bir talep seçin ya da <b>➕ YENİ DESTEK TALEBİ</b> ile bize yazın.<br><br>' +
+            'Sol taraftan bir talep seçin ya da <b>YENİ DESTEK TALEBİ</b> ile bize yazın.<br><br>' +
             'Talepleriniz doğrudan BYOM Brain sistemine düşer; cevaplar yine bu ekranda görünür.' +
           '</p>' +
         '</div>';
@@ -597,10 +598,12 @@
           ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-sm'
           : 'bg-marka-700 text-white rounded-tr-sm';
         const hiza = adminMi ? 'items-start' : 'items-end';
-        const ad = adminMi ? ('🎧 ' + (m.ad || 'BYOM Destek')) : ('👤 ' + (m.ad || 'Siz'));
+        const adSimgesi = adminMi ? ikon('kulaklik', 'ik-sm') : ikon('kisi', 'ik-sm');
+        const ad = adminMi ? (m.ad || 'BYOM Destek') : (m.ad || 'Siz');
 
         return '<div class="flex flex-col ' + hiza + ' gap-1">' +
-          '<div class="text-xs font-extrabold text-slate-500 dark:text-slate-400 px-1">' + kac(ad) + '</div>' +
+          '<div class="text-xs font-extrabold text-slate-500 dark:text-slate-400 px-1">' +
+            adSimgesi + ' ' + kac(ad) + '</div>' +
           '<div class="max-w-[85%] px-5 py-4 rounded-2xl text-lg leading-relaxed whitespace-pre-line break-words shadow-sm ' + balon + '">' +
             kac(m.mesaj) +
           '</div>' +
@@ -620,7 +623,7 @@
       } else {
         sohbet.scrollTop = eskiKaydirma;
         const son = mesajlar[mesajlar.length - 1];
-        if (son && son.gonderen === 'admin') uyar('🔔 Bu talebe yeni bir cevap düştü.', 'bilgi');
+        if (son && son.gonderen === 'admin') uyar('Bu talebe yeni bir cevap düştü.', 'bilgi');
       }
     }
   }
@@ -798,7 +801,7 @@
       if (sohbet) {
         sohbet.classList.remove('hidden');
         sohbet.innerHTML = '<div class="m-auto text-lg font-bold text-slate-400">' +
-                           '<span class="donuyor inline-block">⏳</span> Yükleniyor…</div>';
+                           '<span class="donuyor inline-block">' + ikon('donen') + '</span> Yükleniyor…</div>';
         // Ekrandaki içerik artık sohbet değil: imzayı sıfırla ki yeniden çizilsin.
         BYOM.sohbetImzasi = '';
       }
@@ -829,7 +832,7 @@
     }
 
     const eskiMetin = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ GÖNDERİLİYOR…'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'GÖNDERİLİYOR…'; }
 
     try {
       const sonuc = await ipcRenderer.invoke('byom:destek:olustur', {
@@ -843,7 +846,7 @@
         return;
       }
 
-      uyar('✅ Destek talebiniz BYOM ekibine iletildi.\nCevap geldiğinde bu ekranda görebileceksiniz.', 'basari');
+      uyar('Destek talebiniz BYOM ekibine iletildi.\nCevap geldiğinde bu ekranda görebileceksiniz.', 'basari');
       formuKapat(true);
       await taleplariYukle(true);
 
@@ -853,7 +856,7 @@
     } catch (e) {
       uyar('Destek talebi gönderilemedi: ' + ((e && e.message) || e), 'hata');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = eskiMetin || '📨 TALEBİ GÖNDER'; }
+      if (btn) { btn.disabled = false; btn.textContent = eskiMetin || 'TALEBİ GÖNDER'; }
     }
   }
 
@@ -870,7 +873,7 @@
       return;
     }
 
-    if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+    if (btn) { btn.disabled = true; btn.textContent = ''; }
 
     try {
       const sonuc = await ipcRenderer.invoke('byom:destek:yanit', { id: BYOM.secilenTalepId, mesaj: metin });
@@ -1021,7 +1024,7 @@
       kontrolBtn.addEventListener('click', async function () {
         kontrolBtn.disabled = true;
         const eski = kontrolBtn.textContent;
-        kontrolBtn.textContent = '⏳ KONTROL EDİLİYOR…';
+        kontrolBtn.textContent = 'KONTROL EDİLİYOR…';
         try {
           const sonuc = await ipcRenderer.invoke('byom:yeniden-dogrula', { sessiz: true });
           await lisansiTazele();
@@ -1056,11 +1059,11 @@
       testBtn.addEventListener('click', async function () {
         testBtn.disabled = true;
         const eski = testBtn.textContent;
-        testBtn.textContent = '⏳ TEST EDİLİYOR…';
+        testBtn.textContent = 'TEST EDİLİYOR…';
         try {
           const sonuc = await ipcRenderer.invoke('byom:baglanti-testi');
-          if (sonuc && sonuc.ok) uyar('✅ ' + sonuc.mesaj + '\n' + sonuc.apiUrl, 'basari');
-          else uyar('❌ ' + ((sonuc && sonuc.hata) || 'Bağlanılamadı.'), 'hata');
+          if (sonuc && sonuc.ok) uyar(sonuc.mesaj + '\n' + sonuc.apiUrl, 'basari');
+          else uyar(((sonuc && sonuc.hata) || 'Bağlanılamadı.'), 'hata');
         } finally {
           testBtn.disabled = false;
           testBtn.textContent = eski;

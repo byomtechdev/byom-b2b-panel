@@ -7,164 +7,216 @@
 <title>BYOM Lisans</title>
 <style>
   /* ==========================================================================
-     BYOM LİSANS EKRANI
+     BYOM LİSANS EKRANI — kurumsal koyu tema
      Bu pencere ana uygulamadan bağımsızdır: Tailwind ya da başka bir dış dosya
      BEKLEMEZ. Sebep — lisans ekranı internet/CDN olmadan da açılmak zorunda;
      kullanıcı uygulamanın ilk gördüğü yüzü burasıdır.
+
+     Geometri ve renkler ana panelle aynı dili konuşur: 6px köşe, 1px kenarlık,
+     kobalt aksiyon (#2563eb), slate zemin. Parlak gradyanlar ve ağır gölgeler
+     yerine düz yüzeyler ve ince çizgiler kullanılır.
      ========================================================================== */
 
   :root {
     color-scheme: dark;
-    --zemin:      #070c17;
-    --zemin-ust:  #0f172a;
-    --kart:       #111c33;
-    --kart-kenar: #1e2b47;
-    --metin:      #e8eefc;
+    --zemin:      #0b1220;
+    --zemin-ust:  #0b1220;
+    --kart:       #0f172a;
+    --kart-kenar: #1e293b;
+    --metin:      #f1f5f9;
     --soluk:      #94a3b8;
-    --marka:      #3b60f6;
-    --marka-koyu: #2542eb;
+    --marka:      #2563eb;
+    --marka-koyu: #1d4ed8;
     --yesil:      #10b981;
     --sari:       #f59e0b;
     --kirmizi:    #ef4444;
+    --kose:       6px;
   }
 
   * { box-sizing: border-box; }
 
   html, body {
     margin: 0; padding: 0; height: 100%;
-    font-family: "Segoe UI", "Segoe UI Variable", Roboto, system-ui, -apple-system, Arial, sans-serif;
-    background: radial-gradient(1200px 700px at 20% -10%, #1b2a52 0%, var(--zemin-ust) 45%, var(--zemin) 100%);
+    font-family: "Segoe UI Variable Text", "Segoe UI", Inter, Roboto, system-ui, -apple-system, Arial, sans-serif;
+    background: var(--zemin);
     color: var(--metin);
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: -.005em;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
     overflow: hidden;
   }
 
-  ::-webkit-scrollbar { width: 12px; }
-  ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
 
-  .sayfa { height: 100%; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 28px 24px 32px; }
+  .sayfa { height: 100%; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 26px 22px 30px; }
+
+  /* ---- İkonlar (tek renkli SVG) ---- */
+  #ikon-deposu { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .ik {
+    width: 16px; height: 16px; flex: none; display: inline-block; vertical-align: -.18em;
+    fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .ik-lg { width: 18px; height: 18px; }
+  .ik-xl { width: 26px; height: 26px; stroke-width: 1.5; }
 
   /* ---- Marka başlığı ---- */
-  .marka { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .marka { display: flex; align-items: center; gap: 11px; margin-bottom: 20px; }
   .marka-logo {
-    width: 58px; height: 58px; border-radius: 18px;
-    background: linear-gradient(135deg, var(--marka) 0%, #7c3aed 100%);
-    display: grid; place-items: center; font-size: 30px;
-    box-shadow: 0 12px 30px rgba(59,96,246,.35);
+    width: 34px; height: 34px; border-radius: var(--kose);
+    background: var(--marka); color: #fff;
+    display: grid; place-items: center;
   }
-  .marka-ad { font-size: 25px; font-weight: 800; letter-spacing: .3px; line-height: 1.1; }
-  .marka-alt { font-size: 13px; color: var(--soluk); font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; }
+  .marka-ad { font-size: 16px; font-weight: 650; letter-spacing: -.02em; line-height: 1.2; }
+  .marka-alt { font-size: 10.5px; color: var(--soluk); font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
 
   /* ---- Kart ---- */
   .kart {
-    width: 100%; max-width: 620px;
-    background: rgba(17,28,51,.92);
+    width: 100%; max-width: 560px;
+    background: var(--kart);
     border: 1px solid var(--kart-kenar);
-    border-radius: 22px;
-    box-shadow: 0 28px 70px rgba(0,0,0,.55);
-    padding: 30px;
+    border-radius: var(--kose);
+    box-shadow: 0 1px 2px rgba(0,0,0,.30);
+    padding: 22px;
   }
-  .kart + .kart { margin-top: 16px; }
+  .kart + .kart { margin-top: 12px; }
 
-  h1 { font-size: 23px; margin: 0 0 8px; font-weight: 800; }
-  h2 { font-size: 16px; margin: 0 0 14px; font-weight: 700; color: var(--soluk); }
-  p  { margin: 0 0 14px; line-height: 1.62; color: #c7d2e5; font-size: 15px; }
+  h1 { font-size: 17px; margin: 0 0 6px; font-weight: 650; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
+  h2 { font-size: 11px; margin: 0 0 12px; font-weight: 650; color: var(--soluk); letter-spacing: .08em; text-transform: uppercase; display: flex; align-items: center; gap: 7px; }
+  p  { margin: 0 0 12px; line-height: 1.55; color: #cbd5e1; font-size: 12.5px; }
 
   /* ---- Form ---- */
-  label { display: block; font-size: 13px; font-weight: 700; color: var(--soluk); margin: 0 0 6px; letter-spacing: .4px; }
-  .alan { margin-bottom: 16px; }
+  label { display: block; font-size: 10.5px; font-weight: 650; color: var(--soluk); margin: 0 0 5px; letter-spacing: .07em; }
+  .alan { margin-bottom: 13px; }
   input[type=text], select, textarea {
-    width: 100%; height: 50px; padding: 0 15px;
-    background: #0b1526;
-    border: 2px solid #24344f; border-radius: 13px;
-    color: var(--metin); font-size: 16px; font-family: inherit; outline: none;
-    transition: border-color .15s, box-shadow .15s;
+    width: 100%; height: 34px; padding: 0 10px;
+    background: #0b1220;
+    border: 1px solid #24344f; border-radius: var(--kose);
+    color: var(--metin); font-size: 12.5px; font-family: inherit; outline: none;
+    transition: border-color .12s, outline-color .12s;
   }
-  textarea { height: auto; padding: 13px 15px; resize: vertical; line-height: 1.55; }
-  input[type=text]:focus, select:focus, textarea:focus { border-color: var(--marka); box-shadow: 0 0 0 4px rgba(59,96,246,.18); }
+  textarea { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.5; }
+  input[type=text]:focus, select:focus, textarea:focus {
+    border-color: var(--marka);
+    outline: 1px solid var(--marka);
+    outline-offset: -1px;
+  }
   input[type=text]::placeholder, textarea::placeholder { color: #55688a; }
-  input.anahtar { font-family: "Consolas", "Cascadia Mono", monospace; letter-spacing: 1.6px; text-transform: uppercase; font-size: 17px; }
-  .ipucu { font-size: 12.5px; color: #6b7f9e; margin-top: 6px; line-height: 1.5; }
+  input.anahtar { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; }
+  .ipucu { font-size: 11px; color: #6b7f9e; margin-top: 5px; line-height: 1.5; }
 
   /* ---- Düğmeler ---- */
-  .dugmeler { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
+  .dugmeler { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
   button {
-    height: 52px; padding: 0 24px; border: 0; border-radius: 14px;
-    font-family: inherit; font-size: 16px; font-weight: 800; cursor: pointer;
-    transition: transform .1s, filter .15s, background .15s;
+    height: 34px; padding: 0 14px; border: 1px solid transparent; border-radius: var(--kose);
+    font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background .12s, border-color .12s, color .12s;
   }
-  button:active:not(:disabled) { transform: scale(.98); }
   button:disabled { opacity: .55; cursor: not-allowed; }
-  .btn-ana { flex: 1; min-width: 200px; background: linear-gradient(135deg, var(--marka) 0%, var(--marka-koyu) 100%); color: #fff; box-shadow: 0 10px 26px rgba(37,66,235,.35); }
-  .btn-ana:hover:not(:disabled) { filter: brightness(1.1); }
-  .btn-ikincil { background: #1c2b47; color: #cfdcf3; border: 1px solid #2c3d5e; }
-  .btn-ikincil:hover:not(:disabled) { background: #24365a; }
-  .btn-sessiz { background: transparent; color: var(--soluk); height: 44px; padding: 0 14px; font-size: 14px; font-weight: 700; }
+  button:focus-visible { outline: 1px solid var(--marka); outline-offset: 1px; }
+  .btn-ana { flex: 1; min-width: 180px; background: var(--marka); color: #fff; }
+  .btn-ana:hover:not(:disabled) { background: var(--marka-koyu); }
+  .btn-ikincil { background: #16233a; color: #cbd5e1; border-color: #24344f; }
+  .btn-ikincil:hover:not(:disabled) { background: #1c2b47; border-color: #35496f; }
+  .btn-sessiz { background: transparent; color: var(--soluk); height: 30px; padding: 0 10px; font-size: 12px; }
   .btn-sessiz:hover { color: var(--metin); }
 
   /* ---- Donanım kimliği kutusu ---- */
   .hwid-kutu {
-    display: flex; align-items: center; gap: 12px;
-    background: #0b1526; border: 1px dashed #2d4166; border-radius: 14px;
-    padding: 14px 16px; margin-top: 4px;
+    display: flex; align-items: center; gap: 9px;
+    background: #0b1220; border: 1px solid #24344f; border-radius: var(--kose);
+    padding: 9px 10px; margin-top: 3px;
   }
-  .hwid-metin { flex: 1; min-width: 0; font-family: "Consolas", "Cascadia Mono", monospace; font-size: 15px; letter-spacing: .6px; word-break: break-all; color: #a8c4ff; }
-  .hwid-etiket { font-size: 11.5px; color: var(--soluk); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
+  .hwid-metin { flex: 1; min-width: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; letter-spacing: .03em; word-break: break-all; color: #93b4ff; }
+  .hwid-etiket { font-size: 10px; color: var(--soluk); font-weight: 650; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 5px; }
 
   /* ---- Durum kutusu (hata / bilgi) ---- */
-  .kutu { border-radius: 14px; padding: 15px 17px; font-size: 14.5px; line-height: 1.6; margin-bottom: 16px; white-space: pre-line; border: 1px solid transparent; }
-  .kutu-hata  { background: rgba(239,68,68,.11);  border-color: rgba(239,68,68,.35);  color: #ffc9c9; }
-  .kutu-uyari { background: rgba(245,158,11,.11); border-color: rgba(245,158,11,.35); color: #ffe0a8; }
-  .kutu-bilgi { background: rgba(59,96,246,.11);  border-color: rgba(59,96,246,.35);  color: #cbd9ff; }
-  .kutu-basari{ background: rgba(16,185,129,.11); border-color: rgba(16,185,129,.35); color: #a7f3d0; }
+  .kutu { border-radius: var(--kose); padding: 10px 12px; font-size: 12.5px; line-height: 1.55; margin-bottom: 12px; white-space: pre-line; border: 1px solid transparent; }
+  .kutu-hata  { background: rgba(239,68,68,.10);  border-color: rgba(239,68,68,.30);  color: #fca5a5; }
+  .kutu-uyari { background: rgba(245,158,11,.10); border-color: rgba(245,158,11,.30); color: #fcd34d; }
+  .kutu-bilgi { background: rgba(37,99,235,.10);  border-color: rgba(37,99,235,.30);  color: #bfdbfe; }
+  .kutu-basari{ background: rgba(16,185,129,.10); border-color: rgba(16,185,129,.30); color: #a7f3d0; }
 
   /* ---- Splash / kontrol ---- */
-  .kontrol-govde { text-align: center; padding: 26px 10px 10px; }
+  .kontrol-govde { text-align: center; padding: 18px 8px 6px; }
   .halka {
-    width: 62px; height: 62px; margin: 0 auto 20px;
-    border: 5px solid #23345a; border-top-color: var(--marka);
+    width: 34px; height: 34px; margin: 0 auto 14px;
+    border: 2px solid #24344f; border-top-color: var(--marka);
     border-radius: 50%; animation: don 900ms linear infinite;
   }
   @keyframes don { to { transform: rotate(360deg); } }
-  .adim { font-size: 16px; color: #c7d2e5; font-weight: 600; }
+  .adim { font-size: 12.5px; color: #cbd5e1; font-weight: 600; }
 
   /* ---- Kilit ekranı ---- */
-  .kilit-simge { font-size: 46px; margin-bottom: 12px; }
-  .rozet { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 800; letter-spacing: .5px; }
-  .rozet-kirmizi { background: rgba(239,68,68,.16); color: #fca5a5; }
-  .rozet-sari    { background: rgba(245,158,11,.16); color: #fcd34d; }
+  .kilit-simge { color: var(--soluk); margin-bottom: 10px; line-height: 1; }
+  .rozet { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: var(--kose); font-size: 10.5px; font-weight: 650; letter-spacing: .05em; border: 1px solid transparent; }
+  .rozet-kirmizi { background: rgba(239,68,68,.12); color: #fca5a5; border-color: rgba(239,68,68,.28); }
+  .rozet-sari    { background: rgba(245,158,11,.12); color: #fcd34d; border-color: rgba(245,158,11,.28); }
 
   /* ---- Bilgi satırları ---- */
-  .satir { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid #1b2a45; font-size: 14.5px; }
+  .satir { display: flex; justify-content: space-between; gap: 14px; padding: 7px 0; border-bottom: 1px solid #16233a; font-size: 12.5px; }
   .satir:last-child { border-bottom: 0; }
   .satir .ad { color: var(--soluk); font-weight: 600; }
-  .satir .deger { font-weight: 700; text-align: right; word-break: break-word; }
+  .satir .deger { font-weight: 600; text-align: right; word-break: break-word; }
 
   /* ---- İletişim ---- */
-  .iletisim { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+  .iletisim { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
   .iletisim a {
-    display: flex; align-items: center; gap: 10px; text-decoration: none;
-    background: #0f1c33; border: 1px solid #24344f; border-radius: 13px;
-    padding: 13px 15px; color: var(--metin); font-weight: 700; font-size: 14.5px;
-    transition: background .15s, border-color .15s;
+    display: flex; align-items: center; gap: 8px; text-decoration: none;
+    background: #0b1220; border: 1px solid #24344f; border-radius: var(--kose);
+    padding: 9px 11px; color: var(--metin); font-weight: 600; font-size: 12.5px;
+    transition: background .12s, border-color .12s;
   }
-  .iletisim a:hover { background: #16253f; border-color: #35496f; }
-  .iletisim .simge { font-size: 19px; }
+  .iletisim a:hover { background: #16233a; border-color: #35496f; }
+  .iletisim .simge { color: var(--soluk); display: inline-flex; }
 
   /* ---- Gelişmiş (sunucu adresi) ---- */
-  .gelismis-baslik { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--soluk); font-size: 13.5px; font-weight: 700; user-select: none; margin-top: 20px; }
+  .gelismis-baslik { display: flex; align-items: center; gap: 7px; cursor: pointer; color: var(--soluk); font-size: 12px; font-weight: 600; user-select: none; margin-top: 16px; }
   .gelismis-baslik:hover { color: var(--metin); }
-  .gelismis-govde { margin-top: 14px; padding-top: 16px; border-top: 1px solid #1b2a45; }
+  .gelismis-govde { margin-top: 12px; padding-top: 12px; border-top: 1px solid #16233a; }
   .gizli { display: none !important; }
 
-  .alt-not { margin-top: 20px; font-size: 12.5px; color: #5f7395; text-align: center; line-height: 1.7; }
+  .alt-not { margin-top: 16px; font-size: 11px; color: #5f7395; text-align: center; line-height: 1.65; }
 </style>
 </head>
 <body>
 
+<svg id="ikon-deposu" aria-hidden="true" focusable="false">
+  <symbol id="ik-cip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3.4v3.6M14 3.4v3.6M10 17v3.6M14 17v3.6M3.4 10H7M3.4 14H7M17 10h3.6M17 14h3.6"/></symbol>
+  <symbol id="ik-anahtar" viewBox="0 0 24 24"><circle cx="7.8" cy="15.6" r="3.6"/><path d="m10.4 13 8.2-8.2"/><path d="m15.4 8 1.9 1.9M18 5.4l2 2"/></symbol>
+  <symbol id="ik-kopyala" viewBox="0 0 24 24"><rect x="8.6" y="8.6" width="11.9" height="11.9" rx="2"/><path d="M15.4 5.6H5.6a2 2 0 0 0-2 2v9.8"/></symbol>
+  <symbol id="ik-gonder" viewBox="0 0 24 24"><path d="M20.8 3.2 10.4 13.6"/><path d="M20.8 3.2 14.2 20.8l-3.8-7.2-7.2-3.8Z"/></symbol>
+  <symbol id="ik-kilit" viewBox="0 0 24 24"><rect x="4.5" y="10.3" width="15" height="10.2" rx="2"/><path d="M8 10.3V7.5a4 4 0 0 1 8 0v2.8"/></symbol>
+  <symbol id="ik-kilitAcik" viewBox="0 0 24 24"><rect x="4.5" y="10.3" width="15" height="10.2" rx="2"/><path d="M8 10.3V7.5a4 4 0 0 1 7.6-1.7"/></symbol>
+  <symbol id="ik-yenile" viewBox="0 0 24 24"><path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M20.5 4.2v5.6h-5.6"/></symbol>
+  <symbol id="ik-telefon" viewBox="0 0 24 24"><path d="M20.4 16.9v2.3a1.7 1.7 0 0 1-1.9 1.7 16.4 16.4 0 0 1-7.1-2.5 16.1 16.1 0 0 1-5-5A16.4 16.4 0 0 1 4 6.2 1.7 1.7 0 0 1 5.7 4.3h2.3a1.7 1.7 0 0 1 1.7 1.5c.1.8.3 1.6.6 2.3a1.7 1.7 0 0 1-.4 1.8l-1 1a13 13 0 0 0 4.9 4.9l1-1a1.7 1.7 0 0 1 1.8-.4c.7.3 1.5.5 2.3.6a1.7 1.7 0 0 1 1.5 1.9Z"/></symbol>
+  <symbol id="ik-eposta" viewBox="0 0 24 24"><rect x="2.6" y="5.2" width="18.8" height="13.6" rx="2"/><path d="m3.4 6.6 7.7 5.3a1.6 1.6 0 0 0 1.8 0l7.7-5.3"/></symbol>
+  <symbol id="ik-kure" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M3.6 12h16.8"/><path d="M12 3.6a12.8 12.8 0 0 1 0 16.8 12.8 12.8 0 0 1 0-16.8Z"/></symbol>
+  <symbol id="ik-saat" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.2V12l3.1 1.9"/></symbol>
+  <symbol id="ik-yasak" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="m6.1 6.1 11.8 11.8"/></symbol>
+  <symbol id="ik-ekran" viewBox="0 0 24 24"><rect x="2.8" y="4.4" width="18.4" height="12.4" rx="2"/><path d="M9 20.4h6M12 16.8v3.6"/></symbol>
+  <symbol id="ik-soru" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.1-2.4 3.8"/><circle cx="12" cy="17" r=".95" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ik-anten" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.9"/><path d="M8 8a5.6 5.6 0 0 0 0 8M16 16a5.6 5.6 0 0 0 0-8"/><path d="M5.1 5.1a9.8 9.8 0 0 0 0 13.8M18.9 18.9a9.8 9.8 0 0 0 0-13.8"/></symbol>
+  <symbol id="ik-uyari" viewBox="0 0 24 24"><path d="M10.6 4 3 17.2a1.6 1.6 0 0 0 1.4 2.4h15.2a1.6 1.6 0 0 0 1.4-2.4L13.4 4a1.6 1.6 0 0 0-2.8 0Z"/><path d="M12 9.2v4.4"/><circle cx="12" cy="16.7" r=".95" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ik-onay" viewBox="0 0 24 24"><path d="m4.8 12.4 4.9 4.9L19.2 7.8"/></symbol>
+  <symbol id="ik-carpi" viewBox="0 0 24 24"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></symbol>
+  <symbol id="ik-kalkan" viewBox="0 0 24 24"><path d="M12 3.4 5.2 6.1v5.4c0 4.1 2.8 7.5 6.8 8.9 4-1.4 6.8-4.8 6.8-8.9V6.1Z"/><path d="m9.4 11.8 1.9 1.9 3.5-3.6"/></symbol>
+</svg>
+<script>
+  /** İkon adını <use> tabanlı küçük bir SVG dizesine çevirir. */
+  window.ikon = function (ad, sinif) {
+    return '<svg class="ik' + (sinif ? ' ' + sinif : '') + '" aria-hidden="true">' +
+           '<use href="#ik-' + ad + '"></use></svg>';
+  };
+</script>
+
 <div class="sayfa">
 
   <div class="marka">
-    <div class="marka-logo">🧠</div>
+    <div class="marka-logo"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-cip"></use></svg></div>
     <div>
       <div class="marka-ad">BYOM Brain</div>
       <div class="marka-alt">Lisans &amp; Destek Merkezi</div>
@@ -188,7 +240,7 @@
        EKRAN 2 — AKTİVASYON
        ====================================================================== -->
   <div id="ekranAktivasyon" class="kart gizli">
-    <h1>🔑 Lisans Aktivasyonu</h1>
+    <h1><svg class="ik" aria-hidden="true"><use href="#ik-anahtar"></use></svg> Lisans Aktivasyonu</h1>
     <p>
       B2B Yönetim Paneli'ni kullanmaya başlamak için size iletilen lisans anahtarını girin.
       Anahtar bu bilgisayarın donanım kimliğine tanımlanacaktır.
@@ -222,13 +274,13 @@
       <div class="hwid-kutu">
         <div class="hwid-metin" id="hwidAktivasyon">hesaplanıyor…</div>
         <button class="btn-ikincil" style="height:40px; padding:0 14px; font-size:13px;"
-                data-kopyala="hwidAktivasyon">📋 KOPYALA</button>
+                data-kopyala="hwidAktivasyon">KOPYALA</button>
       </div>
       <div class="ipucu" id="hwidUyari"></div>
     </div>
 
     <div class="dugmeler">
-      <button class="btn-ana" id="aktiveBtn">🚀 LİSANSI ETKİNLEŞTİR</button>
+      <button class="btn-ana" id="aktiveBtn">LİSANSI ETKİNLEŞTİR</button>
       <button class="btn-ikincil" id="cikisBtn1">ÇIKIŞ</button>
     </div>
 
@@ -253,7 +305,7 @@
        EKRAN 3 — KİLİT / İLETİŞİM
        ====================================================================== -->
   <div id="ekranKilit" class="kart gizli">
-    <div class="kilit-simge" id="kilitSimge">🔒</div>
+    <div class="kilit-simge" id="kilitSimge"><svg class="ik ik-xl" aria-hidden="true"><use href="#ik-kilit"></use></svg></div>
     <div style="margin-bottom:10px;"><span class="rozet rozet-kirmizi" id="kilitRozet">UYGULAMA KİLİTLİ</span></div>
     <h1 id="kilitBaslik">Lisans doğrulanamadı</h1>
     <p id="kilitAciklama"></p>
@@ -264,14 +316,14 @@
       <div class="hwid-kutu">
         <div class="hwid-metin" id="hwidKilit">—</div>
         <button class="btn-ikincil" style="height:40px; padding:0 14px; font-size:13px;"
-                data-kopyala="hwidKilit">📋 KOPYALA</button>
+                data-kopyala="hwidKilit">KOPYALA</button>
       </div>
     </div>
 
     <div id="kilitDetay" style="margin-top:18px;"></div>
 
     <div class="dugmeler">
-      <button class="btn-ana" id="tekrarDeneBtn">🔄 TEKRAR DENE</button>
+      <button class="btn-ana" id="tekrarDeneBtn">TEKRAR DENE</button>
       <button class="btn-ikincil" id="lisansDegistirBtn">FARKLI LİSANS GİR</button>
       <button class="btn-ikincil" id="cikisBtn2">ÇIKIŞ</button>
     </div>
@@ -281,16 +333,16 @@
        İLETİŞİM KARTI (kilit ekranıyla birlikte görünür)
        ====================================================================== -->
   <div id="iletisimKart" class="kart gizli">
-    <h2>📞 BYOM DESTEK HATTI</h2>
+    <h2><svg class="ik ik-sm" aria-hidden="true"><use href="#ik-telefon"></use></svg> BYOM DESTEK HATTI</h2>
     <p style="margin-bottom:16px;">
       Lisansınızı yenilemek, başka bilgisayara taşımak veya sorununuzu çözmek için bize ulaşın.
       Donanım kimliğinizi iletmeniz işlemi hızlandırır.
     </p>
     <div class="iletisim">
-      <a href="#" data-baglanti="tel:+908500000000"><span class="simge">☎️</span><span>0850 000 00 00</span></a>
-      <a href="#" data-baglanti="mailto:destek@byomtech.com"><span class="simge">✉️</span><span>destek@byomtech.com</span></a>
-      <a href="#" data-baglanti="https://byomtech.com"><span class="simge">🌐</span><span>byomtech.com</span></a>
-      <a href="#" data-baglanti="https://wa.me/908500000000"><span class="simge">💬</span><span>WhatsApp Destek</span></a>
+      <a href="#" data-baglanti="tel:+908500000000"><span class="simge"><svg class="ik" aria-hidden="true"><use href="#ik-telefon"></use></svg></span><span>0850 000 00 00</span></a>
+      <a href="#" data-baglanti="mailto:destek@byomtech.com"><span class="simge"><svg class="ik" aria-hidden="true"><use href="#ik-eposta"></use></svg></span><span>destek@byomtech.com</span></a>
+      <a href="#" data-baglanti="https://byomtech.com"><span class="simge"><svg class="ik" aria-hidden="true"><use href="#ik-kure"></use></svg></span><span>byomtech.com</span></a>
+      <a href="#" data-baglanti="https://wa.me/908500000000"><span class="simge"><svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg></span><span>WhatsApp Destek</span></a>
     </div>
     <!-- Süresi dolmuş / dondurulmuş lisanslar da destek talebi açabilir
          (BYOM Brain buna izin verir). Kullanıcı telefon beklemek zorunda kalmasın. -->
@@ -312,7 +364,7 @@
       </div>
 
       <div class="dugmeler" style="margin-top:0;">
-        <button class="btn-ana" id="kilitDestekGonderBtn">📨 TALEBİ GÖNDER</button>
+        <button class="btn-ana" id="kilitDestekGonderBtn">TALEBİ GÖNDER</button>
       </div>
     </div>
 
