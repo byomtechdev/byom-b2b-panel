@@ -6297,4 +6297,13 @@ async function baslat() {
   }
 }
 
+/* ---- OTOMATİK GÜNCELLEME BİLDİRİMLERİ ----
+   Ana süreçteki electron-updater akışı (main.js > bölüm 3.5) durum gönderir.
+   Kullanıcıya yalnızca kısa bir bildirim düşer; indirme ve kurulum arka
+   planda ilerler, çalışma akışı kesilmez. */
+ipcRenderer.on('guncelleme:durum', function (olay, veri) {
+  if (!veri || !veri.mesaj) return;
+  bildir(veri.mesaj, veri.durum === 'indirildi' ? 'basari' : 'bilgi');
+});
+
 document.addEventListener('DOMContentLoaded', baslat);

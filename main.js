@@ -542,20 +542,76 @@ ipcMain.handle('fis:kapat', (olay) => {
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
-/** Kullanıcı "Daha Sonra" demedikçe aynı indirme için diyalog tekrar açılmasın. */
+/** Açılıştaki ilk kontrolün gecikmesi ve sonraki turların aralığı. */
+const GUNCELLEME_ILK_GECIKME_MS = 5000;
+const GUNCELLEME_TUR_ARALIGI_MS = 30 * 60 * 1000; // 30 dakika
+
+/** Diyalog açıkken ikinci bir "update-downloaded" araya girmesin. */
 let guncellemeDiyaloguGosterildi = false;
+/** Kullanıcının "Daha Sonra" dediği sürüm; 30 dk.lık turlarda tekrar sorulmaz. */
+let ertelenenGuncellemeSurumu = '';
+/** Zamanlayıcı tek sefer kurulsun; kurulduysa tekrar başlatma yapılmaz. */
+let guncellemeZamanlayicisi = null;
+/** Ana pencere henüz yokken üretilen bildirim; pencere açılınca gönderilir. */
+let bekleyenGuncellemeBildirimi = null;
+
+/**
+ * Güncelleme durumunu arayüze iletir. Ana pencere henüz açılmamışsa (lisans
+ * akışı sürüyor olabilir) bildirim saklanır ve pencere yüklenince gönderilir.
+ * Bildirim kaçsa bile indirme arka planda devam eder.
+ */
+function guncellemeDurumunuBildir(durum, mesaj, bilgi) {
+  const veri = { durum: durum, mesaj: mesaj, surum: (bilgi && bilgi.version) || '' };
+
+  if (!anaPencere || anaPencere.isDestroyed()) {
+    bekleyenGuncellemeBildirimi = veri;
+    return;
+  }
+  try {
+    anaPencere.webContents.send('guncelleme:durum', veri);
+  } catch (e) {
+    /* pencere kapanıyor olabilir; güncelleme akışını etkilemez */
+  }
+}
+
+/** Ana pencere yüklendiğinde beklemede kalan güncelleme bildirimini iletir. */
+function bekleyenGuncellemeBildiriminiGonder() {
+  if (!bekleyenGuncellemeBildirimi) return;
+  const veri = bekleyenGuncellemeBildirimi;
+  bekleyenGuncellemeBildirimi = null;
+  guncellemeDurumunuBildir(veri.durum, veri.mesaj, { version: veri.surum });
+}
 
 autoUpdater.on('update-available', function (bilgi) {
-  console.log('[Güncelleme] Yeni sürüm bulundu: ' + ((bilgi && bilgi.version) || '?') + ' — indiriliyor…');
+  const surum = (bilgi && bilgi.version) || '?';
+  console.log('[Güncelleme] Yeni sürüm bulundu: ' + surum + ' — indiriliyor…');
+  guncellemeDurumunuBildir(
+    'bulundu',
+    'Yeni güncelleme bulundu (' + surum + ').\nArka planda indiriliyor, çalışmaya devam edebilirsiniz.',
+    bilgi
+  );
+});
+
+autoUpdater.on('update-not-available', function () {
+  console.log('[Güncelleme] Uygulama güncel.');
 });
 
 /** İndirme tamamlanınca kullanıcıya sorar; onaylarsa uygulamayı kapatıp kurulumu başlatır. */
 autoUpdater.on('update-downloaded', async function (bilgi) {
   if (guncellemeDiyaloguGosterildi) return;
-  guncellemeDiyaloguGosterildi = true;
 
   const surum = (bilgi && bilgi.version) || '';
+  // Bu sürüm için zaten "Daha Sonra" denmiş: kurulum çıkışta yapılacak, rahatsız etme.
+  if (surum && surum === ertelenenGuncellemeSurumu) return;
+  guncellemeDiyaloguGosterildi = true;
+
   const pencere = (anaPencere && !anaPencere.isDestroyed()) ? anaPencere : undefined;
+
+  guncellemeDurumunuBildir(
+    'indirildi',
+    'Güncelleme' + (surum ? ' ' + surum : '') + ' indirildi, kuruluma hazır.',
+    bilgi
+  );
 
   const secim = await dialog.showMessageBox(pencere, {
     type: 'info',
@@ -569,11 +625,14 @@ autoUpdater.on('update-downloaded', async function (bilgi) {
     noLink: true
   });
 
+  guncellemeDiyaloguGosterildi = false;
+
   if (secim.response === 0) {
     autoUpdater.quitAndInstall();
   } else {
-    // Ertelendi: sonraki "update-downloaded" (ör. yeni bir sürüm) tekrar sorabilsin.
-    guncellemeDiyaloguGosterildi = false;
+    // Ertelendi: kurulum uygulamadan çıkışta yapılır (autoInstallOnAppQuit).
+    // Bu sürüm bir daha sorulmaz; yalnızca YENİ bir sürüm tekrar sorabilir.
+    ertelenenGuncellemeSurumu = surum;
   }
 });
 
@@ -581,21 +640,32 @@ autoUpdater.on('error', function (hata) {
   console.warn('[Güncelleme] Kontrol/indirme hatası:', (hata && hata.message) || hata);
 });
 
-/** Açılıştan birkaç saniye sonra sessizce güncelleme kontrolü başlatır. */
+/** Tek bir sessiz kontrol turu. Ağ/depo hatasında yalnızca günlüğe yazar. */
+function guncellemeyiKontrolEt() {
+  return autoUpdater.checkForUpdatesAndNotify({
+    title: 'Güncelleme Hazır',
+    body: 'B2B Yönetim Paneli {version} indirildi ve uygulamadan çıkıldığında otomatik kurulacak.'
+  }).catch(function (e) {
+    console.warn('[Güncelleme] checkForUpdatesAndNotify başarısız:', (e && e.message) || e);
+  });
+}
+
+/**
+ * Açılıştan birkaç saniye sonra ilk kontrolü yapar, ardından 30 dakikada bir
+ * turu tekrarlar. Uygulama günlerce açık kalsa da güncelleme yakalanır.
+ */
 function otomatikGuncellemeyiBaslat() {
   if (!app.isPackaged) {
     console.log('[Güncelleme] Geliştirme ortamında atlandı (yalnızca paketlenmiş sürümde çalışır).');
     return;
   }
+  if (guncellemeZamanlayicisi) return; // zaten kurulu
 
-  setTimeout(function () {
-    autoUpdater.checkForUpdatesAndNotify({
-      title: 'Güncelleme Hazır',
-      body: 'B2B Yönetim Paneli {version} indirildi ve uygulamadan çıkıldığında otomatik kurulacak.'
-    }).catch(function (e) {
-      console.warn('[Güncelleme] checkForUpdatesAndNotify başarısız:', (e && e.message) || e);
-    });
-  }, 5000);
+  setTimeout(guncellemeyiKontrolEt, GUNCELLEME_ILK_GECIKME_MS);
+
+  guncellemeZamanlayicisi = setInterval(guncellemeyiKontrolEt, GUNCELLEME_TUR_ARALIGI_MS);
+  // Zamanlayıcı yüzünden uygulama kapanışta beklemesin.
+  if (typeof guncellemeZamanlayicisi.unref === 'function') guncellemeZamanlayicisi.unref();
 }
 
 /* ==========================================================================
@@ -651,8 +721,8 @@ function anaPencereyiOlustur() {
     pencereyiKesinGoster(anaPencere, true);
     // Arayüz hazır: BYOM'un beklettiği lisans bildirimleri şimdi iletilebilir.
     byom.anaPencereHazir();
-    // Sessiz güncelleme kontrolü (bkz. bölüm 3.5) — yalnızca paketlenmiş sürümde çalışır.
-    otomatikGuncellemeyiBaslat();
+    // Açılışta yakalanan güncelleme bildirimi arayüz hazır olunca gösterilir (bkz. bölüm 3.5).
+    bekleyenGuncellemeBildiriminiGonder();
   });
   // Son emniyet kemeri: yukarıdakilerin hiçbiri çalışmazsa 3 saniye sonra göster.
   setTimeout(function () {
@@ -748,6 +818,7 @@ if (!tekKopyaKilidi) {
     }
     Menu.setApplicationMenu(null); // Sade görünüm: üst menü çubuğu olmasın
     sertifikaDenetiminiGevset();   // SSL katılığı: bkz. bölüm 0
+    otomatikGuncellemeyiBaslat(); // Sessiz güncelleme: açılışta + 30 dk.da bir (bkz. bölüm 3.5)
 
     /* ---- BYOM BRAIN AÇILIŞ KONTROLÜ ----
        Ana pencere doğrudan açılmaz. Önce lisans penceresi (splash) gelir,
