@@ -1,6 +1,6 @@
 {
   "name": "b2b-yonetim-paneli",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Toptanci ve hirdavatcilar icin WooCommerce B2B Yonetim Paneli",
   "main": "main.js",
   "author": {
@@ -54,17 +54,18 @@
       "artifactName": "BYOM-B2B-Panel-Kurulum-${version}.exe"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "BYOM B2B Panel",
       "language": "1055",
       "installerLanguages": [
         "tr_TR"
-      ],
-      "deleteAppDataOnUninstall": false
+      ]
     },
     "publish": [
       {

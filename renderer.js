@@ -6260,7 +6260,7 @@ async function baslat() {
     'Ayar dosyası: ' + durum.bilgi.ayarDosyasi;
   $('#ayarDosyaYolu').style.whiteSpace = 'pre-line';
 
-  /* Sol menünün dibindeki marka imzası: sürümü index.html'e gömmek
+  /* Sol alt köşedeki marka imzası: sürümü index.html'e gömmek
      yerine paketten okuruz, böylece her yükseltmede iki yeri birden
      düzeltmek gerekmez ve güncelleme sonrası sürüm gözle doğrulanır. */
   const markaImzasi = $('#markaImzasi');

@@ -818,22 +818,26 @@
   /* Menüdeki iki satırlık etiket girintisi artık tek satır olduğu için gereksiz */
   .menu-btn .ml-10 { margin-left: 0 !important; }
 
-  /* Sol menünün dibindeki BYOM TECH imzası: ince bir ayraçla menüden
-     ayrılır, rengi ise ikon/ipucu tonundadır — göz yormasın, yalnızca
-     arandığında okunsun. Tailwind yüklenemediğinde (yedek CSS yolu)
-     `text-[10px]` gibi serbest değerler çözülmeyeceği için ölçü ve
-     renk burada da açıkça verilir. */
+  /* Pencerenin en sol alt köşesindeki BYOM TECH imzası. Tailwind
+     yüklenemediğinde (yedek CSS yolu) `text-[10px]`, `text-slate-500/70`
+     gibi serbest değerler çözülmeyeceği için konum, ölçü ve renk burada
+     da açıkça verilir. Arka planla uyumlu kalsın diye ikon/ipucu tonu
+     (--soluk) kullanılır; tıklama ve seçim almaz. */
   #markaImzasi {
-    margin-top: 6px;
-    padding-top: 8px !important;
-    border-top: 1px solid var(--kenar);
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    padding: 8px !important;
     color: var(--soluk) !important;
     font-size: 10px !important;
     font-weight: 500 !important;
     line-height: 1.4;
     letter-spacing: .04em;
-    text-align: center;
+    text-align: left;
+    opacity: .7;
     user-select: none;
+    pointer-events: none;
   }
 </style>
 </head>
@@ -1050,20 +1054,6 @@
               class="ml-auto shrink-0 inline-flex items-center leading-none"
               title="Geliştirici kilidi — şifre gerekir"><svg class="ik" aria-hidden="true"><use href="#ik-kilit"></use></svg></span>
       </button>
-
-      <!-- ============================================================
-           BYOM TECH MARKA İMZASI
-           Menünün en dibinde, kilitli Ayarlar düğmesinin hemen ardında
-           durur (düğmedeki `mt-auto` ikisini birlikte aşağı iter).
-           Sürüm numarası açılışta `uygulama:bilgi` IPC'sinden gelen
-           GERÇEK paket sürümüyle değiştirilir (bkz. renderer.js →
-           `baslat`); buradaki değer yalnızca ilk çizim için yedektir,
-           böylece her sürüm yükseltmesinde elle düzeltmek gerekmez.
-           ============================================================ -->
-      <div id="markaImzasi"
-           class="text-[10px] text-slate-500 text-center py-2 select-none tracking-wide font-medium">
-        Bu bir BYOM TECH ürünüdür &bull; v1.0.2
-      </div>
     </nav>
 
     <!-- ==================================================================
@@ -2529,6 +2519,24 @@
                      transition active:scale-95 shadow-lg"><svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> EVET, İPTAL ET</button>
     </div>
   </div>
+</div>
+
+<!-- ==================================================================
+     BYOM TECH MARKA İMZASI
+     Pencerenin EN SOL ALT köşesine sabitlenir (position:fixed) — sol
+     menünün dibiyle hizalanır ama menünün `overflow-y-auto` akışına
+     dahil olmadığı için menü kaydırılsa da yerinde kalır.
+     `pointer-events-none` ile tıklama/seçim almaz: altındaki menü
+     düğmeleri erişilebilir kalır. z-30 seçilir; üst çubuğun (z-20)
+     üstünde, modal katmanlarının (z-40/z-50) altında durur.
+     Sürüm numarası açılışta `uygulama:bilgi` IPC'sinden gelen GERÇEK
+     paket sürümüyle değiştirilir (bkz. renderer.js → `baslat`);
+     buradaki değer yalnızca ilk çizim için yedektir.
+     ================================================================== -->
+<div id="markaImzasi"
+     class="fixed left-0 bottom-0 z-30 p-2 text-[10px] text-slate-500/70
+            font-medium tracking-wide select-none pointer-events-none">
+  Bu bir BYOM TECH ürünüdür &bull; v1.0.3
 </div>
 
 <script src="renderer.js"></script>
