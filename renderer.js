@@ -6260,6 +6260,14 @@ async function baslat() {
     'Ayar dosyası: ' + durum.bilgi.ayarDosyasi;
   $('#ayarDosyaYolu').style.whiteSpace = 'pre-line';
 
+  /* Sol menünün dibindeki marka imzası: sürümü index.html'e gömmek
+     yerine paketten okuruz, böylece her yükseltmede iki yeri birden
+     düzeltmek gerekmez ve güncelleme sonrası sürüm gözle doğrulanır. */
+  const markaImzasi = $('#markaImzasi');
+  if (markaImzasi && durum.bilgi && durum.bilgi.surum) {
+    markaImzasi.textContent = 'Bu bir BYOM TECH ürünüdür • v' + durum.bilgi.surum;
+  }
+
   temayiUygula();
   olcekArayuzunuTazele();   // Kayıtlı ölçek zaten uygulandı; burada sadece arayüz işaretlenir
   ustCubuguTazele();
