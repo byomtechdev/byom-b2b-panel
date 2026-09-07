@@ -182,6 +182,7 @@
     UI.baglanti = secDeg('#veBaglanti');
     UI.revizyon = secDeg('#veRevizyon');
     UI.cihazlar = secDeg('#veCihazlar');
+    UI.olcek = secDeg('#veOlcek');
     UI.yenileBtn = secDeg('#veYenileBtn');
     UI.disariBtn = secDeg('#veDisariBtn');
   }
@@ -1014,7 +1015,9 @@
 
     if (VE.demo || !VE.preview.url) {
       UI.cerceve.classList.add('hidden');
+      UI.cerceve.hidden = true;
       UI.bos.classList.remove('hidden');
+      UI.bos.hidden = false;
       if (UI.bosMetin) {
         UI.bosMetin.textContent = VE.demo
           ? 'Demo modunda canlı önizleme yok. Gerçek siteniz için Ayarlar sekmesinden bağlantı kurun.'
@@ -1024,7 +1027,10 @@
     }
 
     UI.bos.classList.add('hidden');
+    UI.bos.hidden = true;
     UI.cerceve.classList.remove('hidden');
+    UI.cerceve.hidden = false;
+    onizlemeOlcekle();
 
     try { VE.preview.origin = new URL(VE.preview.url).origin; } catch (e) { VE.preview.origin = '*'; }
 
@@ -1074,17 +1080,69 @@
     }
   }
 
+  /* Cihaz genislikleri: iframe bu genislikte CIZILIR; konteyner darsa scale ile kucultulur. */
+  var CIHAZ_GENISLIK = { desktop: 1280, tablet: 820, mobile: 390 };
+
   function cihazSec(ad) {
-    VE.cihaz = ad;
+    VE.cihaz = CIHAZ_GENISLIK[ad] ? ad : 'desktop';
     if (UI.cerceve) {
       UI.cerceve.classList.remove('ve-frame--desktop', 've-frame--tablet', 've-frame--mobile');
-      UI.cerceve.classList.add('ve-frame--' + ad);
+      UI.cerceve.classList.add('ve-frame--' + VE.cihaz);
     }
     if (UI.cihazlar) {
       secHep('[data-ve-device]', UI.cihazlar).forEach(function (b) {
-        b.classList.toggle('is-on', b.getAttribute('data-ve-device') === ad);
+        b.classList.toggle('is-on', b.getAttribute('data-ve-device') === VE.cihaz);
       });
     }
+    onizlemeOlcekle();
+  }
+
+  /**
+   * Onizlemeyi konteynere sigdirir.
+   *
+   * iframe her zaman cihaz genisliginde (masaustu 1280px) cizilir; konteyner
+   * daha darsa transform: scale(k) ile kucultulur ve yatayda ortalanir.
+   * Site boylece gercek masaustu kirilma noktalarinda kalir (mobil alt cubuk
+   * masaustu onizlemesinde gorunmez). Yukseklik k'ya bolunerek verilir ki
+   * olceklenmis iframe konteynerin tamamini doldursun.
+   */
+  function onizlemeOlcekle() {
+    var kap = UI.cerceve, fr = UI.iframe;
+    if (!kap || !fr) return;
+    var kapW = kap.clientWidth, kapH = kap.clientHeight;
+    if (!kapW || !kapH) return;
+
+    var w = CIHAZ_GENISLIK[VE.cihaz] || 1280;
+    var k = Math.min(1, kapW / w);
+    var h = Math.round(kapH / k);
+    var ofset = Math.max(0, Math.round((kapW - w * k) / 2));
+
+    fr.style.width = w + 'px';
+    fr.style.height = h + 'px';
+    fr.style.transform = 'translate3d(' + ofset + 'px,0,0) scale(' + k.toFixed(4) + ')';
+    kap.setAttribute('data-olcek', k.toFixed(3));
+
+    if (UI.olcek) {
+      UI.olcek.textContent = '%' + Math.round(k * 100) + ' · ' + w + 'px';
+      UI.olcek.hidden = false;
+    }
+  }
+
+  function olcekDinleyiciBagla() {
+    if (!UI.cerceve) return;
+    var planla = (function () {
+      var t = 0;
+      return function () {
+        if (t) return;
+        t = requestAnimationFrame(function () { t = 0; onizlemeOlcekle(); });
+      };
+    })();
+    if (typeof ResizeObserver !== 'undefined') {
+      try { new ResizeObserver(planla).observe(UI.cerceve); } catch (e) { /* eski motor */ }
+    }
+    window.addEventListener('resize', planla);
+    /* Sekme acilinca konteyner olculebilir hale gelir; ilk olcum orada. */
+    document.addEventListener('visibilitychange', planla);
   }
 
   /* ==========================================================================
@@ -1464,6 +1522,7 @@
     });
 
     window.addEventListener('message', onizlemeMesaji);
+    olcekDinleyiciBagla();
     listeOlaylariniBagla();
     paletOlaylari();
     tokenOlaylari();
@@ -1473,6 +1532,8 @@
   function vitrinEditorAc() {
     if (VE.acildi) {
       if (!VE.state && !VE.yukleniyor) yukle(false);
+      /* Sekme yeniden acildiginda konteyner genisligi degismis olabilir. */
+      requestAnimationFrame(onizlemeOlcekle);
       return;
     }
     VE.acildi = true;

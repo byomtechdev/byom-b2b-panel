@@ -2026,6 +2026,7 @@
             </div>
 
             <div id="veOnizlemeKap" class="ve-frame ve-frame--desktop">
+              <span id="veOlcek" class="ve-frame__olcek" hidden>%100</span>
               <!-- sandbox: allow-top-navigation YOK — site icerigi node-entegre ana pencereyi yonlendiremez.
                    allow-same-origin: sitenin kendi kokeni korunur (postMessage koprusu, cerezler). -->
               <iframe id="vitrinOnizleme" title="Canlı önizleme" referrerpolicy="no-referrer" allow="fullscreen"
@@ -2126,11 +2127,18 @@
           .ve-devices { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--panel); border: 1px solid var(--kenar); }
           .ve-devices__btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; font-size: 12px; font-weight: 650; color: var(--ikincil); cursor: pointer; }
           .ve-devices__btn.is-on { background: var(--aksiyon); color: #fff; }
-          .ve-frame { flex: 1 1 auto; min-height: 0; display: flex; justify-content: center; align-items: stretch; background: repeating-linear-gradient(45deg, var(--panel-alt) 0 12px, var(--panel) 12px 24px); padding: 12px; overflow: auto; }
-          .ve-frame iframe { width: 100%; height: 100%; border: 1px solid var(--kenar); border-radius: 8px; background: #fff; box-shadow: var(--golge-acilir); transition: width .28s cubic-bezier(.2,.8,.2,1); }
-          .ve-frame--tablet iframe { width: 820px; }
-          .ve-frame--mobile iframe { width: 390px; }
+          /* Onizleme sahnesi: iframe tum alani kaplar. Masaustu modunda iframe 1280px
+             genislikte CIZILIR ve konteynere sigacak sekilde transform: scale ile
+             kucultulur (renderer-vitrin.js > onizlemeOlcekle) - boylece site mobil
+             kirilma noktasina dusmez, alt gezinme cubugu masaustu onizlemesinde gorunmez. */
+          .ve-frame { flex: 1 1 auto; min-height: 0; position: relative; display: block; overflow: hidden; padding: 0; background: repeating-linear-gradient(45deg, var(--panel-alt) 0 12px, var(--panel) 12px 24px); }
+          .ve-frame iframe { position: absolute; top: 0; left: 0; width: 1280px; height: 100%; border: 0; background: #fff; transform-origin: 0 0; will-change: transform; transition: transform .22s cubic-bezier(.2,.8,.2,1), width .22s cubic-bezier(.2,.8,.2,1); }
+          .ve-frame--tablet iframe, .ve-frame--mobile iframe { border-left: 1px solid var(--kenar); border-right: 1px solid var(--kenar); box-shadow: var(--golge-acilir); }
+          .ve-frame__olcek { position: absolute; right: 8px; bottom: 8px; z-index: 2; padding: 2px 8px; border-radius: 999px; background: rgba(15,23,42,.72); color: #fff; font-size: 11px; font-weight: 700; pointer-events: none; }
           .ve-empty { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ikincil); text-align: center; padding: 24px; }
+          /* Tailwind'in .hidden kurali bu <style> blogundan ONCE geldigi icin ezildi ve
+             "Onizleme hazirlaniyor" kutusu iframe'in altinda yer kapliyordu. */
+          .ve-frame.hidden, .ve-empty.hidden, .ve-frame[hidden], .ve-empty[hidden] { display: none !important; }
           @media (max-width: 1280px) { .ve-grid { grid-template-columns: 340px minmax(0,1fr); } }
         </style>
       </section>
