@@ -1253,6 +1253,86 @@ function urunDuzenleKapat() {
  * Ana yol : PUT /wp-json/wc/v3/products/{id}
  * Yedek   : PUT /wp-json/wc-b2b/v1/products/{id}  (wc/v3 kapalıysa)
  */
+/**
+ * Tek ürünü YERİNDE günceller — listeyi yeniden çekmeden.
+ *
+ * Öncelik sunucu yanıtındadır: WooCommerce fiyatı biçimlendirebilir, SKU'yu
+ * benzersizleştirebilir ya da görsel adresini kendi CDN yoluna çevirebilir;
+ * ekranda sitedeki GERÇEK değer görünmelidir. Yanıt gövdesi boş gelirse
+ * formdaki değerlerle yetinilir.
+ *
+ * @param {number|string} id     Ürün kimliği.
+ * @param {object}        cevap  PUT yanıtı ({ok, veri}).
+ * @param {object}        yerel  Formdan okunan değerler (yedek yol).
+ */
+function ekUrunuYerindeGuncelle(id, cevap, yerel) {
+  const d = ekDurum();
+  if (!d) return;
+
+  const urun = (d.urunler || []).filter(function (u) { return String(u.id) === String(id); })[0];
+  if (!urun) return;
+
+  /* 1) Sunucu yanıtı varsa onu kaynak al. */
+  if (cevap && cevap.veri && cevap.veri.id && typeof urunNormalle === 'function') {
+    const taze = urunNormalle(cevap.veri);
+    Object.keys(taze).forEach(function (alan) { urun[alan] = taze[alan]; });
+  } else {
+    /* 2) Yedek yol: formdaki değerler. */
+    urun.ad = yerel.ad;
+    urun.fiyat = yerel.fiyat;
+    urun.indirimliFiyat = yerel.indirimliFiyat;
+    urun.stok = yerel.stok;
+    urun.durum = yerel.durum;
+    urun.koliAdedi = yerel.koliAdedi;
+
+    if (yerel.kod) { urun.kod = yerel.kod; urun.barkod = yerel.kod; }
+    if (yerel.aciklama !== null) urun.aciklama = yerel.aciklama;
+    if (yerel.gorsel) urun.gorsel = yerel.gorsel;
+
+    if (yerel.kategoriId) {
+      urun.kategoriler = [{ id: yerel.kategoriId, ad: String(yerel.kategoriAdi || '') }];
+    }
+  }
+
+  /* Demo kaynağı da güncellensin; yenilendiğinde değişiklik kaybolmasın. */
+  if (ekDemoMu() && typeof DEMO_URUNLER !== 'undefined') {
+    const kaynak = DEMO_URUNLER.filter(function (x) { return String(x.id) === String(id); })[0];
+    if (kaynak) Object.keys(urun).forEach(function (alan) { kaynak[alan] = urun[alan]; });
+  }
+
+  /* Durum süzgeci açıksa ve ürün artık uymuyorsa listeden düşür. */
+  if (d.urunDurumSuzgec && d.urunDurumSuzgec !== urun.durum) {
+    d.urunler = d.urunler.filter(function (u) { return String(u.id) !== String(id); });
+  }
+
+  /*
+   * Kaydırma konumu KORUNUR.
+   *
+   * Tablo görünümünde tek satır yerinde değiştirilir (renderer-izgara.js >
+   * izgSatiriTazele), kart görünümünde liste yeniden çizilir ama kabın
+   * scrollTop değeri geri yazılır. İkisinde de kullanıcı baktığı yerde kalır.
+   */
+  const izgaraVar = typeof izg === 'function' && izg();
+
+  if (izgaraVar && izgaraVar.gorunum === 'tablo') {
+    if (typeof izgSatiriTazele === 'function') izgSatiriTazele(id);
+    if (typeof izgKategoriAgaciCiz === 'function') izgKategoriAgaciCiz();
+    /* Ürün süzgeç dışına düştüyse liste kısalmıştır; ızgara yeniden ölçülmeli. */
+    if (d.urunDurumSuzgec && typeof izgCiz === 'function') izgCiz(true);
+    return;
+  }
+
+  const kap = $('#urunListesi');
+  const konum = kap ? kap.scrollTop : 0;
+  const govde = $('#anaGovde');
+  const sayfaKonumu = govde ? govde.scrollTop : 0;
+
+  urunleriCiz(ekDemoMu() ? ekAramaMetni() : '');
+
+  if (kap) kap.scrollTop = konum;
+  if (govde) govde.scrollTop = sayfaKonumu;
+}
+
 async function urunDuzenleKaydet() {
   const d = ekDurum();
   if (!d) return;
@@ -1493,7 +1573,33 @@ async function urunDuzenleKaydet() {
     /* --- Başarılı --- */
     urunDuzenleKapat();
 
-    await urunleriYukle(ekAramaMetni());
+    /*
+     * KISMİ GÜNCELLEME — listeyi baştan çekme.
+     *
+     * Eskiden burada `await urunleriYukle(...)` vardı: tek ürün kaydedildiğinde
+     * mağazanın TÜM ürünleri (900+ üründe sayfa sayfa, onlarca istek) yeniden
+     * çekiliyordu. Liste sıfırdan çizildiği için kaydırma konumu da en başa
+     * dönüyor, 400. üründeki fiyatı düzelten kişi her kayıtta listenin tepesine
+     * fırlıyordu.
+     *
+     * Artık sunucunun PUT yanıtı doğrudan yerel kayda işlenir. Yanıt gövdesi
+     * yoksa (bazı yedek uçlar boş döner) ekrandaki değerler formdan yazılır;
+     * ikisi de olmazsa ürün listede eski hâliyle kalır ama YENİLE düğmesi
+     * her zaman elde.
+     */
+    ekUrunuYerindeGuncelle(id, cevap, {
+      ad: ad,
+      fiyat: fiyat,
+      indirimliFiyat: indirimliYazi ? indirimli : '',
+      stok: stok,
+      durum: yayinDurumu,
+      koliAdedi: koli,
+      kod: kodDegistiMi ? kod : null,
+      aciklama: aciklamaDegistiMi ? aciklama : null,
+      kategoriId: (kategoriDegistiMi && kategoriId) ? Number(kategoriId) : null,
+      kategoriAdi: kategoriAdi,
+      gorsel: (yeniGorseller[0] && yeniGorseller[0].onizleme) || gorselUrl || null
+    });
 
     bildir('Ürün güncellendi:\n' + ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
            (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli)
