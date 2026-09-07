@@ -1,6 +1,6 @@
 {
   "name": "b2b-yonetim-paneli",
-  "version": "1.0.3",
+  "version": "1.2.0",
   "description": "Toptanci ve hirdavatcilar icin WooCommerce B2B Yonetim Paneli",
   "main": "main.js",
   "author": {
@@ -16,6 +16,8 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --win",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac --universal",
     "build:dir": "electron-builder --win --dir",
     "release": "electron-builder --win --publish always"
   },
@@ -35,7 +37,10 @@
       "index.html",
       "renderer.js",
       "renderer-ek.js",
+      "renderer-izgara.js",
+      "renderer-excel.js",
       "renderer-byom.js",
+      "renderer-vitrin.js",
       "src/**/*",
       "lisans/**/*",
       "vendor/**/*",
@@ -65,6 +70,37 @@
       "language": "1055",
       "installerLanguages": [
         "tr_TR"
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "artifactName": "BYOM-B2B-Panel-${version}.dmg",
+      "darkModeSupport": true,
+      "minimumSystemVersion": "11.0",
+      "identity": null
+    },
+    "dmg": {
+      "title": "BYOM B2B Panel ${version}",
+      "contents": [
+        {
+          "x": 150,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 420,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     },
     "publish": [

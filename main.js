@@ -11,6 +11,7 @@
  *      (İstekler neden burada? WooCommerce sunucusu CORS başlığı göndermez;
  *       arayüzden doğrudan fetch atılırsa tarayıcı motoru engeller. Node'da CORS yok.)
  *   4) Depo fişi önizleme penceresini açar, yazdırır ve PDF olarak kaydeder.
+ *   4.5) Ürün kataloğunu Excel'e döker ve Excel/CSV dosyalarını okur (bölüm 3.4).
  *   5) SSL sertifika doğrulamasını gevşetir (bölüm 0) — müşteri sitelerindeki
  *      eksik/süresi geçmiş sertifikalar yüzünden bağlantı kopmasın diye.
  *   6) Uygulamayı otomatik günceller (bölüm 3.5, electron-updater — GitHub
@@ -27,7 +28,106 @@ const { autoUpdater } = require('electron-updater');
    Ana pencere ANCAK lisans doğrulandıktan sonra açılır (bkz. app.whenReady). */
 const byom = require('./src/main/byom');
 
+/* Excel motoru: ürün dökümünü .xlsx olarak yazar, .xlsx/.xls/.csv okur.
+   Harici bağımlılık YOK — ayrıntı için src/main/byom-excel.js başlığı. */
+const excel = require('./src/main/byom-excel');
+
 let anaPencere = null;
+
+/* ==========================================================================
+ *  0.5) PLATFORM AYRIMI  (macOS uyumluluk katmanı)
+ *  ---------------------------------------------------------------------------
+ *  ANA GELİŞTİRME ORTAMI WINDOWS'TUR. Aşağıdaki her şey KOŞULLU çalışır:
+ *  `isMac` false olduğunda yardımcılar boş nesne döndürür ya da hiç
+ *  çağrılmaz; Windows'taki pencere seçenekleri, menü davranışı ve kısayollar
+ *  birebir eskisi gibi kalır.
+ *
+ *  Dosya yolları zaten `path.join` ile kuruluyor (ayar dosyası, geçici fiş,
+ *  index.html, lisans ekranı, Excel kaydetme). `path.join` ayracı işletim
+ *  sistemine göre kendisi seçer; Windows'ta "\", macOS'te "/" üretir. Bu
+ *  yüzden yol tarafında değiştirilecek bir şey YOKTUR.
+ * ========================================================================*/
+
+const isMac = process.platform === 'darwin';
+const isWindows = process.platform === 'win32';
+
+/**
+ * Ana pencereye YALNIZCA macOS'te eklenecek seçenekler.
+ *
+ * Windows'ta boş nesne döner; `Object.assign` sonucu mevcut seçenek
+ * listesiyle birebir aynı kalır.
+ *
+ * `hiddenInset`: macOS'te sistem başlık çubuğu kaldırılır, kapat/küçült/
+ * büyüt düğmeleri (trafik lambaları) uygulamanın kendi başlık şeridinin
+ * üzerine biner. Bu, macOS'te beklenen görünümdür. Üstteki şeritte onlara
+ * yer açan boşluk ve pencereyi taşıma bölgesi index.html'deki `html.mac`
+ * kurallarındadır (Windows'ta o sınıf hiç eklenmez).
+ */
+function macAnaPencereSecenekleri() {
+  if (!isMac) return {};
+
+  return {
+    titleBarStyle: 'hiddenInset',
+    /* Şerit yüksekliği 52px'tir (Tailwind'in h-20'si kurumsal temada
+       `header.h-20 { height: 52px !important }` ile eziliyor). Düğmeler
+       (12px) o şeride göre ortalanır. Not: bu konum ekran noktası
+       cinsindendir ve arayüz ölçeğinden etkilenmez; %70–%120 aralığının
+       tamamında şeridin içinde kalacak şekilde biraz yukarı alındı. */
+    trafficLightPosition: { x: 18, y: 18 }
+  };
+}
+
+/**
+ * macOS menü çubuğu.
+ *
+ * NEDEN GEREKLİ: Windows'ta `Menu.setApplicationMenu(null)` sade bir görünüm
+ * verir ve hiçbir şey kaybolmaz. macOS'te ise KOPYALA / YAPIŞTIR / KES /
+ * TÜMÜNÜ SEÇ ve ÇIK kısayolları menüden gelir; menü kaldırılırsa ⌘C ve ⌘V
+ * uygulamanın hiçbir yerinde çalışmaz. Bu yüzden macOS'e en küçük standart
+ * menü kurulur.
+ *
+ * Görünüm/Yenile menüsü BİLEREK yok: ⌘R gibi kısayollar menüye konsaydı
+ * menü hızlandırıcısı arayüzdeki kendi yenileme kısayolunu ezerdi.
+ */
+function macMenusunuKur() {
+  const ad = app.name || 'BYOM B2B Panel';
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: ad,
+      submenu: [
+        { role: 'about', label: ad + ' Hakkında' },
+        { type: 'separator' },
+        { role: 'hide', label: ad + ' Uygulamasını Gizle' },
+        { role: 'hideOthers', label: 'Diğerlerini Gizle' },
+        { role: 'unhide', label: 'Tümünü Göster' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Çık' }
+      ]
+    },
+    {
+      label: 'Düzen',
+      submenu: [
+        { role: 'undo', label: 'Geri Al' },
+        { role: 'redo', label: 'Yinele' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Kes' },
+        { role: 'copy', label: 'Kopyala' },
+        { role: 'paste', label: 'Yapıştır' },
+        { role: 'selectAll', label: 'Tümünü Seç' }
+      ]
+    },
+    {
+      label: 'Pencere',
+      submenu: [
+        { role: 'minimize', label: 'Simge Durumuna Küçült' },
+        { role: 'zoom', label: 'Yakınlaştır' },
+        { type: 'separator' },
+        { role: 'close', label: 'Pencereyi Kapat' }
+      ]
+    }
+  ]));
+}
 
 /* ==========================================================================
  *  0) SSL / SERTİFİKA ESNEKLİĞİ
@@ -93,7 +193,10 @@ function varsayilanAyarlar() {
   const bitis = new Date();
   bitis.setDate(bitis.getDate() + 365); // Yıllık bakım: kurulumdan itibaren 365 gün
   return {
-    firmaAdi: 'Örnek Hırdavat ve Yapı Market A.Ş.',
+    /* Beyaz etiket (white-label): kod içinde HİÇBİR müşteri unvanı gömülü
+       değildir. Boş bırakılır; kullanıcı Ayarlar sekmesinden kendi firma
+       adını yazana kadar başlıkta "Firma Adı Girilmedi" görünür. */
+    firmaAdi: '',
     demoModu: true, // İLK AÇILIŞTA DEMO AKTİF — sunum için hazır gelsin
     wooUrl: '',
     ck: '',
@@ -113,6 +216,9 @@ function varsayilanAyarlar() {
     yerelFavicon: '',
     lisansBitis: bitis.toISOString().slice(0, 10),
     tema: 'acik',
+    // Urun sekmesindeki liste gorunumu: 'tablo' (Excel tipi izgara) veya
+    // 'kart' (surukle-birak siralamanin calistigi eski duzen).
+    urunGorunumu: 'tablo',
     // Canlı sipariş kontrolü: sipariş sekmesi açıkken kaç saniyede bir tazelensin.
     otoYenile: true,
     otoYenileSaniye: 60,
@@ -260,7 +366,15 @@ const API_ALANLARI = {
    * kendisi çözen bir eklenti varsa yanıt verir — dönmezse kanonik uçtan
    * gelen sonuç kullanılır, kullanıcıya ekstra bir hata gösterilmez.
    */
-  b2bAlt: 'b2b/v1'
+  b2bAlt: 'b2b/v1',
+  /*
+   * BYOM 2.0 lego vitrin düzeni (b2b-core 2.4.0+). "byomWc" ayna ad alanı
+   * "wc-" öneki taşıdığı için WooCommerce anahtar doğrulaması kendiliğinden
+   * çalışır; "byom" sartname adresidir (eklenti filtreyle açar). Panel önce
+   * aynayı, sonra sartname adresini dener (renderer-vitrin.js).
+   */
+  byom: 'byom/v1',
+  byomWc: 'wc-byom/v1'
 };
 
 /** Kullanıcının yazdığı adresi temizler: boşluk, /wp-json eki, sondaki / ve eksik protokol. */
@@ -391,7 +505,19 @@ async function apiIstek(istek) {
       sayfa: Number(yanit.headers.get('x-wp-totalpages') || 1)
     };
   } catch (e) {
-    return { ok: false, durum: 0, hata: agHatasiTurkce(e) };
+    /*
+     * agSorunu: taşıma katmanı hatası (DNS, bağlantı reddi, zaman aşımı, TLS).
+     * Vitrin Editörü'nün çevrimdışı kuyruğu YALNIZCA bu bayrak (ya da 5xx)
+     * varken yayını kuyrukta tutar; 4xx yanıtlar tekrar denenmez.
+     * Desen src/main/byom-api.js ile aynıdır.
+     */
+    return {
+      ok: false,
+      durum: 0,
+      agSorunu: true,
+      kod: (e && (e.code || (e.cause && e.cause.code))) || (e && e.name) || '',
+      hata: agHatasiTurkce(e)
+    };
   }
 }
 
@@ -523,6 +649,105 @@ ipcMain.handle('fis:kapat', (olay) => {
   const pencere = BrowserWindow.fromWebContents(olay.sender);
   if (pencere) pencere.close();
   return { ok: true };
+});
+
+/* ==========================================================================
+ *  3.4) EXCEL DÖKÜMÜ VE İÇE AKTARMA
+ *  ---------------------------------------------------------------------------
+ *  Dosya işleri ANA SÜREÇTE yapılır: arayüz tarafında `fs` ile 900 satırlık
+ *  bir çalışma kitabı üretmek pencereyi kilitler, üstelik kaydetme/açma
+ *  pencereleri (dialog) yalnızca burada açılabilir.
+ *
+ *  Arayüz tarafı: renderer-excel.js
+ * ========================================================================*/
+
+/** Kaydetme penceresinin açılacağı klasör (masaüstü, yoksa belgeler). */
+function kayitKlasoru() {
+  try { return app.getPath('desktop'); } catch (e) {
+    try { return app.getPath('documents'); } catch (e2) { return app.getPath('home'); }
+  }
+}
+
+/** Dosya adındaki yasak karakterleri temizler. */
+function dosyaAdiTemizle(ham) {
+  return String(ham || 'Dokum').replace(/[\\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim() || 'Dokum';
+}
+
+/**
+ * Ürün dökümünü .xlsx olarak kaydeder.
+ * istek = { dosyaAdi, sayfaAdi, sutunlar:[{baslik,tur,genislik}], satirlar:[[...]] }
+ */
+ipcMain.handle('excel:disaAktar', async (olay, istek) => {
+  istek = istek || {};
+  const pencere = BrowserWindow.fromWebContents(olay.sender);
+
+  const secim = await dialog.showSaveDialog(pencere, {
+    title: 'Excel Dökümünü Kaydet',
+    defaultPath: path.join(kayitKlasoru(), dosyaAdiTemizle(istek.dosyaAdi) + '.xlsx'),
+    filters: [{ name: 'Excel Çalışma Kitabı', extensions: ['xlsx'] }],
+    buttonLabel: 'Kaydet'
+  });
+
+  if (secim.canceled || !secim.filePath) return { ok: false, iptal: true };
+
+  try {
+    excel.xlsxYaz(secim.filePath, {
+      sayfaAdi: istek.sayfaAdi || 'Ürünler',
+      sutunlar: istek.sutunlar || [],
+      satirlar: istek.satirlar || []
+    });
+  } catch (e) {
+    return { ok: false, hata: 'Excel dosyası oluşturulamadı:\n' + e.message };
+  }
+
+  /* Kaydedilen dosya hemen açılır. Excel kurulu değilse openPath bir hata
+     METNİ döndürür (fırlatmaz); o durumda dosya klasörde işaretlenir. */
+  let acilmadi = '';
+  try { acilmadi = await shell.openPath(secim.filePath); } catch (e) { acilmadi = String((e && e.message) || e); }
+  if (acilmadi) { try { shell.showItemInFolder(secim.filePath); } catch (e) { /* yok say */ } }
+
+  return { ok: true, yol: secim.filePath, acildi: !acilmadi };
+});
+
+/** İçe aktarılacak dosyayı seçtirir. */
+ipcMain.handle('excel:dosyaSec', async (olay) => {
+  const pencere = BrowserWindow.fromWebContents(olay.sender);
+
+  const secim = await dialog.showOpenDialog(pencere, {
+    title: 'İçe Aktarılacak Excel / CSV Dosyasını Seçin',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Excel ve CSV Dosyaları', extensions: ['xlsx', 'xlsm', 'xls', 'csv', 'txt'] },
+      { name: 'Excel Çalışma Kitabı', extensions: ['xlsx', 'xlsm'] },
+      { name: 'Eski Excel Dosyası', extensions: ['xls'] },
+      { name: 'Metin / CSV', extensions: ['csv', 'txt'] },
+      { name: 'Tüm Dosyalar', extensions: ['*'] }
+    ],
+    buttonLabel: 'Aç'
+  });
+
+  if (secim.canceled || !secim.filePaths.length) return { ok: false, iptal: true };
+
+  const yol = secim.filePaths[0];
+  let boyut = 0;
+  try { boyut = fs.statSync(yol).size; } catch (e) { /* yok say */ }
+
+  return { ok: true, yol: yol, ad: path.basename(yol), boyut: boyut };
+});
+
+/**
+ * Seçilen dosyayı satır dizisine çevirir.
+ * istek = { yol, enFazlaSatir }   (enFazlaSatir 0 → sınırsız)
+ */
+ipcMain.handle('excel:tabloOku', (olay, istek) => {
+  istek = istek || {};
+  if (!istek.yol) return { ok: false, hata: 'Dosya yolu verilmedi.' };
+
+  try {
+    return excel.tabloOku(String(istek.yol), Number(istek.enFazlaSatir) || 0);
+  } catch (e) {
+    return { ok: false, hata: 'Dosya okunamadı:\n' + ((e && e.message) || e) };
+  }
 });
 
 /* ==========================================================================
@@ -690,7 +915,9 @@ function pencereyiKesinGoster(pencere, buyut) {
 }
 
 function anaPencereyiOlustur() {
-  anaPencere = new BrowserWindow({
+  /* Aşağıdaki seçenek listesi WINDOWS İÇİN DEĞİŞMEDİ. macOS'te üstüne
+     yalnızca başlık çubuğu ayarları eklenir (bkz. macAnaPencereSecenekleri). */
+  anaPencere = new BrowserWindow(Object.assign({
     width: 1440,
     height: 900,
     minWidth: 1100,
@@ -710,7 +937,7 @@ function anaPencereyiOlustur() {
       contextIsolation: false,
       spellcheck: false
     }
-  });
+  }, macAnaPencereSecenekleri()));
 
   // Ekrana getirme birden çok yola bağlandı; biri çalışmazsa diğeri yakalar.
   pencereyiKesinGoster(anaPencere, true);
@@ -758,6 +985,39 @@ function anaPencereyiOlustur() {
     }
   });
 
+  /*
+   * VİTRİN EDİTÖRÜ ÖNİZLEME ÇERÇEVESİ
+   * ----------------------------------
+   * Mağaza sahibi KENDİ sitesini editörün iframe'i içinde görür. WordPress
+   * barındırıcıları çoğunlukla "X-Frame-Options: SAMEORIGIN" (ya da CSP
+   * frame-ancestors) ekler; bu başlık bizim file:// kökenli pencereyi
+   * engeller ve önizleme boş kalırdı. Başlık YALNIZCA alt çerçevede (subFrame)
+   * ve YALNIZCA byom_preview=1 taşıyan adreslerde düşürülür; başka hiçbir
+   * istek etkilenmez.
+   */
+  try {
+    session.defaultSession.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, function (ayrinti, geriCagir) {
+      var basliklar = ayrinti.responseHeaders || {};
+      if (ayrinti.resourceType === 'subFrame' && /[?&]byom_preview=1/.test(String(ayrinti.url || ''))) {
+        Object.keys(basliklar).forEach(function (ad) {
+          var kucuk = ad.toLowerCase();
+          if (kucuk === 'x-frame-options') {
+            delete basliklar[ad];
+          } else if (kucuk === 'content-security-policy' || kucuk === 'content-security-policy-report-only') {
+            basliklar[ad] = [].concat(basliklar[ad]).map(function (deger) {
+              return String(deger).split(';').filter(function (parca) {
+                return !/^\s*frame-ancestors\b/i.test(parca);
+              }).join(';');
+            });
+          }
+        });
+      }
+      geriCagir({ responseHeaders: basliklar });
+    });
+  } catch (e) {
+    console.warn('Önizleme başlık filtresi kurulamadı:', e && e.message);
+  }
+
   anaPencere.loadFile(path.join(__dirname, 'index.html')).catch(function (e) {
     console.error('loadFile başarısız:', e);
     pencereyiKesinGoster(anaPencere, true);
@@ -765,10 +1025,30 @@ function anaPencereyiOlustur() {
   });
 
   // F12 → Geliştirici araçları (destek verirken lazım olur)
+  // macOS'te F12 klavyede çoğu zaman sistem işlevine bağlı; orada ayrıca
+  // sistemin alışıldık kısayolu olan ⌘⌥I de kabul edilir.
   anaPencere.webContents.on('before-input-event', function (olay, girdi) {
-    if (girdi.type === 'keyDown' && girdi.key === 'F12') {
+    if (girdi.type !== 'keyDown') return;
+
+    const macKisayolu = isMac && girdi.meta && girdi.alt &&
+                        String(girdi.key).toLowerCase() === 'i';
+
+    if (girdi.key === 'F12' || macKisayolu) {
       anaPencere.webContents.toggleDevTools();
       olay.preventDefault();
+    }
+  });
+
+  /*
+   * Ana pencere YALNIZCA kendi index.html'inde kalır. Vitrin Editörü'nün
+   * önizleme iframe'i uzak site içeriği taşır; o içeriğin top.location ile
+   * node-entegre pencereyi başka bir adrese yönlendirmesi engellenir
+   * (iframe sandbox'ına ek, ikinci emniyet kemeri).
+   */
+  anaPencere.webContents.on('will-navigate', function (olay, url) {
+    if (!/^file:/i.test(String(url))) {
+      olay.preventDefault();
+      if (/^https?:\/\//i.test(String(url))) shell.openExternal(url);
     }
   });
 
@@ -813,10 +1093,15 @@ if (!tekKopyaKilidi) {
   });
 
   app.whenReady().then(function () {
-    if (process.platform === 'win32') {
+    if (isWindows) {
       app.setAppUserModelId('com.byomtech.b2b');
     }
-    Menu.setApplicationMenu(null); // Sade görünüm: üst menü çubuğu olmasın
+
+    /* Windows/Linux: sade görünüm — üst menü çubuğu olmasın (DEĞİŞMEDİ).
+       macOS: menü kaldırılırsa ⌘C/⌘V/⌘Q çalışmaz; en küçük standart menü
+       kurulur (bkz. macMenusunuKur). */
+    if (isMac) macMenusunuKur();
+    else Menu.setApplicationMenu(null);
     sertifikaDenetiminiGevset();   // SSL katılığı: bkz. bölüm 0
     otomatikGuncellemeyiBaslat(); // Sessiz güncelleme: açılışta + 30 dk.da bir (bkz. bölüm 3.5)
 
@@ -843,7 +1128,10 @@ if (!tekKopyaKilidi) {
     app.quit();
   });
 
+  /* macOS'te son pencere kapanınca uygulama çalışmaya devam eder (sistem
+     alışkanlığı); Dock simgesine tıklanınca 'activate' yeniden açar.
+     Windows'taki davranış aynen korunur: son pencere = çıkış. */
   app.on('window-all-closed', function () {
-    if (process.platform !== 'darwin') app.quit();
+    if (!isMac) app.quit();
   });
 }

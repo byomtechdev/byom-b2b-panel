@@ -24,10 +24,51 @@ function kacis(metin) {
   });
 }
 
-const paraBicimi = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 });
+/* --------------------------------------------------------------------------
+ *  PARA BİÇİMİ — Türk muhasebe standardı:  1.234,56 ₺   (simge SAĞDA)
+ *  --------------------------------------------------------------------------
+ *  Neden Intl.NumberFormat KULLANILMIYOR: Electron paketi küçük ICU ile
+ *  gelebiliyor ve 'tr-TR' yerel verisi bulunamadığında sessizce 'en-US'a
+ *  düşüyordu. Sonuç, kullanıcının ekranında "₺10.00" (simge SOLDA, nokta
+ *  ayraçlı) biçimiydi — fatura ve depo fişinde kabul edilemez.
+ *
+ *  Biçim artık yerel veriden BAĞIMSIZ, elle kurulur:
+ *    · binlik ayracı  "."   · kuruş ayracı ","   · simge sonda, ince boşlukla
+ *  Böylece hangi makinede, hangi ICU derlemesiyle çalışırsa çalışsın
+ *  fiş ile ekran birebir aynı sayıyı gösterir.
+ * ------------------------------------------------------------------------*/
+const PARA_SIMGESI = '₺';
+
+/** 1234.5 -> "1.234,50" (simgesiz; tablo hücreleri ve fiş sütunları için). */
+function paraSade(deger) {
+  let n = Number(deger);
+  if (!isFinite(n)) n = 0;
+
+  /* toFixed(2) yuvarlamayı kuruşta bitirir; sonrasında yalnızca metin işlenir,
+     böylece kayan nokta artığı (0.1+0.2) hiçbir toplamda görünmez. */
+  const ham = Math.abs(n).toFixed(2);
+
+  /* İşaret YUVARLAMADAN SONRA belirlenir: -0 ve -0.004 gibi değerler kuruşta
+     sıfıra indiği için "-0,00 ₺" yazılmaz (fişte hatalı iade gibi okunurdu). */
+  const eksiMi = n < 0 && Number(ham) !== 0;
+  const nokta = ham.indexOf('.');
+  const tam = ham.slice(0, nokta);
+  const kurus = ham.slice(nokta + 1);
+
+  /* Binlik ayracı: sağdan üçerli. Regex yerine döngü — çok uzun tutarlarda da
+     (milyarlık cari toplamlar) tek geçişte ve öngörülebilir çalışır. */
+  let gruplu = '';
+  for (let i = 0; i < tam.length; i++) {
+    if (i > 0 && (tam.length - i) % 3 === 0) gruplu += '.';
+    gruplu += tam[i];
+  }
+
+  return (eksiMi ? '-' : '') + gruplu + ',' + kurus;
+}
+
+/** 1234.5 -> "1.234,50 ₺" — kullanıcıya gösterilen TEK para biçimi. */
 function para(deger) {
-  const n = Number(deger);
-  return paraBicimi.format(isFinite(n) ? n : 0);
+  return paraSade(deger) + ' ' + PARA_SIMGESI;
 }
 
 /** "1.234,56" / "1234.56" / "1234,56" gibi her yazımı sayıya çevirir. */
@@ -179,7 +220,8 @@ function metinSor(baslik, mesaj, varsayilan, tamamMetni) {
     function disariTikla(o) { if (o.target === katman) kapat(null); }
     function tusla(o) {
       if (o.key === 'Escape') kapat(null);
-      if (o.key === 'Enter' && o.ctrlKey) kapat(girdi.value.trim());
+      /* Ctrl+Enter (Windows) — ⌘+Enter (macOS) */
+      if (o.key === 'Enter' && (o.ctrlKey || o.metaKey)) kapat(girdi.value.trim());
     }
 
     tamamBtn.addEventListener('click', evet);
@@ -209,10 +251,16 @@ function durumPenceresi(secenek) {
 
     $('#kargoFirma').value = secenek.carrier || '';
     $('#kargoTakip').value = secenek.tracking || '';
+    $('#kargoAmbar').value = secenek.shipmentNote || '';
     $('#kargoNot').value = '';
     $('#kargoBildir').checked = secenek.bildir !== false;
 
     alanlar.classList.toggle('hidden', !secenek.kargoGoster);
+
+    /* Serbest sevkiyat kutusu da yalnizca sevkiyat adimlarinda gorunur:
+       "Teslim Edildi" adiminda ambar adi sormak anlamsizdi. */
+    const ambarSatiri = $('#kargoAmbarSatiri');
+    if (ambarSatiri) ambarSatiri.classList.toggle('hidden', !secenek.kargoGoster);
     uyari.classList.add('hidden');
 
     katman.classList.remove('hidden');
@@ -232,6 +280,9 @@ function durumPenceresi(secenek) {
       kapat({
         carrier: $('#kargoFirma').value.trim(),
         tracking: $('#kargoTakip').value.trim(),
+        /* Serbest sevkiyat metni; kargo alanlari bos olsa da tek basina
+           gonderilebilir (ambara teslim akisi). */
+        shipmentNote: $('#kargoAmbar').value.trim(),
         note: $('#kargoNot').value.trim(),
         notify: !!$('#kargoBildir').checked
       });
@@ -286,22 +337,25 @@ function butonuMesgulEt(buton, mesaj) {
  *  BÖLÜM 2 — DEMO VERİLERİ (sunum için gerçekçi hırdavat / toptan verisi)
  * ========================================================================*/
 
+/* Demo kataloğu: JENERİK ürünler. Tescilli marka adı BİLEREK kullanılmaz —
+   ekosistem her firmaya sıfırdan kurulabilen temiz bir şablondur ve kutudan
+   çıkan veride başka şirketlerin markaları bulunmamalıdır. */
 const DEMO_URUNLER = [
-  { id: 901, ad: 'Bosch GSB 13 RE Darbeli Matkap 600W',        kod: 'BSH-GSB13RE',    fiyat: 2450.00, stok: 42,  durum: 'publish', gorsel: svgGorsel() },
-  { id: 902, ad: 'Makita HP1630 Darbeli Matkap 710W',           kod: 'MKT-HP1630',     fiyat: 2890.00, stok: 18,  durum: 'publish', gorsel: svgGorsel() },
-  { id: 903, ad: 'İzeltaş Kargaburun Pense 180 mm',             kod: 'IZL-KRG180',     fiyat: 385.50,  stok: 156, durum: 'publish', gorsel: svgGorsel() },
-  { id: 904, ad: 'Stanley Şerit Metre 5 m x 25 mm',             kod: 'STN-SM5',        fiyat: 289.90,  stok: 240, durum: 'publish', gorsel: svgGorsel() },
-  { id: 905, ad: 'Çelik Vida 4x40 mm (1000 Adet Kutu)',         kod: 'VDA-4X40-1000',  fiyat: 720.00,  stok: 85,  durum: 'publish', gorsel: svgGorsel() },
-  { id: 906, ad: 'Plastik Dübel 8 mm (500 Adet Poşet)',         kod: 'DBL-8-500',      fiyat: 195.00,  stok: 320, durum: 'publish', gorsel: svgGorsel() },
-  { id: 907, ad: 'Akfix 100E Şeffaf Silikon 310 ml',            kod: 'AKF-100E',       fiyat: 118.75,  stok: 480, durum: 'publish', gorsel: svgGorsel() },
-  { id: 908, ad: 'Profesyonel Silikon Tabancası',               kod: 'SLK-TBC-PRO',    fiyat: 265.00,  stok: 64,  durum: 'publish', gorsel: svgGorsel() },
-  { id: 909, ad: 'Kale Çelik Kapı Kilidi 3 Anahtarlı',          kod: 'KLK-CK3',        fiyat: 1150.00, stok: 27,  durum: 'publish', gorsel: svgGorsel() },
-  { id: 910, ad: 'NYA Elektrik Kablosu 2.5 mm (100 m Makara)',  kod: 'KBL-NYA25-100',  fiyat: 3240.00, stok: 12,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 901, ad: 'Darbeli Matkap 600W (13 mm Mandren)',        kod: 'MTK-600-13',     fiyat: 2450.00, stok: 42,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 902, ad: 'Darbeli Matkap 710W Profesyonel',            kod: 'MTK-710-PRO',    fiyat: 2890.00, stok: 18,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 903, ad: 'Kargaburun Pense 180 mm',                    kod: 'PNS-KRG180',     fiyat: 385.50,  stok: 156, durum: 'publish', gorsel: svgGorsel() },
+  { id: 904, ad: 'Şerit Metre 5 m x 25 mm',                    kod: 'MTR-5X25',       fiyat: 289.90,  stok: 240, durum: 'publish', gorsel: svgGorsel() },
+  { id: 905, ad: 'Çelik Vida 4x40 mm (1000 Adet Kutu)',        kod: 'VDA-4X40-1000',  fiyat: 720.00,  stok: 85,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 906, ad: 'Plastik Dübel 8 mm (500 Adet Poşet)',        kod: 'DBL-8-500',      fiyat: 195.00,  stok: 320, durum: 'publish', gorsel: svgGorsel() },
+  { id: 907, ad: 'Şeffaf Silikon 310 ml',                      kod: 'SLK-310-SFF',    fiyat: 118.75,  stok: 480, durum: 'publish', gorsel: svgGorsel() },
+  { id: 908, ad: 'Profesyonel Silikon Tabancası',              kod: 'SLK-TBC-PRO',    fiyat: 265.00,  stok: 64,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 909, ad: 'Çelik Kapı Kilidi 3 Anahtarlı',              kod: 'KLT-CK3',        fiyat: 1150.00, stok: 27,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 910, ad: 'NYA Elektrik Kablosu 2.5 mm (100 m Makara)', kod: 'KBL-NYA25-100',  fiyat: 3240.00, stok: 12,  durum: 'publish', gorsel: svgGorsel() },
   { id: 911, ad: 'LED Ampul E27 12W Beyaz (10\'lu Paket)',      kod: 'LED-E27-12-10',  fiyat: 340.00,  stok: 190, durum: 'publish', gorsel: svgGorsel() },
-  { id: 912, ad: 'Tork Anahtarı Seti 8 Parça 1/2"',             kod: 'TRK-SET8',       fiyat: 1875.00, stok: 9,   durum: 'publish', gorsel: svgGorsel() },
-  { id: 913, ad: 'Alüminyum Merdiven 8 Basamaklı',              kod: 'MRD-ALM8',       fiyat: 2130.00, stok: 15,  durum: 'publish', gorsel: svgGorsel() },
-  { id: 914, ad: 'İş Eldiveni Nitril Kaplı (12 Çift)',          kod: 'ELD-NTR-12',     fiyat: 410.00,  stok: 275, durum: 'publish', gorsel: svgGorsel() },
-  { id: 915, ad: 'Sezonluk Bahçe Hortumu 20 m',                 kod: 'BHC-HRT20',      fiyat: 890.00,  stok: 0,   durum: 'draft',   gorsel: svgGorsel() }
+  { id: 912, ad: 'Tork Anahtarı Seti 8 Parça 1/2"',            kod: 'TRK-SET8',       fiyat: 1875.00, stok: 9,   durum: 'publish', gorsel: svgGorsel() },
+  { id: 913, ad: 'Alüminyum Merdiven 8 Basamaklı',             kod: 'MRD-ALM8',       fiyat: 2130.00, stok: 15,  durum: 'publish', gorsel: svgGorsel() },
+  { id: 914, ad: 'İş Eldiveni Nitril Kaplı (12 Çift)',         kod: 'ELD-NTR-12',     fiyat: 410.00,  stok: 275, durum: 'publish', gorsel: svgGorsel() },
+  { id: 915, ad: 'Bahçe Hortumu 20 m',                         kod: 'BHC-HRT20',      fiyat: 890.00,  stok: 0,   durum: 'draft',   gorsel: svgGorsel() }
 ];
 
 /* Demo kalemlerine benzersiz kimlik verir. Gerçek siparişlerde bu değer
@@ -334,15 +388,15 @@ const DEMO_SIPARISLER = [
     tarih: '2026-08-05T09:12:00', durum: 'b2b-received', kargo: '', takip: '',
     notlar: 'Kargoya vermeden önce lütfen arayın, elden teslim alacağız.',
     kalemler: [
-      demoKalem('BSH-GSB13RE', 4), demoKalem('VDA-4X40-1000', 6),
-      demoKalem('DBL-8-500', 10), demoKalem('IZL-KRG180', 7)
+      demoKalem('MTK-600-13', 4), demoKalem('VDA-4X40-1000', 6),
+      demoKalem('DBL-8-500', 10), demoKalem('PNS-KRG180', 7)
     ]
   },
   {
     id: 10247, numara: '10247', aliciTipi: 'corporate', odemeTipi: 'card', provizyon: 'PRV-8842-119037', bayiId: 507, musteri: 'Fatma Demir', firma: 'Demir Yapı Market',
     telefon: '0555 908 61 30', adres: 'Cumhuriyet Mah. 1512 Sok. No:3, Bornova / İZMİR',
     tarih: '2026-08-04T16:40:00', durum: 'b2b-preparing', notlar: '', kargo: '', takip: '',
-    kalemler: [demoKalem('KBL-NYA25-100', 2), demoKalem('LED-E27-12-10', 5), demoKalem('AKF-100E', 12)]
+    kalemler: [demoKalem('KBL-NYA25-100', 2), demoKalem('LED-E27-12-10', 5), demoKalem('SLK-310-SFF', 12)]
   },
   {
     id: 10246, numara: '10246', aliciTipi: 'corporate', odemeTipi: 'term', bayiId: 508, musteri: 'Mustafa Kaya', firma: 'Kaya İnşaat Malzemeleri',
@@ -358,14 +412,14 @@ const DEMO_SIPARISLER = [
     kargo: 'Aras Kargo', takip: '7812340091223',
     /* Müşteri web sitesinden "Siparişimi Teslim Aldım" dedi */
     teslimDurum: 'delivered', teslimTarih: '2026-08-04T11:05:00',
-    kalemler: [demoKalem('SLK-TBC-PRO', 8), demoKalem('AKF-100E', 24), demoKalem('STN-SM5', 2)]
+    kalemler: [demoKalem('SLK-TBC-PRO', 8), demoKalem('SLK-310-SFF', 24), demoKalem('MTR-5X25', 2)]
   },
   {
     id: 10244, numara: '10244', aliciTipi: 'corporate', odemeTipi: 'card', provizyon: 'PRV-8842-118455', bayiId: 510, musteri: 'Zeynep Aydın', firma: 'Aydın Elektrik Toptan',
     telefon: '0544 662 37 12', adres: 'Sanayi Mah. 5. Sokak No:21, Nilüfer / BURSA',
     tarih: '2026-08-03T09:48:00', durum: 'b2b-received', kargo: '', takip: '',
     notlar: 'Ödeme havale ile yapılacak, dekont bekleniyor.',
-    kalemler: [demoKalem('KBL-NYA25-100', 3), demoKalem('LED-E27-12-10', 6), demoKalem('KLK-CK3', 1)]
+    kalemler: [demoKalem('KBL-NYA25-100', 3), demoKalem('LED-E27-12-10', 6), demoKalem('KLT-CK3', 1)]
   },
   {
     id: 10243, numara: '10243', aliciTipi: 'corporate', odemeTipi: 'cash', bayiId: 506, musteri: 'Osman Çelik', firma: 'Yılmaz Hırdavat Ltd. Şti.',
@@ -373,7 +427,7 @@ const DEMO_SIPARISLER = [
     tarih: '2026-08-02T17:30:00', durum: 'b2b-shipped',
     notlar: 'Palet üstünde streçlenerek gönderilsin.',
     kargo: 'Yurtiçi Kargo', takip: '4471209983311',
-    kalemler: [demoKalem('MKT-HP1630', 2), demoKalem('ELD-NTR-12', 3), demoKalem('DBL-8-500', 2)]
+    kalemler: [demoKalem('MTK-710-PRO', 2), demoKalem('ELD-NTR-12', 3), demoKalem('DBL-8-500', 2)]
   },
   {
     id: 10242, numara: '10242', aliciTipi: 'corporate', odemeTipi: 'term', bayiId: 507, musteri: 'Emine Koç', firma: 'Demir Yapı Market',
@@ -382,7 +436,7 @@ const DEMO_SIPARISLER = [
     kargo: 'MNG Kargo', takip: '9920014457781',
     /* Müşteri "Teslim Alınmadı / Sorun Var" dedi */
     teslimDurum: 'not_delivered', teslimTarih: '2026-08-03T09:20:00',
-    kalemler: [demoKalem('IZL-KRG180', 4), demoKalem('STN-SM5', 3), demoKalem('AKF-100E', 6)]
+    kalemler: [demoKalem('PNS-KRG180', 4), demoKalem('MTR-5X25', 3), demoKalem('SLK-310-SFF', 6)]
   },
   {
     id: 10241, numara: '10241', aliciTipi: 'corporate', odemeTipi: 'card', provizyon: 'PRV-8842-117980', bayiId: 508, musteri: 'Kemal Arslan', firma: 'Kaya İnşaat Malzemeleri',
@@ -401,7 +455,7 @@ const DEMO_SIPARISLER = [
     telefon: '0533 471 66 08', adres: 'Bahçelievler Mah. Papatya Sok. No:7 D:4, Çankaya / ANKARA',
     tarih: '2026-08-05T13:55:00', durum: 'b2b-received', kargo: '', takip: '',
     notlar: 'Kapıda kimlik ibrazı ile teslim alınacak.',
-    kalemler: [demoKalem('STN-SM5', 1), demoKalem('IZL-KRG180', 2), demoKalem('LED-E27-12-10', 1)]
+    kalemler: [demoKalem('MTR-5X25', 1), demoKalem('PNS-KRG180', 2), demoKalem('LED-E27-12-10', 1)]
   },
   {
     id: 10239, numara: '10239', aliciTipi: 'individual', odemeTipi: 'cash',
@@ -410,7 +464,7 @@ const DEMO_SIPARISLER = [
     tarih: '2026-08-04T08:30:00', durum: 'b2b-shipped',
     notlar: '',
     kargo: 'Sürat Kargo', takip: '3391077452210',
-    kalemler: [demoKalem('AKF-100E', 2), demoKalem('SLK-TBC-PRO', 1)]
+    kalemler: [demoKalem('SLK-310-SFF', 2), demoKalem('SLK-TBC-PRO', 1)]
   }
 ];
 
@@ -545,6 +599,13 @@ const durum = {
      için oturum boyunca hatırlanır (bkz. bekleyenBasvurulariGetir). */
   basvuruUcuYok: false,
   otoYenileZaman: null,
+
+  /* Logo önbellek damgası: marka görseli her değiştiğinde artar ve
+     http(s) logo adresine ?b2bv= olarak eklenir (bkz. logoAdresi).
+     Sitedeki logo AYNI dosya adıyla değiştirildiğinde tarayıcının
+     eski kopyayı önbellekten vermesini engeller. */
+  logoDamgasi: 1,
+
   siparisYukleniyor: false,
   sonKontrol: null,
 
@@ -685,7 +746,12 @@ function sekmeTanimi(kod) {
 const DURUM_DUGMELERI = [
   {
     kod: 'order-ready', yedek: 'processing', simge: ikon('onay'), etiket: 'SİPARİŞ HAZIR',
-    renk: 'bg-purple-600 hover:bg-purple-700', kargoSor: false,
+    /* Bu adım pratikte AMBARA VERİLDİ adımıdır: mal depodan çıkar, çoğu zaman
+       bir ambara / nakliyeciye teslim edilir ve HENÜZ takip numarası yoktur.
+       Sevkiyat paneli burada da açılır ki ambar adı yazılabilsin; alanların
+       hiçbiri zorunlu değildir (bkz. index.html > kargoAmbarSatiri). */
+    renk: 'bg-purple-600 hover:bg-purple-700', kargoSor: true,
+    kargoBaslik: 'Sipariş Hazır / Ambara Verildi',
     aciklama: 'Sipariş hazırlandı, sevkiyat bekliyor.'
   },
   {
@@ -1297,6 +1363,9 @@ function b2bSiparisNormalle(s) {
     araToplam: Number(s.subtotal || 0),
     kdv: Number(s.total_tax || 0),
     kargoTutar: Number(s.shipping_total || 0),
+    /* Bayi iskontosu özeti (b2b-core > B2B_Order_Pricing). Eklenti eski
+       sürümdeyse null gelir; fiş kalem toplamlarından kendi hesabını yapar. */
+    fiyatOzeti: s.pricing || null,
     tarih: s.date_created || '',
     durum: s.status || 'b2b-received',
     durumEtiketi: s.status_label || '',
@@ -1304,6 +1373,8 @@ function b2bSiparisNormalle(s) {
     odeme: s.payment_title || '',
     kargo: s.carrier || '',
     takip: s.tracking_number || '',
+    /* Serbest sevkiyat metni: özel ambar / nakliyeci / sevk fişi numarası. */
+    sevkiyatNotu: s.shipment_note || '',
     /* Sipariş türü (Nakit / Kredi Kartı / Vadeli) ve uygulanan iskonto */
     odemeTipi: s.payment_type || '',
     odemeTipiEtiket: s.payment_type_label || '',
@@ -1333,6 +1404,8 @@ function b2bSiparisNormalle(s) {
       const adet = Number(k.quantity || 0);
       const toplam = Number(k.total || 0);
       const birim = Number(k.unit_price || (adet > 0 ? toplam / adet : 0));
+      const araToplam = Number(k.subtotal !== undefined ? k.subtotal : toplam);
+
       return {
         /* Kalem kimliği revize için ZORUNLU: WooCommerce satırı bu id ile
            bulur (ürün id'si değil, sipariş kalemi id'si). */
@@ -1343,7 +1416,15 @@ function b2bSiparisNormalle(s) {
         adet: adet,
         birim: birim,
         tutar: toplam,
-        araToplam: Number(k.subtotal !== undefined ? k.subtotal : toplam),
+        araToplam: araToplam,
+        /* --- İSKONTO KÜNYESİ (depo fişi) ---
+           b2b-core 'list_subtotal' alanını satır meta'sından üretir; eklenti
+           eski sürümdeyse alan hiç gelmez ve liste fiyatı bayi fiyatına
+           eşitlenir (iskonto 0 görünür). Olmayan bir indirimi uydurmak
+           yerine 'indirim yok' göstermek doğrusudur. */
+        listeAraToplam: Number(k.list_subtotal !== undefined && k.list_subtotal !== null
+          ? k.list_subtotal
+          : araToplam),
         gorsel: k.image || YEDEK_GORSEL
       };
     })
@@ -1395,6 +1476,7 @@ function siparisNormalle(s) {
     odeme: s.payment_method_title || '',
     kargo: meta._b2b_carrier || '',
     takip: meta._b2b_tracking_number || '',
+    sevkiyatNotu: String(meta._b2b_shipment_note || meta.b2b_shipment_note || ''),
     /* Sipariş türü meta'dan okunur (eklenti uçları yerine wc/v3 kullanıldığında) */
     odemeTipi: String(meta.b2b_payment_type || meta._b2b_payment_type || ''),
     odemeTipiEtiket: String(meta._b2b_payment_type_label || ''),
@@ -1435,6 +1517,8 @@ function siparisNormalle(s) {
       const birim = Number(k.price !== undefined && k.price !== null && k.price !== ''
         ? k.price
         : (adet > 0 ? toplam / adet : 0));
+      const araToplam = Number(k.subtotal !== undefined && k.subtotal !== null ? k.subtotal : toplam);
+
       return {
         kalemId: Number(k.id || 0),
         urunId: Number(k.product_id || 0),
@@ -1443,7 +1527,10 @@ function siparisNormalle(s) {
         adet: adet,
         birim: birim,
         tutar: toplam,
-        araToplam: Number(k.subtotal !== undefined && k.subtotal !== null ? k.subtotal : toplam),
+        araToplam: araToplam,
+        /* wc/v3 çekirdek ucunda liste fiyatı meta'sı OKUNMAZ (b2b-core'a özgü
+           alandır). Eklentisiz yolda iskonto sütunu boş kalır. */
+        listeAraToplam: araToplam,
         gorsel: (k.image && k.image.src) ? k.image.src : YEDEK_GORSEL
       };
     })
@@ -1774,13 +1861,43 @@ function lisansGunSayisi() {
  * Üst çubuktaki firma simgesini günceller: sitedeki logo varsa öncelikli,
  * yoksa Ayarlar'dan yüklenen yerel logo, o da yoksa varsayılan simgesi.
  */
+/* --------------------------------------------------------------------------
+ *  MARKA GÖRSELİ — TEK ÇÖZÜM NOKTASI
+ *  --------------------------------------------------------------------------
+ *  Logo iki kaynaktan gelebilir:
+ *    · yerelLogo  — Ayarlar'dan yüklenen dosya (data:image/... base64)
+ *    · siteLogosu — bağlantı kurulunca sitenin theme-config'inden çekilen adres
+ *
+ *  ÖNCELİK YERELDEDİR. Eskiden siteLogosu öne alınıyordu; sitede bir logo
+ *  varsa kullanıcının yüklediği yeni logo başlıkta HİÇ görünmüyor, "logo
+ *  önbellekte takılı kaldı" gibi okunuyordu. Kullanıcının o pencerede
+ *  bilerek yüklediği dosya, arka planda çekilmiş adresten önce gelir.
+ * ------------------------------------------------------------------------*/
+function markaLogosu() {
+  return String(durum.ayarlar.yerelLogo || durum.ayarlar.siteLogosu || '').trim();
+}
+
+/**
+ * Logo adresine önbellek kırıcı ekler.
+ *
+ * `data:` adresleri içeriğin kendisidir; değişince adres de değişir, ek
+ * gerekmez (üstelik ekleme base64'ü bozar). Yalnızca http(s) adreslerine
+ * damga eklenir: site logosu aynı DOSYA ADIYLA değiştirildiğinde tarayıcı
+ * eskisini önbellekten verir ve panelde eski logo asılı kalırdı.
+ */
+function logoAdresi(kaynak, damga) {
+  const s = String(kaynak || '');
+  if (!s || s.slice(0, 5) === 'data:') return s;
+  return s + (s.indexOf('?') === -1 ? '?' : '&') + 'b2bv=' + (damga || durum.logoDamgasi || '1');
+}
+
 function firmaLogosunuUygula() {
   const kutu = $('#firmaLogoKutu');
   const img = $('#firmaLogo');
   const varsayilan = $('#firmaVarsayilanSimge');
   if (!kutu || !img || !varsayilan) return;
 
-  const kaynak = String(durum.ayarlar.siteLogosu || durum.ayarlar.yerelLogo || '').trim();
+  const kaynak = markaLogosu();
 
   if (!kaynak) {
     kutu.classList.add('hidden');
@@ -1796,7 +1913,10 @@ function firmaLogosunuUygula() {
     kutu.classList.remove('hidden');
     varsayilan.classList.add('hidden');
   };
-  img.src = kaynak;
+  /* Aynı src yeniden atandığında tarayıcı onload'ı tetiklemez ve kutu gizli
+     kalırdı; önce boşaltılıp sonra damgalı adres veriliyor. */
+  img.removeAttribute('src');
+  img.src = logoAdresi(kaynak);
 }
 
 /**
@@ -1817,11 +1937,47 @@ async function siteLogosunuGetir() {
 
     if (url !== String(durum.ayarlar.siteLogosu || '')) {
       durum.ayarlar = await ipcRenderer.invoke('ayar:yaz', { siteLogosu: url });
+      durum.logoDamgasi++;   // Adres değişti: önbellekteki kopya geçersiz.
     }
   } catch (e) {
     /* Sessiz geç — logo kozmetiktir. */
   } finally {
     firmaLogosunuUygula();
+  }
+}
+
+/* --------------------------------------------------------------------------
+ *  SÜRÜM — TEK KAYNAK  (package.json → app.getVersion())
+ *  --------------------------------------------------------------------------
+ *  Sürüm metni arayüzde İKİ yerde görünür: sol menünün dibindeki marka imzası
+ *  ve Ayarlar panelindeki künye. Üçüncüsü olan ÜST BAŞLIK kaldırıldı — sol
+ *  üstte artık yalnızca firma logosu ve unvanı duruyor.
+ *
+ *  Kalan ikisi de burada, `app.getVersion()` değerinden yazılır (main.js >
+ *  `uygulama:bilgi` ucu paket sürümünü döndürür). index.html'de sürüm metni
+ *  KALMADI; yükseltmede düzeltilecek ikinci bir yer yoktur.
+ * ------------------------------------------------------------------------*/
+
+/** Paket sürümü — "1.0.3". Bilgi henüz gelmediyse boş dize. */
+function surumNumarasi() {
+  return String((durum.bilgi && durum.bilgi.surum) || '').trim();
+}
+
+/** Sürümü arayüzdeki İKİ yere birden yazar. */
+function surumleriYaz() {
+  const s = surumNumarasi();
+
+  /* 1) Sol alt marka imzası: "Bu bir BYOM TECH ürünüdür • v1.0.3" */
+  const imza = $('#markaImzasi');
+  if (imza) imza.textContent = 'Bu bir BYOM TECH ürünüdür' + (s ? (' • v' + s) : '');
+
+  /* 2) Ayarlar panelindeki künye (sürüm · Electron · ayar dosyası yolu) */
+  const kunye = $('#ayarDosyaYolu');
+  if (kunye && durum.bilgi) {
+    kunye.textContent =
+      'Sürüm ' + (s || '—') + ' · Electron ' + (durum.bilgi.electron || '—') + '\n' +
+      'Ayar dosyası: ' + (durum.bilgi.ayarDosyasi || '—');
+    kunye.style.whiteSpace = 'pre-line';
   }
 }
 
@@ -1930,6 +2086,10 @@ function sekmeAc(ad) {
   }
   if (ad === 'vitrin' && !durum.vitrin.yuklendi && typeof vitrinSekmesiYukle === 'function') {
     vitrinSekmesiYukle();
+  }
+  // BYOM 2.0 Vitrin Editörü (renderer-vitrin.js): ilk açılışta siteden düzeni çeker.
+  if (ad === 'vitrin-editor' && typeof vitrinEditorAc === 'function') {
+    vitrinEditorAc();
   }
 
   otoYenileyiAyarla();
@@ -2970,12 +3130,13 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
   let ek;
   if (tanim.kargoSor) {
     ek = await durumPenceresi({
-      baslik: 'Kargoya Verildi Olarak İşaretle',
-      aciklama: '#' + s.numara + ' · ' + (s.firma || s.musteri),
+      baslik: (tanim.kargoBaslik || tanim.etiket) + ' Olarak İşaretle',
+      aciklama: '#' + s.numara + ' · ' + (s.firma || s.musteri) + '\n' + tanim.aciklama,
       kargoGoster: true,
-      onayMetni: 'KARGOYA VERİLDİ',
+      onayMetni: tanim.etiket,
       carrier: s.kargo,
       tracking: s.takip,
+      shipmentNote: s.sevkiyatNotu,
       bildir: durum.ayarlar.durumEpostasi !== false
     });
   } else {
@@ -2997,14 +3158,18 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
     await bekle(320);
     s.durum = hedef;
     s.durumEtiketi = '';
-    if (ek.carrier) s.kargo = ek.carrier;
-    if (ek.tracking) s.takip = ek.tracking;
+    /* Alanlar KOŞULSUZ yazılır: kullanıcı yanlış girdiği takip numarasını
+       kutuyu boşaltarak silebilsin (eskiden boş değer yok sayılırdı). */
+    s.kargo = ek.carrier || '';
+    s.takip = ek.tracking || '';
+    s.sevkiyatNotu = ek.shipmentNote || '';
 
     const kaynak = DEMO_SIPARISLER.filter(function (x) { return String(x.id) === String(id); })[0];
     if (kaynak) {
       kaynak.durum = hedef;
-      if (ek.carrier) kaynak.kargo = ek.carrier;
-      if (ek.tracking) kaynak.takip = ek.tracking;
+      kaynak.kargo = ek.carrier || '';
+      kaynak.takip = ek.tracking || '';
+      kaynak.sevkiyatNotu = ek.shipmentNote || '';
     }
 
     geriAl();
@@ -3023,8 +3188,12 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
       govde: {
         status: hedef,
         note: ek.note || '',
+        /* Alanlar BOŞ gönderilebilir: sunucu boş dizeyi "temizle" olarak
+           yorumlar, eksik alan diye reddetmez
+           (bkz. b2b-core > update_order_status). */
         carrier: ek.carrier || '',
         tracking: ek.tracking || '',
+        shipment_note: ek.shipmentNote || '',
         notify: !!ek.notify
       }
     });
@@ -3055,8 +3224,9 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
   } else {
     s.durum = hedef;
     s.durumEtiketi = '';
-    if (ek.carrier) s.kargo = ek.carrier;
-    if (ek.tracking) s.takip = ek.tracking;
+    s.kargo = ek.carrier || '';
+    s.takip = ek.tracking || '';
+    s.sevkiyatNotu = ek.shipmentNote || '';
   }
 
   /*
@@ -3079,7 +3249,8 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
 
   bildir('#' + s.numara + ' → ' + durumBilgisi(hedef).etiket + '\nSiteye gönderildi.' +
          (ek.notify ? '\nMüşteriye bilgilendirme e-postası gönderildi.' : '\n(E-posta gönderilmedi.)') +
-         (ek.tracking ? '\nTakip No: ' + ek.tracking : ''), 'basari');
+         (ek.tracking ? '\nTakip No: ' + ek.tracking : '') +
+         (ek.shipmentNote ? '\nSevkiyat: ' + ek.shipmentNote : ''), 'basari');
 }
 
 /** Otomatik yenileme zamanlayıcısını kurar / durdurur. */
@@ -3111,8 +3282,22 @@ function otoYenileyiAyarla() {
  *  BÖLÜM 8 — ÜRÜN & STOK
  * ========================================================================*/
 
+/**
+ * Ürün listesinin O AN GÖRÜNEN kabı.
+ *
+ * Ürün sekmesi iki görünümde çalışır (tablo / kart) ve yalnızca biri açıktır.
+ * "Yükleniyor…" kutusu gizli kaba yazılırsa kullanıcı bomboş bir ekrana bakar;
+ * bu yüzden görünür olan seçilir. Izgara henüz yüklenmemişse (renderer-izgara.js
+ * yoksa) eski kart kabına düşülür.
+ */
+function urunKabi() {
+  const izgara = $('#urunIzgara');
+  if (izgara && !izgara.classList.contains('hidden')) return izgara;
+  return $('#urunListesi');
+}
+
 async function urunleriYukle(aramaMetni) {
-  const kap = $('#urunListesi');
+  const kap = urunKabi();
   kap.innerHTML = yukleniyorHtml('Ürünler getiriliyor…');
   const arama = (aramaMetni === undefined || aramaMetni === null) ? $('#urunArama').value : aramaMetni;
   const temizArama = String(arama || '').trim();
@@ -3252,7 +3437,32 @@ function gorunurlukAnahtariHtml(u) {
   '</button>';
 }
 
+/* --------------------------------------------------------------------------
+ *  KAYDIRMA KONUMUNU KORUMA
+ *  --------------------------------------------------------------------------
+ *  Liste `innerHTML` ile baştan yazıldığında tarayıcı kaydırma konumunu
+ *  sıfırlar. Kullanıcı 400. üründeyken bir ürünü kaydettiğinde ekran listenin
+ *  tepesine fırlıyordu — uzun listelerde çalışmayı imkânsız kılan bir davranış.
+ *
+ *  Bu sarmalayıcı çizim işlevini araya alır: önce konumu okur, çizimden sonra
+ *  geri yazar. Liste kısaldıysa (ürün süzgeç dışına düştü) konum taşmasın diye
+ *  içeriğin yeni yüksekliğine sıkıştırılır.
+ * ------------------------------------------------------------------------*/
+function kaydirmayiKoru(ciz) {
+  const govde = $('#anaGovde');
+
+  if (!govde) { ciz(); return; }
+
+  const konum = govde.scrollTop;
+  ciz();
+
+  const enFazla = Math.max(0, govde.scrollHeight - govde.clientHeight);
+  govde.scrollTop = Math.min(konum, enFazla);
+}
+
 function urunleriCiz(arama) {
+  /* Kart görünümünün kabı SABİTTİR; tablo görünümünü renderer-izgara.js
+     kendi kabına çizer (bkz. urunleriCiz sarmalayıcısı). */
   const kap = $('#urunListesi');
   const anahtar = (arama || '').toLocaleLowerCase('tr-TR');
 
@@ -3477,7 +3687,11 @@ async function urunGorunurlukDegistir(id, buton) {
     durum.urunler = durum.urunler.filter(function (u) { return String(u.id) !== String(id); });
   }
 
-  urunleriCiz(durum.ayarlar.demoModu ? $('#urunArama').value : '');
+  /* Konum korunur: kullanıcı listenin ortasındaki ürünü gizlediğinde
+     ekranın tepeye fırlaması, uzun listede çalışmayı imkânsız kılıyordu. */
+  kaydirmayiKoru(function () {
+    urunleriCiz(durum.ayarlar.demoModu ? $('#urunArama').value : '');
+  });
 
   bildir(urun.ad + '\n' + (gizlenecekMi ? 'Ürün gizlendi (taslak).' : 'Ürün yayınlandı.') +
          (durum.ayarlar.demoModu ? '\n(Demo Modu)' : ''),
@@ -4886,22 +5100,154 @@ const FIS_IKONLARI = {
   paket:  '<path d="M20.4 7.4 12 12 3.6 7.4"/><path d="M12 12v9.3"/><path d="M20 16.1V7.9a1.5 1.5 0 0 0-.8-1.3l-6.5-3.6a1.5 1.5 0 0 0-1.4 0L4.8 6.6A1.5 1.5 0 0 0 4 7.9v8.2a1.5 1.5 0 0 0 .8 1.3l6.5 3.6a1.5 1.5 0 0 0 1.4 0l6.5-3.6a1.5 1.5 0 0 0 .8-1.3Z"/>'
 };
 
+/* --------------------------------------------------------------------------
+ *  DEPO FİŞİ — İSKONTO MATEMATİĞİ
+ *  --------------------------------------------------------------------------
+ *  Tüm satır değerleri SATIR TOPLAMLARINDAN türetilir, yuvarlanmış birim
+ *  fiyatlardan DEĞİL.
+ *
+ *  Neden: birim fiyatı önce kuruşa yuvarlayıp adetle çarpmak, adet büyüdükçe
+ *  satır toplamını kaydırır. Örnek — liste 100,00 ₺, iskonto %33,333:
+ *      birim bayi = 66,667  →  yuvarlanmış 66,67
+ *      3 adet     : 66,67 × 3 = 200,01   (gerçek toplam 200,00)
+ *      100 adet   : 66,67 × 100 = 6.667,00 (gerçek toplam 6.666,70)
+ *  Fiş ile sitedeki sipariş toplamı böyle ayrışıyordu.
+ *
+ *  Artık bölme yalnızca GÖSTERİM için yapılır (birim sütunu), toplamlar hep
+ *  sunucudan gelen satır tutarlarıdır. Böylece adet 1'den 100'e çıksa da
+ *  birim iskonto oranı sabit kalır ve hiçbir satırda kuruş farkı oluşmaz.
+ * ------------------------------------------------------------------------*/
+
+/** Fişte ve özet blokta kullanılan varsayılan KDV oranı (yüzde). */
+const KDV_ORANI = 20;
+
+/**
+ * Bir sipariş kaleminin fiyat künyesi.
+ *
+ * @param {object} k Normalleştirilmiş kalem (bkz. b2bSiparisNormalle).
+ * @returns {{adet:number, birimListe:number, birimBayi:number,
+ *            listeToplam:number, satirToplam:number, indirim:number, oran:number}}
+ */
+function kalemFiyatKunyesi(k) {
+  const adet = Number(k.adet) || 0;
+
+  /* Satır toplamları KAYNAK; birim fiyatlar bunlardan türetilir. */
+  const satirToplam = Number(k.araToplam);
+  const listeToplam = Number(k.listeAraToplam);
+
+  const net = isFinite(satirToplam) ? satirToplam : Number(k.tutar || 0);
+  /* Liste bilgisi yoksa (eski sipariş / eklentisiz yol) iskonto YOK sayılır;
+     olmayan bir indirimi uydurmak fişi yanlış yapardı. */
+  const liste = (isFinite(listeToplam) && listeToplam >= net) ? listeToplam : net;
+
+  const indirim = Math.max(0, liste - net);
+
+  return {
+    adet: adet,
+    birimListe: adet > 0 ? liste / adet : 0,
+    birimBayi: adet > 0 ? net / adet : 0,
+    listeToplam: liste,
+    satirToplam: net,
+    indirim: indirim,
+    oran: liste > 0 ? (indirim / liste) * 100 : 0
+  };
+}
+
+/**
+ * Siparişin finansal özeti — fişin alt bloğu bunu birebir basar.
+ *
+ * KDV iki kipte çalışır:
+ *   · Sipariş KDV taşıyorsa (WooCommerce vergisi açık) o tutar kullanılır ve
+ *     ara toplamın ÜSTÜNE eklenir.
+ *   · Sipariş KDV taşımıyorsa fiyatlar KDV DÂHİL kabul edilir ve tutar
+ *     genel toplamdan geri ayrıştırılır (net = toplam / 1,20). Bu kipte fişte
+ *     "fiyatlara dâhil" notu basılır; kimse tutarı ikinci kez eklemesin.
+ */
+function siparisFinansOzeti(s) {
+  const kalemler = s.kalemler || [];
+
+  let brutListe = 0;
+  let netAra = 0;
+  let satirToplamlari = 0;
+
+  kalemler.forEach(function (k) {
+    const f = kalemFiyatKunyesi(k);
+    brutListe += f.listeToplam;
+    netAra += f.satirToplam;
+    satirToplamlari += Number(k.tutar || f.satirToplam);
+  });
+
+  const iskonto = Math.max(0, brutListe - netAra);
+  const genelToplam = Number(s.tutar || 0);
+  const kargo = Number(s.kargoTutar || 0);
+
+  /* Kupon / sipariş düzeyi ek indirim: satır ara toplamı ile satır tutarı
+     ayrışıyorsa arada kupon vardır. Ayrı satır olarak gösterilir; sessizce
+     iskontoya karıştırılsaydı bayi iskonto oranı yanlış görünürdü. */
+  const ekIndirim = Math.max(0, netAra - satirToplamlari);
+
+  const kdvHam = Number(s.kdv || 0);
+  const kdvDahilMi = !(kdvHam > 0);
+
+  let kdv = kdvHam;
+
+  if (kdvDahilMi) {
+    /* Fiyatlar KDV dâhil: net = toplam / (1 + oran), KDV = toplam - net. */
+    const carpan = 1 + (KDV_ORANI / 100);
+    const kdvsizToplam = genelToplam / carpan;
+    kdv = Math.max(0, genelToplam - kdvsizToplam);
+  }
+
+  /* Etiketteki oran: vergi varsa gerçek orandan, yoksa varsayılandan. */
+  const kdvMatrahi = netAra - ekIndirim + kargo;
+  const kdvOrani = (!kdvDahilMi && kdvMatrahi > 0)
+    ? Math.round((kdv / kdvMatrahi) * 100)
+    : KDV_ORANI;
+
+  return {
+    brutListe: brutListe,
+    iskonto: iskonto,
+    iskontoOrani: brutListe > 0 ? (iskonto / brutListe) * 100 : 0,
+    netAra: netAra,
+    ekIndirim: ekIndirim,
+    kargo: kargo,
+    kdv: kdv,
+    kdvOrani: isFinite(kdvOrani) && kdvOrani > 0 ? kdvOrani : KDV_ORANI,
+    kdvDahilMi: kdvDahilMi,
+    genelToplam: genelToplam
+  };
+}
+
+/** Yüzdeyi fiş için yazar: 12 -> "%12", 12.5 -> "%12,5". */
+function fisOranYazi(oran) {
+  const n = Number(oran) || 0;
+  const yuvarlak = Math.round(n * 10) / 10;
+  return '%' + String(yuvarlak).replace('.', ',');
+}
+
 function depoFisiHtml(s) {
   const cesit = s.kalemler.length;
   const toplamAdet = s.kalemler.reduce(function (t, k) { return t + k.adet; }, 0);
-  const kalemToplami = s.kalemler.reduce(function (t, k) { return t + Number(k.tutar || 0); }, 0);
+  const ozet = siparisFinansOzeti(s);
 
   /* Fiş başlığı alıcı tipine göre değişir (bkz. fisKunyesiHtml). */
   const aliciKod = aliciTipiKodu(s);
   const aliciBilgi = ALICI_TIPLERI[aliciKod] || ALICI_TIPLERI.individual;
   const aliciAdi = aliciKod === 'corporate' ? (s.firma || s.musteri) : s.musteri;
 
+  /* Firma logosu fişe de basılır: ayarlardan logo değiştirildiğinde yazdırılan
+     fiş de aynı anda değişsin (kaynak tek: markaLogosu). */
+  const logo = markaLogosu();
+
   /* Yoğunluk kademesi: kalem sayısı arttıkça görsel ve punto otomatik küçülür,
      böylece 30-35 satırlık siparişler de TEK A4 sayfasında kalır.
-     (Az kalemli fişlerde görsel istenen üst sınırda — 32px — kalır.) */
-  const yogunluk = cesit > 26 ? ' sik' : (cesit > 20 ? ' orta' : '');
+     Sütun sayısı 7'den 8'e çıktığı için eşikler bir tık aşağı çekildi. */
+  const yogunluk = cesit > 24 ? ' sik' : (cesit > 18 ? ' orta' : '');
 
   const satirlar = s.kalemler.map(function (k) {
+    const f = kalemFiyatKunyesi(k);
+    const indirimliMi = f.indirim > 0.005;
+
     return '' +
       '<tr>' +
         '<td class="s-gorsel">' +
@@ -4912,10 +5258,51 @@ function depoFisiHtml(s) {
         '<td class="s-ad">' + kacis(k.ad) + '</td>' +
         '<td class="s-kod">' + kacis(k.kod) + '</td>' +
         '<td class="s-adet">' + k.adet + '</td>' +
-        '<td class="s-birim">' + kacis(para(k.birim)) + '</td>' +
-        '<td class="s-toplam">' + kacis(para(k.tutar)) + '</td>' +
+        /* Liste birim fiyatı iskonto varsa ÜSTÜ ÇİZİLİ basılır: depocu hangi
+           fiyattan hangi fiyata inildiğini tek bakışta görür. */
+        '<td class="s-liste' + (indirimliMi ? ' cizili' : '') + '">' +
+          kacis(paraSade(f.birimListe)) +
+        '</td>' +
+        '<td class="s-birim">' + kacis(paraSade(f.birimBayi)) + '</td>' +
+        '<td class="s-toplam">' + kacis(paraSade(f.satirToplam)) + '</td>' +
       '</tr>';
   }).join('');
+
+  /* --- Finansal özet satırları --- */
+  function ozetSatiri(etiket, deger, sinif) {
+    return '<tr' + (sinif ? ' class="' + sinif + '"' : '') + '>' +
+             '<td colspan="6" class="etiket">' + etiket + '</td>' +
+             '<td colspan="2" class="deger">' + deger + '</td>' +
+           '</tr>';
+  }
+
+  const ozetSatirlari = '' +
+    ozetSatiri('LİSTE FİYATI GENEL TOPLAMI <span class="ince">(iskontosuz brüt)</span>',
+               kacis(para(ozet.brutListe))) +
+
+    (ozet.iskonto > 0.005
+      ? ozetSatiri('BAYİ İSKONTO TUTARI <span class="ince">(oran: ' +
+                     fisOranYazi(ozet.iskontoOrani) + ')</span>',
+                   '&minus;' + kacis(para(ozet.iskonto)), 'indirim')
+      : ozetSatiri('BAYİ İSKONTOSU', '<span class="ince">uygulanmadı</span>')) +
+
+    ozetSatiri('İSKONTOLU NET ARA TOPLAM', kacis(para(ozet.netAra))) +
+
+    (ozet.ekIndirim > 0.005
+      ? ozetSatiri('EK İNDİRİM <span class="ince">(kupon / sipariş indirimi)</span>',
+                   '&minus;' + kacis(para(ozet.ekIndirim)), 'indirim')
+      : '') +
+
+    (ozet.kargo > 0.005
+      ? ozetSatiri('KARGO / NAVLUN', kacis(para(ozet.kargo)))
+      : '') +
+
+    ozetSatiri('KDV TUTARI <span class="ince">(' + fisOranYazi(ozet.kdvOrani) +
+                 (ozet.kdvDahilMi ? ' &middot; fiyatlara dâhil' : '') + ')</span>',
+               kacis(para(ozet.kdv))) +
+
+    ozetSatiri('GENEL TOPLAM <span class="ince">(ödenecek net tutar)</span>',
+               kacis(para(ozet.genelToplam)), 'genel');
 
   return '<!DOCTYPE html>\n' +
 '<html lang="tr"><head><meta charset="UTF-8">' +
@@ -4944,9 +5331,9 @@ function depoFisiHtml(s) {
 '     devreye girer ve uzun siparişler de tek sayfada kalır. ---- */' +
 '  .sayfa { width:210mm; min-height:297mm; margin:16px auto; padding:8mm; background:#fff;' +
 '           box-shadow:0 10px 40px rgba(0,0,0,.28);' +
-'           --gorsel:32px; --yazi:11px; --imza:12mm; }' +
-'  .sayfa.orta { --gorsel:24px; --yazi:10.5px; --imza:9mm; }' +
-'  .sayfa.sik  { --gorsel:20px; --yazi:10px;   --imza:5mm; }' +
+'           --gorsel:30px; --yazi:10.5px; --imza:11mm; }' +
+'  .sayfa.orta { --gorsel:23px; --yazi:10px;   --imza:8mm; }' +
+'  .sayfa.sik  { --gorsel:19px; --yazi:9.5px;  --imza:5mm; }' +
 '  /* En sık kademede satır yüksekliğini yalnızca görsel hücresi belirler;' +
 '     o hücrenin (metni olmayan) boşluğu kısılarak 35 satır tek sayfada tutulur. */' +
 '  .sayfa.sik tbody .s-gorsel { padding:1px 4px; }' +
@@ -4956,8 +5343,10 @@ function depoFisiHtml(s) {
 '  .ust { display:flex; align-items:center; justify-content:space-between; gap:10px;' +
 '         border:1px solid #e2e8f0; border-radius:3px; padding:3px 6px; margin-bottom:4px; }' +
 '  .ust-sol { display:flex; align-items:center; gap:7px; min-width:0; }' +
-'  .logo { flex:0 0 26px; width:26px; height:26px; border:1px solid #e2e8f0; border-radius:4px;' +
-'          background:#f8fafc; color:#475569; display:flex; align-items:center; justify-content:center; }' +
+'  .logo { flex:0 0 auto; height:26px; min-width:26px; max-width:120px; border:1px solid #e2e8f0;' +
+'          border-radius:4px; background:#f8fafc; color:#475569;' +
+'          display:flex; align-items:center; justify-content:center; overflow:hidden; }' +
+'  .logo img { max-height:24px; max-width:116px; object-fit:contain; display:block; }' +
 '  .firma { font-size:12px; font-weight:800; line-height:1.2; }' +
 '  .fis-turu { font-size:8.5px; font-weight:700; letter-spacing:.6px; color:#64748b; }' +
 '  .ust-sag { text-align:right; font-size:10px; line-height:1.35; white-space:nowrap; }' +
@@ -4981,21 +5370,22 @@ function depoFisiHtml(s) {
 
 '  /* ---- Kompakt ürün tablosu ---- */' +
 '  table { width:100%; border-collapse:collapse; table-layout:fixed; }' +
-'  thead th { background:#f1f5f9; border:1px solid #e2e8f0; padding:3px 6px;' +
-'             font-size:9px; font-weight:800; letter-spacing:.3px; text-align:left; color:#334155; }' +
-'  tbody td { border:1px solid #e2e8f0; padding:3px 6px; vertical-align:middle; }' +
+'  thead th { background:#f1f5f9; border:1px solid #e2e8f0; padding:3px 5px;' +
+'             font-size:8.5px; font-weight:800; letter-spacing:.2px; text-align:left; color:#334155; }' +
+'  tbody td { border:1px solid #e2e8f0; padding:3px 5px; vertical-align:middle; }' +
 '  tbody tr:nth-child(even) td { background:#f8fafc; }' +
 
 '  /* ---- Sütun genişlikleri (hem başlık hem hücre) ---- */' +
-'  .s-gorsel { width:11mm; text-align:center; }' +
-'  .s-tik    { width:8mm;  text-align:center; }' +
-'  .s-kod    { width:26mm; }' +
-'  .s-adet   { width:12mm; text-align:center; }' +
-'  .s-birim  { width:21mm; text-align:right; }' +
-'  .s-toplam { width:23mm; text-align:right; }' +
+'  .s-gorsel { width:10mm; text-align:center; }' +
+'  .s-tik    { width:7mm;  text-align:center; }' +
+'  .s-kod    { width:24mm; }' +
+'  .s-adet   { width:11mm; text-align:center; }' +
+'  .s-liste  { width:20mm; text-align:right; }' +
+'  .s-birim  { width:20mm; text-align:right; }' +
+'  .s-toplam { width:22mm; text-align:right; }' +
 
-'  /* Mikro ürün görseli — üst sınır 32x32px */' +
-'  .urun-gorsel { width:var(--gorsel); height:var(--gorsel); max-width:32px; max-height:32px;' +
+'  /* Mikro ürün görseli — üst sınır 30x30px */' +
+'  .urun-gorsel { width:var(--gorsel); height:var(--gorsel); max-width:30px; max-height:30px;' +
 '                 object-fit:cover; border:1px solid #e2e8f0; border-radius:2px;' +
 '                 background:#f8fafc; display:block; margin:0 auto; }' +
 '  /* display:block — satır altına yazı tabanı boşluğu eklemesin (yer kaybı olmasın) */' +
@@ -5003,17 +5393,25 @@ function depoFisiHtml(s) {
 '              border-radius:2px; background:#fff; }' +
 
 '  tbody .s-ad     { font-size:var(--yazi); font-weight:700; line-height:1.25; word-wrap:break-word; }' +
-'  tbody .s-kod    { font-size:10px; font-weight:600; font-family:Consolas,"Courier New",monospace;' +
+'  tbody .s-kod    { font-size:9.5px; font-weight:600; font-family:Consolas,"Courier New",monospace;' +
 '                    color:#334155; word-wrap:break-word; }' +
 '  tbody .s-adet   { font-size:var(--yazi); font-weight:900; }' +
-'  tbody .s-birim  { font-size:10px; font-weight:600; }' +
+'  /* Liste fiyatı: iskonto varsa üstü çizili ve soluk — indirimli fiyatla' +
+'     karışmasın, renksiz yazıcıda da ayrışsın. */' +
+'  tbody .s-liste  { font-size:9.5px; font-weight:600; color:#64748b; }' +
+'  tbody .s-liste.cizili { text-decoration:line-through; }' +
+'  tbody .s-birim  { font-size:var(--yazi); font-weight:800; }' +
 '  tbody .s-toplam { font-size:var(--yazi); font-weight:800; }' +
 
 '  tfoot td { padding:3px 6px; font-size:var(--yazi); font-weight:800;' +
 '             border:1px solid #e2e8f0; background:#f8fafc; }' +
 '  tfoot .etiket { text-align:right; color:#334155; }' +
-'  tfoot .deger { text-align:right; }' +
-'  tfoot .genel td { font-size:12px; font-weight:900; }' +
+'  tfoot .deger { text-align:right; white-space:nowrap; }' +
+'  tfoot .ince { font-weight:600; color:#64748b; }' +
+'  tfoot .indirim td { color:#b91c1c; }' +
+'  tfoot .indirim .ince { color:#b91c1c; }' +
+'  tfoot .genel td { font-size:12px; font-weight:900; background:#eef2f7;' +
+'                    border-top:2px solid #94a3b8; }' +
 
 '  /* ---- Alt bant: sipariş notu ve imzalar YAN YANA (dikeyde yer kazanır) ---- */' +
 '  .alt { display:flex; gap:4px; margin-top:4px; align-items:stretch; }' +
@@ -5053,7 +5451,12 @@ function depoFisiHtml(s) {
 /* ---- Tek şerit, 2 sütunlu mini başlık: solda firma, sağda sipariş/tarih/bayi ---- */
 '  <div class="ust">' +
 '    <div class="ust-sol">' +
-'      <div class="logo">' + fisIkonu(FIS_IKONLARI.paket, 16) + '</div>' +
+'      <div class="logo">' +
+       (logo
+         ? '<img src="' + kacis(logo) + '" alt="" ' +
+           'onerror="this.onerror=null;this.parentNode.innerHTML=\'\';" />'
+         : fisIkonu(FIS_IKONLARI.paket, 16)) +
+'      </div>' +
 '      <div>' +
 '        <div class="firma">' + kacis(durum.ayarlar.firmaAdi || 'FİRMA ADI') + '</div>' +
 '        <div class="fis-turu">DEPO &amp; SEVK FİŞİ &nbsp;·&nbsp; ' +
@@ -5076,9 +5479,16 @@ function depoFisiHtml(s) {
 '           &nbsp;·&nbsp; <span class="etiket">Toplam Adet:</span> <span class="vurgu">' + toplamAdet + '</span></div>' +
 '      <div><span class="etiket">Durum:</span> <span class="vurgu">' +
        kacis((s.durumEtiketi || durumBilgisi(s.durum).etiket).toLocaleUpperCase('tr-TR')) + '</span></div>' +
-((s.kargo || s.takip)
-  ? '      <div><span class="etiket">Kargo:</span> ' + kacis(s.kargo || '—') +
-    (s.takip ? ' &nbsp;·&nbsp; <span class="etiket">Takip:</span> ' + kacis(s.takip) : '') + '</div>'
+/* Sevkiyat satırı: kargo firması, takip numarası ve serbest ambar notu.
+   Üçü de isteğe bağlıdır; hangileri doluysa yalnızca onlar basılır ve
+   hiçbiri yoksa satır hiç görünmez (boş "Kargo: —" satırı yer kaybıydı). */
+((s.kargo || s.takip || s.sevkiyatNotu)
+  ? '      <div><span class="etiket">Sevkiyat:</span> ' +
+    [
+      s.kargo ? kacis(s.kargo) : '',
+      s.takip ? '<span class="etiket">Takip:</span> ' + kacis(s.takip) : '',
+      s.sevkiyatNotu ? kacis(s.sevkiyatNotu) : ''
+    ].filter(Boolean).join(' &nbsp;·&nbsp; ') + '</div>'
   : '') +
 '    </div>' +
 '  </div>' +
@@ -5088,22 +5498,14 @@ function depoFisiHtml(s) {
 '      <th class="s-gorsel">GÖRSEL</th>' +
 '      <th class="s-tik">TİK</th>' +
 '      <th class="s-ad">ÜRÜN ADI</th>' +
-'      <th class="s-kod">BARKOD / SKU</th>' +
-'      <th class="s-adet">ADET</th>' +
-'      <th class="s-birim">BİRİM FİYAT</th>' +
-'      <th class="s-toplam">TOPLAM</th>' +
+'      <th class="s-kod">SKU / BARKOD</th>' +
+'      <th class="s-adet">MİKTAR</th>' +
+'      <th class="s-liste">LİSTE BİRİM</th>' +
+'      <th class="s-birim">İSKONTOLU BİRİM</th>' +
+'      <th class="s-toplam">SATIR TOPLAMI</th>' +
 '    </tr></thead>' +
 '    <tbody>' + satirlar + '</tbody>' +
-'    <tfoot>' +
-'      <tr>' +
-'        <td colspan="5" class="etiket">ÜRÜNLER TOPLAMI</td>' +
-'        <td colspan="2" class="deger">' + kacis(para(kalemToplami)) + '</td>' +
-'      </tr>' +
-'      <tr class="genel">' +
-'        <td colspan="5" class="etiket">GENEL TOPLAM (KDV Dahil)</td>' +
-'        <td colspan="2" class="deger">' + kacis(para(s.tutar)) + '</td>' +
-'      </tr>' +
-'    </tfoot>' +
+'    <tfoot>' + ozetSatirlari + '</tfoot>' +
 '  </table>' +
 
 '  <div class="alt">' +
@@ -5117,6 +5519,7 @@ function depoFisiHtml(s) {
 
 '  <div class="altbilgi">' +
 '    <span>' + kacis(durum.ayarlar.firmaAdi || '') + '</span>' +
+'    <span>Tutarlar ₺ (Türk Lirası) cinsindendir.</span>' +
 '    <span>Yazdırma: ' + kacis(tarihYaz(new Date().toISOString(), true)) + '</span>' +
 '  </div>' +
 
@@ -5131,7 +5534,7 @@ function depoFisiHtml(s) {
 '  document.getElementById("btnKapat").addEventListener("click", function(){ ipcRenderer.invoke("fis:kapat"); });' +
 '  document.addEventListener("keydown", function(o){' +
 '    if (o.key === "Escape") ipcRenderer.invoke("fis:kapat");' +
-'    if (o.ctrlKey && o.key.toLowerCase() === "p") { o.preventDefault(); ipcRenderer.invoke("fis:yazdir"); }' +
+'    if ((o.ctrlKey || o.metaKey) && o.key.toLowerCase() === "p") { o.preventDefault(); ipcRenderer.invoke("fis:yazdir"); }' +
 '  });' +
 '<\/script></body></html>';
 }
@@ -5350,6 +5753,22 @@ function ayarFormunuDoldur() {
 }
 
 /** Ayarlar sekmesindeki yerel logo önizlemesini durum.ayarlar.yerelLogo'ya göre çizer. */
+/**
+ * Marka görseli değişti: damgayı artırır ve logonun göründüğü TÜM yüzeyleri
+ * aynı anda tazeler.
+ *
+ * Tek çağrı olması bilerek: eskiden çağıranların bazısı yalnızca önizlemeyi,
+ * bazısı yalnızca başlığı tazeliyordu; ayarlarda yeni logo seçilmesine rağmen
+ * sol üstteki marka alanı eski görseli göstermeye devam ediyordu. Depo fişi
+ * de logoyu her açılışta `markaLogosu()` üzerinden okur, ayrıca tazelenmesi
+ * gerekmez (bkz. depoFisiHtml).
+ */
+function markaGorseliDegisti() {
+  durum.logoDamgasi++;
+  logoOnizlemeGuncelle();
+  firmaLogosunuUygula();
+}
+
 function logoOnizlemeGuncelle() {
   const kutu = $('#logoOnizlemeKutu');
   const img = $('#logoOnizleme');
@@ -5387,8 +5806,7 @@ async function yerelLogoYukle(dosya) {
   try {
     const veriAdresi = await dosyayiVeriAdresineCevir(dosya);
     durum.ayarlar = await ipcRenderer.invoke('ayar:yaz', { yerelLogo: veriAdresi });
-    logoOnizlemeGuncelle();
-    firmaLogosunuUygula();
+    markaGorseliDegisti();
     bildir('Yerel logo kaydedildi.' +
            (durum.ayarlar.siteLogosu ? '\n(Sitenizin logosu bulunduğu için üst çubukta öncelikli gösterilir.)' : ''),
            'basari');
@@ -5399,8 +5817,7 @@ async function yerelLogoYukle(dosya) {
 
 async function yerelLogoKaldir() {
   durum.ayarlar = await ipcRenderer.invoke('ayar:yaz', { yerelLogo: '' });
-  logoOnizlemeGuncelle();
-  firmaLogosunuUygula();
+  markaGorseliDegisti();
   bildir('Yerel logo kaldırıldı.', 'bilgi');
 }
 
@@ -6227,14 +6644,19 @@ function olaylariBagla() {
     kutu.focus();
   });
 
-  /* --- Kısayollar --- */
+  /* --- Kısayollar ---
+     KOMUT TUŞU: Windows/Linux'ta Ctrl, macOS'te Cmd (metaKey). İki kol da
+     kabul edilir; Windows davranışı hiç değişmez, macOS'te alışıldık
+     ⌘+ / ⌘− / ⌘0 / ⌘R de çalışır. */
   document.addEventListener('keydown', function (o) {
-    /* Görünüm ölçeği: Ctrl+ büyüt · Ctrl− küçült · Ctrl0 varsayılan */
-    if (o.ctrlKey && (o.key === '+' || o.key === '=')) { o.preventDefault(); olcegiKaydir(1); return; }
-    if (o.ctrlKey && (o.key === '-' || o.key === '_')) { o.preventDefault(); olcegiKaydir(-1); return; }
-    if (o.ctrlKey && o.key === '0') { o.preventDefault(); olcegiDegistir(100, false); return; }
+    const komutTusu = o.ctrlKey || o.metaKey;
 
-    if (o.ctrlKey && o.key.toLowerCase() === 'r') { // Yenile
+    /* Görünüm ölçeği: Ctrl/⌘+ büyüt · Ctrl/⌘− küçült · Ctrl/⌘0 varsayılan */
+    if (komutTusu && (o.key === '+' || o.key === '=')) { o.preventDefault(); olcegiKaydir(1); return; }
+    if (komutTusu && (o.key === '-' || o.key === '_')) { o.preventDefault(); olcegiKaydir(-1); return; }
+    if (komutTusu && o.key === '0') { o.preventDefault(); olcegiDegistir(100, false); return; }
+
+    if (komutTusu && o.key.toLowerCase() === 'r') { // Yenile
       o.preventDefault();
       if (durum.aktifSekme === 'siparisler') siparisleriYukle();
       if (durum.aktifSekme === 'urunler') urunleriYukle($('#urunArama').value);
@@ -6243,8 +6665,8 @@ function olaylariBagla() {
     /* Alt+1…5 sol menüdeki İLK BEŞ sekmeye gider. Ayarlar sekmesi bilerek
        kısayolsuzdur: geliştirici kilidinin arkasındadır ve yanlışlıkla
        tetiklenmesi her seferinde şifre penceresi açardı. */
-    if (o.key >= '1' && o.key <= '5' && o.altKey) {
-      const sekmeler = ['siparisler', 'urunler', 'uyeler', 'iskonto', 'vitrin'];
+    if (o.key >= '1' && o.key <= '6' && o.altKey) {
+      const sekmeler = ['siparisler', 'urunler', 'uyeler', 'iskonto', 'vitrin', 'vitrin-editor'];
       sekmeAc(sekmeler[Number(o.key) - 1]);
     }
   });
@@ -6255,18 +6677,7 @@ async function baslat() {
   durum.bilgi = await ipcRenderer.invoke('uygulama:bilgi');
   durum.bayiSiparisleri = [];
 
-  $('#ayarDosyaYolu').textContent =
-    'Sürüm ' + durum.bilgi.surum + ' · Electron ' + durum.bilgi.electron + '\n' +
-    'Ayar dosyası: ' + durum.bilgi.ayarDosyasi;
-  $('#ayarDosyaYolu').style.whiteSpace = 'pre-line';
-
-  /* Sol alt köşedeki marka imzası: sürümü index.html'e gömmek
-     yerine paketten okuruz, böylece her yükseltmede iki yeri birden
-     düzeltmek gerekmez ve güncelleme sonrası sürüm gözle doğrulanır. */
-  const markaImzasi = $('#markaImzasi');
-  if (markaImzasi && durum.bilgi && durum.bilgi.surum) {
-    markaImzasi.textContent = 'Bu bir BYOM TECH ürünüdür • v' + durum.bilgi.surum;
-  }
+  surumleriYaz();
 
   temayiUygula();
   olcekArayuzunuTazele();   // Kayıtlı ölçek zaten uygulandı; burada sadece arayüz işaretlenir

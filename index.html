@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https:; img-src 'self' data: https: http:;" />
+      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https:; img-src 'self' data: https: http:; frame-src 'self' https: http:;" />
 <title>B2B Yönetim Paneli</title>
 
 <!-- ===================================================================
@@ -40,6 +40,39 @@
 <script src="vendor/tailwind.js" onload="tailwindAyarla()" onerror="tailwindCdnDene()"></script>
 
 <!-- ===================================================================
+     PLATFORM SINIFI  (macOS uyumluluk katmanı)
+
+     `html` ögesine YALNIZCA macOS'te `mac` sınıfı eklenir. Windows'ta bu
+     betik ilk satırda çıkar; hiçbir sınıf eklenmez, hiçbir kural eşleşmez
+     ve mevcut düzen birebir korunur.
+
+     Sınıf sayfa ÇİZİLMEDEN önce yazılır: macOS'te başlık şeridine trafik
+     lambaları için açılan boşluk sonradan eklenseydi açılışta ekran
+     zıplardı.
+     =================================================================== -->
+<script>
+  (function () {
+    var macMi = false;
+    try {
+      // Düz tarayıcıda açılırsa `process` yoktur; o durumda Windows gibi davranılır.
+      macMi = (typeof process !== 'undefined' && process && process.platform === 'darwin');
+    } catch (e) { macMi = false; }
+
+    if (!macMi) return;
+
+    document.documentElement.classList.add('mac');
+
+    /* Kısayol ipuçlarındaki "Ctrl" macOS'te "⌘" okunur. */
+    document.addEventListener('DOMContentLoaded', function () {
+      var ogeler = document.querySelectorAll('[title*="Ctrl"]');
+      for (var i = 0; i < ogeler.length; i++) {
+        ogeler[i].setAttribute('title', ogeler[i].getAttribute('title').split('Ctrl').join('⌘'));
+      }
+    });
+  })();
+</script>
+
+<!-- ===================================================================
      GÖRÜNÜM ÖLÇEĞİ (UI ZOOM)
      Sayfa çizilmeden ÖNCE uygulanır ki açılışta ekran zıplamasın.
      Electron'da webFrame.setZoomFactor kullanılır — tarayıcının kendi
@@ -65,6 +98,18 @@
         ? Number(yuzde)
         : window.B2B_OLCEK_VARSAYILAN;
       var carpan = y / 100;
+
+      /* macOS: trafik lambaları (kapat/küçült/büyüt) işletim sisteminin
+         çizdiği düğmelerdir ve webFrame ölçeğinden ETKİLENMEZLER. Başlık
+         şeridindeki boşluk bu yüzden ölçeğe göre ters orantılı ayarlanır:
+         %70'te düğmelerin üstüne binmesin, %120'de kocaman boşluk kalmasın.
+         Windows'ta `mac` sınıfı hiç eklenmediği için bu blok çalışmaz. */
+      if (document.documentElement.classList.contains('mac')) {
+        /* Yuvarlama: 84 / 0.7 gibi bölmeler kayan nokta artığı bırakıyor
+           ve CSS'e "120.00000000000001px" olarak yazılıyordu. */
+        document.documentElement.style.setProperty(
+          '--mac-trafik-bosluk', Math.round(84 / carpan) + 'px');
+      }
 
       var uygulandi = false;
       try {
@@ -839,6 +884,324 @@
     user-select: none;
     pointer-events: none;
   }
+  /* ======================================================================
+     ÜRÜN VERİ IZGARASI (Excel tipi tablo) — bkz. renderer-izgara.js
+
+     Tailwind sınıfı yerine sade CSS: satırlar sanallaştırma sırasında saniyede
+     onlarca kez yeniden yazılıyor; sabit sınıf adları hem daha kısa HTML hem
+     de daha ucuz stil eşleştirmesi demek.
+     ====================================================================== */
+  /* Sütun genişlikleri TEK bir değişkenden okunur; değeri renderer-izgara.js
+     taşıyıcı genişliğine göre `#urunIzgara` üzerine yazar (izgSablonuUygula).
+     Buradaki liste yalnızca değişken henüz yazılmadan önceki ilk karedir.
+
+     SAĞ KENAR: satır taşıyıcının TAMAMINI kaplar (width:100%). Eskiden satır
+     yalnızca içeriği kadar genişti; ızgara taşınca İŞLEM sütununun sağında
+     satır zemininin boyamadığı koyu bir şerit kalıyordu. */
+  .izg-satir {
+    display: grid;
+    grid-template-columns: var(--izg-sablon, 44px 68px 150px minmax(0, 1fr) 150px 130px 90px 110px 104px);
+    align-items: center;
+    column-gap: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Başlık şeridinin kabı. `overflow:hidden` iki iş görür:
+     (1) başlık satırlarla aynı genişlikte taşabilen kaydırılabilir bir kutu olur —
+         scrollLeft'i JS satır kutusuna eşitler (renderer-izgara.js > izgBasligiEsitle),
+     (2) kullanıcı bu kutuyu kendi başına kaydıramaz; tek sürücü satırlardır. */
+  .izg-baslik-kutu { overflow: hidden; }
+
+  .izg-baslik {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f1f5f9;
+    border-bottom: 2px solid #cbd5e1;
+  }
+  .dark .izg-baslik { background: #0f172a; border-bottom-color: #334155; }
+
+  .izg-bh {
+    padding: 10px 10px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .4px;
+    color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dark .izg-bh { color: #94a3b8; }
+
+  .izg-veri {
+    border-bottom: 1px solid #e2e8f0;
+    background: #fff;
+    transition: background-color .12s;
+  }
+  .dark .izg-veri { border-bottom-color: #334155; background: #1e293b; }
+
+  .izg-veri:nth-child(even) { background: #f8fafc; }
+  .dark .izg-veri:nth-child(even) { background: #1a2436; }
+
+  .izg-veri:hover { background: #eff6ff; }
+  .dark .izg-veri:hover { background: #1e3a5f; }
+
+  .izg-secili, .izg-veri.izg-secili:nth-child(even) { background: #dbeafe; }
+  .dark .izg-secili, .dark .izg-veri.izg-secili:nth-child(even) { background: #1e40af33; }
+
+  /* Taslak (sitede görünmeyen) ürünler soluk basılır. */
+  .izg-taslak .izg-ad, .izg-taslak .izg-kod { opacity: .62; }
+
+  .izg-h {
+    padding: 8px 10px;
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .izg-ad { font-weight: 800; font-size: 16px; }
+  .izg-kod { font-family: Consolas, "Courier New", monospace; font-weight: 700; font-size: 14px; }
+  .izg-kategori { font-weight: 600; color: #475569; font-size: 14px; }
+  .dark .izg-kategori { color: #94a3b8; }
+  .izg-bos { color: #94a3b8; }
+  .izg-para { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .izg-stok { font-weight: 900; font-variant-numeric: tabular-nums; }
+
+  /* Düzenlenebilir hücrede imleç ve hafif bir çerçeve ipucu. */
+  .izg-h[data-duzenle] { cursor: cell; }
+  .izg-h[data-duzenle]:hover {
+    box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .35);
+    border-radius: 6px;
+  }
+
+  .izg-h.izg-duzenleniyor { padding: 4px 6px; overflow: visible; }
+
+  .izg-girdi {
+    width: 100%;
+    height: 40px;
+    padding: 0 8px;
+    border: 2px solid #2563eb;
+    border-radius: 8px;
+    background: #fff;
+    color: #0f172a;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: inherit;
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, .18);
+  }
+  .dark .izg-girdi { background: #0f172a; color: #e2e8f0; }
+
+  /* Yayında / Gizli rozeti */
+  .izg-rozet {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 2px solid;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: .3px;
+    cursor: pointer;
+    transition: filter .12s, transform .1s;
+  }
+  .izg-rozet:hover { filter: brightness(.95); }
+  .izg-rozet:active { transform: scale(.94); }
+
+  .izg-yayinda { background: #d1fae5; color: #065f46; border-color: #34d399; }
+  .dark .izg-yayinda { background: #05966922; color: #6ee7b7; border-color: #05966955; }
+  .izg-gizli { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+  .dark .izg-gizli { background: #33415555; color: #cbd5e1; border-color: #47556955; }
+
+  /* Satır sonu işlem düğmeleri */
+  .izg-islem {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: background-color .12s, transform .1s;
+  }
+  .izg-islem:active { transform: scale(.92); }
+
+  /* İŞLEM hücresi.
+
+     ESKİDEN: hücre `.izg-h`ten 2x10px dolgu, `overflow:hidden` ve
+     `text-overflow: ellipsis` alıyordu. İki 40px'lik düğme sıkışık
+     kademelerde hücreye sığmıyor, çöp kutusu kesiliyor ve yerine "…"
+     basılıyordu — bildirilen kırpılma tam olarak buydu.
+
+     ŞİMDİ: dolgu 4px'e iner, düğmeler flex ile ortalanır, taşma serbesttir
+     (odak halkası kesilmesin). 90px'lik taban, sütun şablonu ne olursa olsun
+     iki düğmenin yan yana durmasını garanti eder; en dar kademede sütun
+     zaten 94px'tir (bkz. renderer-izgara.js > IZGARA_SUTUNLARI). */
+  .izg-islemler {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 4px;
+    min-width: 90px;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  /* Kenarlık genişliğe DÂHİL olmalı: 40px + 2x2px kenarlık, kutu modeli
+     border-box olmazsa 44px eder ve iki düğme yine taşardı. Tailwind'in
+     ön ayarı bunu zaten yapıyor, ama o yüklenemezse (çevrimdışı yedek yol)
+     ızgara bozulmasın. */
+  .izg-islem { box-sizing: border-box; }
+
+  /* Meşgul durumu: butonuMesgulEt düğmenin içine "SİLİNİYOR…" metnini de
+     yazıyor. Kart görünümündeki geniş düğmede bu doğru, ama buradaki kare
+     simge düğmesinde taşardı; metin gizlenir, dönen simge kalır. */
+  .izg-islem:disabled { font-size: 0; cursor: default; opacity: .7; }
+  .izg-islem-duzenle { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+  .dark .izg-islem-duzenle { background: #3730a333; color: #a5b4fc; border-color: #3730a366; }
+  .izg-islem-duzenle:hover { background: #c7d2fe; }
+  .izg-islem-sil { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+  .dark .izg-islem-sil { background: #991b1b33; color: #fca5a5; border-color: #991b1b66; }
+  .izg-islem-sil:hover { background: #fecaca; }
+
+  /* ---- Toplu zam penceresi: ARTIŞ TÜRÜ anahtarı ----
+     İki büyük düğme (yüzde / sabit tutar). Açılır liste yerine düğme:
+     depoda dokunmatik ekranla da kullanılıyor, isabet alanı geniş olmalı. */
+  .zam-tur {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 64px;
+    border-radius: 16px;
+    border: 2px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 18px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background-color .12s, border-color .12s, color .12s;
+  }
+  .dark .zam-tur { background: #0f172a; border-color: #334155; color: #cbd5e1; }
+  .zam-tur:hover { background: #eef2ff; }
+  .dark .zam-tur:hover { background: #1e293b; }
+  .zam-tur-aktif,
+  .dark .zam-tur-aktif { background: #e11d48; border-color: #e11d48; color: #fff; }
+  .zam-tur-aktif:hover,
+  .dark .zam-tur-aktif:hover { background: #be123c; }
+
+  /* ---- Kategori ağacı ---- */
+  .kat-dugme {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background: transparent;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 700;
+    color: #334155;
+    cursor: pointer;
+    transition: background-color .12s;
+  }
+  .dark .kat-dugme { color: #cbd5e1; }
+  .kat-dugme:hover { background: #f1f5f9; }
+  .dark .kat-dugme:hover { background: #33415555; }
+
+  .kat-aktif { background: #1d4ed8 !important; color: #fff !important; border-color: #1d4ed8; }
+  .kat-tumu { font-weight: 900; }
+
+  .kat-ad { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .kat-adet {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .dark .kat-adet { background: #33415588; color: #cbd5e1; }
+  .kat-aktif .kat-adet { background: rgba(255, 255, 255, .25); color: #fff; }
+
+  .kat-islem {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    transition: background-color .12s, color .12s;
+  }
+  .kat-islem:hover { background: #e2e8f0; color: #1e293b; }
+  .dark .kat-islem:hover { background: #33415588; color: #e2e8f0; }
+  .kat-islem-sil:hover { background: #fee2e2; color: #991b1b; }
+  .dark .kat-islem-sil:hover { background: #991b1b55; color: #fca5a5; }
+
+  /* ---- TABAN GENİŞLİK VE YATAY KAYDIRMA ----
+     ESKİDEN: 1279px altında başlığa/satırlara `min-width: 1046px` dayatılıyordu
+     (sabit sütunlar + ÜRÜN ADI'nın 200px'lik alt sınırı). Bu değer taşıyıcıdan
+     büyük kaldığı her durumda GEREKSİZ bir yatay kaydırma çubuğu doğuruyor,
+     üstelik satır zemini taşıyıcı kadar kaldığı için İŞLEM sütununun sağında
+     koyu bir boşluk bırakıyordu.
+
+     ŞİMDİ: ÜRÜN ADI `minmax(0, 1fr)` ile esnek ve sütun genişlikleri üç
+     kademeli (bkz. renderer-izgara.js > IZGARA_KADEMELERI); ızgara olağan
+     pencere boylarında HİÇ taşmaz, sağ kenara tam yaslanır. Aşağıdaki 690px
+     yalnızca bir emniyet tabanıdır (en dar kademenin sabit sütun toplamı
+     606px; kalan ~84px ÜRÜN ADI'na gider) — olağandışı dar bir pencerede sütunlar üst üste binmesin diye.
+     O durumda da başlık, boşluk, gövde ve satırlar AYNI tabanı paylaşır;
+     aksi hâlde yatay kaydırmada sütun başlıkları hücrelerden kaçardı. */
+  #izgBaslik, #izgBosluk, #izgGovde, .izg-veri { min-width: 690px; }
+
+  /* ======================================================================
+     macOS UYUMLULUK KATMANI
+
+     BURADAKİ HER KURAL `html.mac` ALTINDADIR. O sınıf yalnızca macOS'te
+     eklenir (bkz. sayfa başındaki platform betiği); Windows'ta hiçbiri
+     eşleşmez ve mevcut görünüm zerre değişmez.
+
+     macOS'te ana pencere `titleBarStyle: 'hiddenInset'` ile açılır
+     (main.js > macAnaPencereSecenekleri): sistem başlık çubuğu kalkar,
+     kapat/küçült/büyüt düğmeleri uygulamanın kendi şeridinin üzerine biner.
+     Aşağıdaki iki kural bunun iki gereğini karşılar:
+
+       1) SOLDAN BOŞLUK — düğmelerin firma logosunu örtmemesi için. Değer
+          sabit değil, ölçeğe göre hesaplanan bir değişkendir (bkz. UI ZOOM
+          betiği); düğmeler pencere ölçeğiyle büyüyüp küçülmediği için.
+
+       2) SÜRÜKLEME BÖLGESİ — sistem çubuğu olmadığından pencere başka
+          türlü taşınamaz. Şerit sürüklenebilir yapılır, içindeki
+          tıklanabilir ögeler ise tekrar "sürüklenemez" işaretlenir; yoksa
+          tema düğmesi ve ölçek listesi tıklanamaz hâle gelirdi.
+     ====================================================================== */
+  /* `!important`: yukarıdaki kurumsal tema şeridi
+     `header.h-20 { padding-left: 14px !important }` ile yeniden tanımlıyor.
+     Bu dosyanın baştan beri süregelen kuralı (bkz. tema bloğunun başlığı):
+     temanın üstüne yazan her kural aynı ağırlığı taşır. */
+  html.mac header {
+    padding-left: var(--mac-trafik-bosluk, 84px) !important;
+    -webkit-app-region: drag;
+  }
+
+  html.mac header button,
+  html.mac header select,
+  html.mac header input,
+  html.mac header a,
+  html.mac header [role="button"] {
+    -webkit-app-region: no-drag;
+  }
+
 </style>
 </head>
 
@@ -944,9 +1307,11 @@
       <div id="firmaLogoKutu" class="hidden shrink-0">
         <img id="firmaLogo" alt="Firma logosu" class="max-h-10 w-auto object-contain" />
       </div>
+      <!-- Sol üstte YALNIZCA firma logosu ve unvanı durur. Sürüm metni buradan
+           kaldırıldı; tek dinamik kaynak sol menünün dibindeki #markaImzasi'dır
+           (app.getVersion() → main.js `uygulama:bilgi` → renderer.js surumleriYaz). -->
       <div class="min-w-0">
         <div id="firmaAdiBaslik" class="text-2xl font-black leading-tight truncate">Yükleniyor…</div>
-        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide">B2B YÖNETİM PANELİ · Sürüm 1.0</div>
       </div>
     </div>
 
@@ -1029,6 +1394,13 @@
         <span class="align-middle">Web Vitrini</span>
       </button>
 
+      <!-- BYOM 2.0 — Lego vitrin editörü: ana sayfa bloklarını sürükle-bırak ile düzenler,
+           canlı önizler ve tek PUT ile yayınlar (renderer-vitrin.js). -->
+      <button data-sekme="vitrin-editor" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-panel"></use></svg>
+        <span class="align-middle">Vitrin Editörü</span>
+      </button>
+
       <!-- BYOM Brain destek masası: talepler doğrudan merkezî sisteme düşer -->
       <button data-sekme="destek" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg>
@@ -1059,7 +1431,10 @@
     <!-- ==================================================================
          İÇERİK ALANI
          ================================================================== -->
-    <main class="flex-1 min-w-0 overflow-y-auto p-6">
+    <!-- Sayfanin ASIL kaydirma kabi. Kimlik verildi cunku liste yeniden
+         cizildikten sonra kullanicinin kaydirma konumu buradan geri
+         yaziliyor (bkz. renderer.js > kaydirmayiKoru). -->
+    <main id="anaGovde" class="flex-1 min-w-0 overflow-y-auto p-6">
 
       <!-- ============================================================
  SEKME 1 — SİPARİŞLER & DEPO FİŞİ
@@ -1117,15 +1492,51 @@
 
       <!-- ============================================================
  SEKME 2 — ÜRÜN & STOK YÖNETİMİ
+
+ DÜZEN: solda açılır-kapanır KATEGORİ AĞACI, sağda ürün listesi.
+ Liste iki görünümde çalışır:
+   · TABLO  — sanallaştırılmış Excel tipi veri ızgarası (varsayılan).
+              Binlerce üründe bile yalnızca ekrandaki satırlar çizilir.
+   · KART   — eski kart düzeni. Sürükle-bırak SIRALAMA yalnızca burada
+              çalıştığı için korundu; sıralama yapacak kullanıcı bu
+              görünüme geçer.
  ============================================================ -->
       <section id="sekme-urunler" class="sekme-govde">
 
-        <div class="flex flex-wrap items-center gap-4 mb-6">
-          <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg> Ürün & Stok Yönetimi</h1>
+        <div class="flex flex-wrap items-center gap-4 mb-4">
+          <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg> Ürün &amp; Stok Yönetimi</h1>
+
+          <!-- Görünüm anahtarı: TABLO / KART -->
+          <div class="ml-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-700
+                      border-2 border-slate-200 dark:border-slate-600 shrink-0">
+            <button id="gorunumTabloBtn" type="button" data-gorunum="tablo"
+                    title="Excel tipi tablo görünümü — hücreye çift tıklayarak düzenleyin"
+                    class="gorunum-btn h-12 px-5 rounded-xl text-lg font-extrabold transition">
+              <svg class="ik" aria-hidden="true"><use href="#ik-liste"></use></svg> TABLO
+            </button>
+            <button id="gorunumKartBtn" type="button" data-gorunum="kart"
+                    title="Kart görünümü — sürükle-bırak sıralama bu görünümde çalışır"
+                    class="gorunum-btn h-12 px-5 rounded-xl text-lg font-extrabold transition">
+              <svg class="ik" aria-hidden="true"><use href="#ik-tutamak"></use></svg> KART
+            </button>
+          </div>
+
           <button id="urunEkleBtn"
-                  class="ml-auto h-14 px-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                  class="h-14 px-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
                          text-white text-xl font-extrabold shadow-lg transition">
  <svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> YENİ ÜRÜN EKLE
+ </button>
+          <button id="urunExcelIndirBtn"
+                  title="Kataloğun tamamını Excel (.xlsx) dosyası olarak kaydet"
+                  class="h-14 px-7 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+ <svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> EXCEL DÖKÜMÜ AL
+ </button>
+          <button id="urunExcelYukleBtn"
+                  title="Excel / CSV dosyasından toplu fiyat, stok ve ürün güncelle"
+                  class="h-14 px-7 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95
+                         text-white text-xl font-extrabold shadow-lg transition">
+ <svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> EXCEL YÜKLE
  </button>
           <button id="urunYenileBtn"
                   class="h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
@@ -1134,17 +1545,23 @@
  </button>
         </div>
 
-        <div class="flex flex-col lg:flex-row gap-4 mb-6">
+        <div class="flex flex-col lg:flex-row gap-4 mb-4">
           <div class="relative flex-1">
-            <span class="absolute left-5 top-1/2 -translate-y-1/2 text-3xl pointer-events-none"><svg class="ik" aria-hidden="true"><use href="#ik-ara"></use></svg></span>
+            <!-- Büyüteç: kutu inputun TAM YÜKSEKLİĞİNİ kaplar (top-0 bottom-0) ve
+                 ikonu flex ile dikeyde ortalar. Önceden `top-1/2 -translate-y-1/2`
+                 ile satır kutusunun ortasına hizalanıyordu; `.ik` sınıfındaki
+                 `vertical-align:-.18em` yüzünden ikon birkaç piksel aşağıda kalıyordu.
+                 Flex ögesinde vertical-align yok sayılır; ikon tam ortada durur. -->
+            <span class="absolute left-5 top-0 bottom-0 flex items-center text-3xl pointer-events-none"><svg class="ik" aria-hidden="true"><use href="#ik-ara"></use></svg></span>
             <input id="urunArama" type="search" autocomplete="off"
                    placeholder="Ürün adı veya stok kodu yazın…"
                    class="w-full h-16 pl-16 pr-5 rounded-2xl text-xl font-semibold
                           bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600
                           focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
           </div>
+          <!-- Yükseklik (h-16) ve iç boşluk (px-5) arama kutusuyla birebir aynı. -->
           <select id="urunDurumSuzgec"
-                  class="h-16 px-4 rounded-2xl text-xl font-bold shrink-0
+                  class="h-16 px-5 rounded-2xl text-xl font-bold shrink-0
                          bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600
                          focus:border-marka-600 outline-none transition">
             <option value="">Tüm Ürünler</option>
@@ -1153,7 +1570,98 @@
           </select>
         </div>
 
-        <div id="urunListesi" class="flex flex-col gap-4"></div>
+        <!-- ==========================================================
+             TOPLU İŞLEM ÇUBUĞU — seçim varken belirir
+             ========================================================== -->
+        <div id="topluCubuk"
+             class="hidden flex-wrap items-center gap-3 mb-4 p-4 rounded-2xl
+                    bg-marka-700/10 dark:bg-marka-700/20 border-2 border-marka-600/40">
+          <span class="text-xl font-extrabold">
+            <svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg>
+            <span id="topluSayac">0 ürün seçildi</span>
+          </span>
+
+          <button id="topluIskontoBtn" type="button"
+                  class="h-12 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95
+                         text-white text-lg font-extrabold shadow transition">
+            <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> TOPLU İSKONTO
+          </button>
+
+          <button id="topluZamBtn" type="button"
+                  title="Seçili ürünlerin liste fiyatını yüzdeyle ya da sabit tutarla artır"
+                  class="h-12 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95
+                         text-white text-lg font-extrabold shadow transition">
+            <svg class="ik" aria-hidden="true"><use href="#ik-yukariOk"></use></svg> TOPLU ZAM
+          </button>
+
+          <button id="topluKategoriBtn" type="button"
+                  class="h-12 px-5 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95
+                         text-white text-lg font-extrabold shadow transition">
+            <svg class="ik" aria-hidden="true"><use href="#ik-klasor"></use></svg> KATEGORİ DEĞİŞTİR
+          </button>
+
+          <button id="topluYayinlaBtn" type="button"
+                  class="h-12 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                         text-white text-lg font-extrabold shadow transition">
+            <svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> YAYINA AL
+          </button>
+
+          <button id="topluTaslakBtn" type="button"
+                  class="h-12 px-5 rounded-xl bg-slate-600 hover:bg-slate-700 active:scale-95
+                         text-white text-lg font-extrabold shadow transition">
+            <svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> TASLAĞA AL
+          </button>
+
+          <button id="topluTemizleBtn" type="button"
+                  class="ml-auto h-12 px-5 rounded-xl border-2 border-slate-400 dark:border-slate-500
+                         text-lg font-extrabold hover:bg-slate-100 dark:hover:bg-slate-700
+                         active:scale-95 transition">
+            <svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg> SEÇİMİ TEMİZLE
+          </button>
+        </div>
+
+        <div class="flex flex-col xl:flex-row gap-4 min-h-0">
+
+          <!-- ========================================================
+               SOL PANEL — KATEGORİ AĞACI
+               ======================================================== -->
+          <aside id="kategoriPanel"
+                 class="shrink-0 w-full xl:w-80 rounded-2xl bg-white dark:bg-slate-800
+                        border-2 border-slate-200 dark:border-slate-700 overflow-hidden
+                        flex flex-col self-start">
+
+            <button id="kategoriPanelBaslik" type="button"
+                    aria-expanded="true" aria-controls="kategoriPanelGovde"
+                    class="w-full flex items-center gap-2 px-4 h-14 shrink-0 text-left
+                           bg-slate-50 dark:bg-slate-900/50 border-b-2 border-slate-200 dark:border-slate-700
+                           hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+              <svg class="ik" aria-hidden="true"><use href="#ik-klasor"></use></svg>
+              <span class="text-lg font-extrabold flex-1">KATEGORİLER</span>
+              <span id="kategoriOk" class="text-2xl leading-none transition-transform">▾</span>
+            </button>
+
+            <div id="kategoriPanelGovde" class="flex flex-col min-h-0">
+              <div class="p-3 border-b-2 border-slate-200 dark:border-slate-700 shrink-0">
+                <button id="kategoriEkleBtn" type="button"
+                        class="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700
+                               active:scale-95 text-white text-lg font-extrabold shadow transition">
+                  <svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> YENİ KATEGORİ
+                </button>
+              </div>
+
+              <div id="kategoriAgaci" class="overflow-y-auto p-2 flex flex-col gap-1"
+                   style="max-height: 60vh"></div>
+            </div>
+          </aside>
+
+          <!-- ========================================================
+               SAĞ TARAF — LİSTE (tablo veya kart)
+               ======================================================== -->
+          <div class="flex-1 min-w-0">
+            <div id="urunIzgara" class="hidden"></div>
+            <div id="urunListesi" class="hidden flex-col gap-4"></div>
+          </div>
+        </div>
       </section>
 
       <!-- ============================================================
@@ -1433,6 +1941,198 @@
  </button>
           <div id="vitrinDurum" class="text-lg font-bold whitespace-pre-line"></div>
         </div>
+      </section>
+
+      <!-- ============================================================
+ SEKME — VİTRİN EDİTÖRÜ (BYOM 2.0 Lego Vitrin)
+ Sol: Lego Çantası (blok listesi, palet, renk & stil).
+ Sağ: canlı önizleme (iframe, postMessage köprüsü).
+ Mantık: renderer-vitrin.js + src/renderer/vitrin-motor.js
+ ============================================================ -->
+      <section id="sekme-vitrin-editor" class="sekme-govde">
+
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-panel"></use></svg> Vitrin Editörü</h1>
+          <span id="veDurum" class="inline-flex items-center gap-2 h-10 px-3 rounded-xl border-2 text-base font-bold bg-slate-50 text-slate-600 border-slate-200">
+            <svg class="ik ik-nokta" aria-hidden="true"><use href="#ik-nokta"></use></svg> Bağlanıyor…
+          </span>
+
+          <div class="ml-auto flex flex-wrap items-center gap-2">
+            <button id="veYukleBtn" type="button"
+                    class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                           dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 text-base font-extrabold transition">
+              <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> SİTEDEN YÜKLE
+            </button>
+            <button id="veGeriAlBtn" type="button" title="Geri al (Ctrl+Z)" disabled
+                    class="h-12 w-12 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                           dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 text-lg font-extrabold transition disabled:opacity-40">↶</button>
+            <button id="veYineleBtn" type="button" title="Yinele (Ctrl+Y)" disabled
+                    class="h-12 w-12 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                           dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 text-lg font-extrabold transition disabled:opacity-40">↷</button>
+            <button id="veSifirlaBtn" type="button"
+                    class="h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
+                           dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
+                           text-red-700 dark:text-red-300 text-base font-extrabold transition">Varsayılana Dön</button>
+            <button id="veYayinlaBtn" type="button" title="Yayınla (Ctrl+S)"
+                    class="h-14 px-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                           text-white text-xl font-extrabold shadow-lg transition">
+              <svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> YAYINLA
+            </button>
+          </div>
+        </div>
+
+        <div id="veUyarilar" class="hidden mb-4"></div>
+
+        <div id="veGovde" class="ve-grid">
+
+          <!-- SOL: LEGO ÇANTASI -->
+          <aside id="veSol" class="ve-side">
+            <div class="ve-panel">
+              <div class="ve-panel__head">
+                <h2><svg class="ik" aria-hidden="true"><use href="#ik-liste"></use></svg> Sayfadaki Bloklar</h2>
+                <span class="ve-panel__hint">Sürükleyerek sıralayın · Alt+↑/↓</span>
+              </div>
+              <ul id="veBlokListesi" class="ve-list" aria-label="Sayfadaki bloklar"></ul>
+            </div>
+
+            <div class="ve-panel">
+              <div class="ve-panel__head">
+                <h2><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> Blok Ekle</h2>
+              </div>
+              <div id="vePalet"></div>
+            </div>
+
+            <div class="ve-panel">
+              <div class="ve-panel__head">
+                <h2><svg class="ik" aria-hidden="true"><use href="#ik-parlak"></use></svg> Renk &amp; Stil</h2>
+                <span class="ve-panel__hint">Anında önizlenir</span>
+              </div>
+              <div id="veTokenlar"></div>
+            </div>
+          </aside>
+
+          <!-- SAĞ: CANLI ÖNİZLEME -->
+          <div id="veSag" class="ve-main">
+            <div class="ve-toolbar">
+              <div id="veCihazlar" class="ve-devices" role="group" aria-label="Önizleme genişliği">
+                <button type="button" class="ve-devices__btn is-on" data-ve-device="desktop" title="Masaüstü"><svg class="ik" aria-hidden="true"><use href="#ik-ekran"></use></svg> Masaüstü</button>
+                <button type="button" class="ve-devices__btn" data-ve-device="tablet" title="Tablet (820px)"><svg class="ik" aria-hidden="true"><use href="#ik-panel"></use></svg> Tablet</button>
+                <button type="button" class="ve-devices__btn" data-ve-device="mobile" title="Mobil (390px)"><svg class="ik" aria-hidden="true"><use href="#ik-telefon"></use></svg> Mobil</button>
+              </div>
+              <span id="veBaglanti" class="inline-flex items-center gap-2 text-sm font-bold text-slate-400"><svg class="ik ik-nokta" aria-hidden="true"><use href="#ik-nokta"></use></svg> Önizleme bekleniyor</span>
+              <span id="veRevizyon" class="text-sm ml-auto"></span>
+              <button id="veYenileBtn" type="button" class="ve-iconbtn" title="Önizlemeyi yenile"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg></button>
+              <button id="veDisariBtn" type="button" class="ve-iconbtn" title="Tarayıcıda aç"><svg class="ik" aria-hidden="true"><use href="#ik-kure"></use></svg></button>
+            </div>
+
+            <div id="veOnizlemeKap" class="ve-frame ve-frame--desktop">
+              <!-- sandbox: allow-top-navigation YOK — site icerigi node-entegre ana pencereyi yonlendiremez.
+                   allow-same-origin: sitenin kendi kokeni korunur (postMessage koprusu, cerezler). -->
+              <iframe id="vitrinOnizleme" title="Canlı önizleme" referrerpolicy="no-referrer" allow="fullscreen"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+            </div>
+
+            <div id="veOnizlemeBos" class="hidden ve-empty">
+              <svg class="ik ik-xxl" aria-hidden="true"><use href="#ik-ekran"></use></svg>
+              <p id="veOnizlemeBosMetin" class="text-lg font-bold">Önizleme hazırlanıyor…</p>
+            </div>
+          </div>
+        </div>
+
+        <style>
+          /* ---- Vitrin Editörü: sekmeye özel stiller (Tailwind vokabülerini tamamlar) ---- */
+          .ve-grid { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; height: calc(100vh - 52px - 3rem - 92px); min-height: 520px; }
+          .ve-side { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; padding-right: 4px; }
+          .ve-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); border: 1px solid var(--kenar); border-radius: var(--kose); overflow: hidden; }
+          .ve-panel { background: var(--panel); border: 1px solid var(--kenar); border-radius: var(--kose); padding: 12px; }
+          .ve-panel__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+          .ve-panel__head h2 { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; display: flex; align-items: center; gap: 6px; }
+          .ve-panel__hint { font-size: 11px; color: var(--ikincil); }
+
+          .ve-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; position: relative; }
+          .ve-row { border: 1px solid var(--kenar); border-radius: var(--kose); background: var(--panel); transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s, border-color .18s, opacity .18s; outline: none; }
+          .ve-row:focus-visible { border-color: var(--aksiyon); box-shadow: 0 0 0 3px var(--aksiyon-zemin); }
+          .ve-row.is-selected { border-color: var(--aksiyon); }
+          .ve-row.is-off { opacity: .55; }
+          .ve-row.is-new { animation: veYeni .6s ease-out; }
+          @keyframes veYeni { 0% { background: var(--aksiyon-zemin); } 100% { background: var(--panel); } }
+          .ve-row__main { display: grid; grid-template-columns: 26px 22px minmax(0,1fr) auto auto auto; align-items: center; gap: 6px; padding: 8px 8px 8px 4px; }
+          .ve-handle { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 34px; border: 0; background: transparent; color: var(--soluk); cursor: grab; border-radius: 4px; touch-action: none; }
+          .ve-handle:hover { background: var(--panel-alt); color: var(--govde); }
+          .ve-list.is-dragging .ve-handle { cursor: grabbing; }
+          .ve-row__icon { color: var(--ikincil); display: inline-flex; }
+          .ve-row__label { min-width: 0; cursor: pointer; display: flex; flex-direction: column; }
+          .ve-row__title { font-weight: 650; font-size: 13px; color: var(--baslik); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .ve-row__sub { font-size: 11px; color: var(--ikincil); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .ve-row__settings { border-top: 1px solid var(--cizgi); padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 10px; background: var(--panel-alt); border-radius: 0 0 var(--kose) var(--kose); animation: girisAnimasyon .14s ease-out; }
+          .ve-lifting { opacity: .25; }
+          .ve-ghost { position: fixed; z-index: 60; pointer-events: none; box-shadow: var(--golge-acilir); border-color: var(--aksiyon) !important; background: var(--panel); will-change: transform; opacity: .96; margin: 0; list-style: none; }
+          .ve-dropline { position: absolute; left: 6px; right: 6px; top: 0; height: 2px; background: var(--aksiyon); border-radius: 2px; pointer-events: none; will-change: transform; }
+          .ve-dropline::before { content: ""; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--aksiyon); }
+
+          .ve-switch { position: relative; width: 38px; height: 22px; border-radius: 999px; border: 0; background: var(--kenar-guclu); cursor: pointer; transition: background-color .18s; padding: 0; flex: none; }
+          .ve-switch__knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .18s cubic-bezier(.2,.8,.2,1); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+          .ve-switch[aria-checked="true"] { background: #059669; }
+          .ve-switch[aria-checked="true"] .ve-switch__knob { transform: translateX(16px); }
+          .ve-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--kenar); border-radius: 6px; background: var(--panel); color: var(--govde); cursor: pointer; transition: background-color .14s, color .14s, border-color .14s; flex: none; }
+          .ve-iconbtn:hover { background: var(--panel-alt); color: var(--baslik); }
+          .ve-iconbtn--danger:hover { color: #dc2626; border-color: #fca5a5; background: #fef2f2; }
+          html.dark .ve-iconbtn--danger:hover { background: rgba(220,38,38,.12); border-color: rgba(220,38,38,.4); }
+
+          .ve-field { display: flex; flex-direction: column; gap: 4px; }
+          .ve-field__label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; color: var(--govde); }
+          .ve-field__help { font-size: 11px; color: var(--ikincil); }
+          .ve-live, .ve-stale { font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; }
+          .ve-live { background: #d1fae5; color: #065f46; }
+          .ve-stale { background: #fef3c7; color: #92400e; }
+          html.dark .ve-live { background: rgba(16,185,129,.15); color: #6ee7b7; }
+          html.dark .ve-stale { background: rgba(245,158,11,.15); color: #fcd34d; }
+          .ve-color { width: 44px; height: 44px; border: 1px solid var(--kenar); border-radius: 6px; padding: 2px; background: var(--panel); cursor: pointer; }
+          .ve-product__sonuc { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; border: 1px solid var(--kenar); border-radius: 6px; padding: 4px; background: var(--panel); max-height: 220px; overflow-y: auto; }
+          .ve-product__pick { text-align: left; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; font-size: 12.5px; }
+          .ve-product__pick:hover { background: var(--aksiyon-zemin); }
+          .ve-product__hint { font-size: 12px; color: var(--ikincil); padding: 6px 8px; }
+          .ve-items { display: flex; flex-direction: column; gap: 8px; }
+          .ve-item { border: 1px solid var(--kenar); border-radius: 6px; padding: 8px; background: var(--panel); display: flex; flex-direction: column; gap: 6px; }
+          .ve-item__head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--ikincil); }
+          .ve-item__field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ikincil); }
+          .ve-addbtn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 1px dashed var(--kenar-guclu); border-radius: 6px; background: transparent; color: var(--govde); font-weight: 650; font-size: 12px; cursor: pointer; }
+          .ve-addbtn:hover { border-color: var(--aksiyon); color: var(--aksiyon); }
+
+          .ve-palette__group + .ve-palette__group { margin-top: 10px; }
+          .ve-palette__title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ikincil); margin-bottom: 6px; }
+          .ve-palette__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+          .ve-chip { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border: 1px solid var(--kenar); border-radius: 6px; background: var(--panel); color: var(--baslik); font-size: 12.5px; font-weight: 650; cursor: pointer; text-align: left; transition: border-color .14s, background-color .14s, transform .1s; min-width: 0; }
+          .ve-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .ve-chip:hover:not(:disabled) { border-color: var(--aksiyon); background: var(--aksiyon-zemin); }
+          .ve-chip:active:not(:disabled) { transform: scale(.98); }
+          .ve-chip:disabled { opacity: .45; cursor: not-allowed; }
+
+          .ve-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 6px; background: var(--panel-alt); margin-bottom: 10px; }
+          .ve-mode__btn { height: 32px; border: 0; border-radius: 4px; background: transparent; font-weight: 650; font-size: 12.5px; color: var(--ikincil); cursor: pointer; transition: background-color .14s, color .14s; }
+          .ve-mode__btn.is-on { background: var(--panel); color: var(--baslik); box-shadow: var(--golge); }
+          .ve-swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+          .ve-swatch { position: relative; display: grid; grid-template-columns: 34px minmax(0,1fr); align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--kenar); border-radius: 6px; cursor: pointer; }
+          .ve-swatch:hover { border-color: var(--kenar-guclu); }
+          .ve-swatch__chip { width: 34px; height: 34px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(0,0,0,.08); transition: background-color .12s; }
+          .ve-swatch__body { display: flex; flex-direction: column; min-width: 0; }
+          .ve-swatch__name { font-size: 11px; color: var(--ikincil); font-weight: 650; }
+          .ve-swatch__hex { width: 100%; border: 0; background: transparent; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; font-weight: 700; color: var(--baslik); outline: none; padding: 0; }
+          .ve-swatch__picker { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+          .ve-radius { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+          .ve-radius__preview { height: 34px; border: 2px solid var(--aksiyon); background: var(--aksiyon-zemin); transition: border-radius .15s; }
+
+          .ve-toolbar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--kenar); background: var(--panel-alt); flex-wrap: wrap; }
+          .ve-devices { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--panel); border: 1px solid var(--kenar); }
+          .ve-devices__btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; font-size: 12px; font-weight: 650; color: var(--ikincil); cursor: pointer; }
+          .ve-devices__btn.is-on { background: var(--aksiyon); color: #fff; }
+          .ve-frame { flex: 1 1 auto; min-height: 0; display: flex; justify-content: center; align-items: stretch; background: repeating-linear-gradient(45deg, var(--panel-alt) 0 12px, var(--panel) 12px 24px); padding: 12px; overflow: auto; }
+          .ve-frame iframe { width: 100%; height: 100%; border: 1px solid var(--kenar); border-radius: 8px; background: #fff; box-shadow: var(--golge-acilir); transition: width .28s cubic-bezier(.2,.8,.2,1); }
+          .ve-frame--tablet iframe { width: 820px; }
+          .ve-frame--mobile iframe { width: 390px; }
+          .ve-empty { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ikincil); text-align: center; padding: 24px; }
+          @media (max-width: 1280px) { .ve-grid { grid-template-columns: 340px minmax(0,1fr); } }
+        </style>
       </section>
 
       <!-- ============================================================
@@ -2237,7 +2937,7 @@
     <div class="p-6 flex flex-col gap-5">
       <div id="kargoAlanlar" class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
-          <label for="kargoFirma" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-kamyon"></use></svg> Kargo Firması</label>
+          <label for="kargoFirma" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-kamyon"></use></svg> Kargo Firması <span class="text-base font-bold text-slate-500">(isteğe bağlı)</span></label>
           <input id="kargoFirma" type="text" list="kargoFirmaListesi" placeholder="Aras Kargo"
                  class="w-full h-14 px-4 rounded-xl text-lg font-semibold bg-slate-50 dark:bg-slate-900
                         border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
@@ -2256,12 +2956,32 @@
         </div>
 
         <div>
-          <label for="kargoTakip" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-numara"></use></svg> Takip Numarası</label>
-          <input id="kargoTakip" type="text" spellcheck="false" placeholder="1234567890123"
+          <label for="kargoTakip" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-numara"></use></svg> Takip Numarası <span class="text-base font-bold text-slate-500">(isteğe bağlı)</span></label>
+          <input id="kargoTakip" type="text" spellcheck="false" placeholder="Yoksa boş bırakın"
                  class="w-full h-14 px-4 rounded-xl text-lg font-mono bg-slate-50 dark:bg-slate-900
                         border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                         focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
         </div>
+      </div>
+
+      <!-- ============================================================
+           SERBEST SEVKİYAT ALANI
+           Her sevkiyat kargo firmasıyla yapılmaz: mal çoğu zaman bir ambara,
+           nakliyeciye ya da firmanın kendi aracına teslim edilir ve ortada
+           takip numarası HİÇ olmaz. Bu kutu o durumlar içindir; ambar adı,
+           nakliyeci veya sevk fişi numarası serbestçe yazılır.
+           Yukarıdaki iki alanın ikisi de boş bırakılabilir.
+           ============================================================ -->
+      <div id="kargoAmbarSatiri">
+        <label for="kargoAmbar" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-paket"></use></svg> Özel Ambar / Sevkiyat Notu <span class="text-base font-bold text-slate-500">(isteğe bağlı)</span></label>
+        <input id="kargoAmbar" type="text" autocomplete="off"
+               placeholder="Örn: Ulusoy Ambarı — sevk fişi 45219  ·  veya: Firma aracımızla gönderildi"
+               class="w-full h-14 px-4 rounded-xl text-lg font-semibold bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <p class="mt-2 text-base font-semibold text-slate-500 dark:text-slate-400">
+          Kargo firması ve takip numarası <b>zorunlu değildir</b>; boş bırakıp durumu güncelleyebilirsiniz.
+        </p>
       </div>
 
       <div>
@@ -2396,6 +3116,181 @@
       <button id="metinModalTamam"
               class="flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-red-600 hover:bg-red-700
                      transition active:scale-95">DEVAM ET</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     TOPLU ZAM PENCERESİ
+     Seçim çubuğundaki "TOPLU ZAM" ile açılır (renderer-izgara.js →
+     izgZamSor). Artış türü YÜZDE ya da SABİT TUTAR olabilir; alttaki
+     önizleme, seçili ilk ürün ve seçimin toplam liste değeri üzerinden
+     sonucu yazarak yanlış oran girilmesini engeller.
+     ================================================================== -->
+<div id="zamModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700">
+
+    <div class="flex items-start gap-4 p-6 border-b-2 border-slate-200 dark:border-slate-700">
+      <span class="text-4xl text-rose-600"><svg class="ik" aria-hidden="true"><use href="#ik-yukariOk"></use></svg></span>
+      <div class="min-w-0">
+        <div class="text-2xl font-black">Toplu Zam Uygula</div>
+        <div id="zamModalAciklama" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
+      </div>
+    </div>
+
+    <div class="p-6 flex flex-col gap-5">
+
+      <div>
+        <div class="text-lg font-extrabold mb-2">Artış Türü</div>
+        <div class="grid grid-cols-2 gap-3">
+          <button id="zamTurYuzde" type="button" data-zam-tur="yuzde" class="zam-tur">
+            <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> YÜZDE (%)
+          </button>
+          <button id="zamTurTutar" type="button" data-zam-tur="tutar" class="zam-tur">
+            <svg class="ik" aria-hidden="true"><use href="#ik-nakit"></use></svg> SABİT TUTAR (₺)
+          </button>
+        </div>
+      </div>
+
+      <label class="block">
+        <span class="text-lg font-extrabold">Zam Miktarı</span>
+        <span class="relative block mt-2">
+          <input id="zamMiktar" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+                 class="w-full h-16 pl-5 pr-16 rounded-2xl text-2xl font-black
+                        bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                        focus:border-rose-600 focus:ring-4 focus:ring-rose-600/20 outline-none transition" />
+          <span id="zamBirim" class="absolute right-5 top-1/2 -translate-y-1/2 text-2xl font-black
+                                     text-slate-400 pointer-events-none">%</span>
+        </span>
+      </label>
+
+      <div id="zamOnizleme"
+           class="rounded-2xl p-4 text-base font-bold leading-relaxed whitespace-pre-line
+                  bg-slate-50 dark:bg-slate-900/60 border-2 border-slate-200 dark:border-slate-700"></div>
+
+      <div id="zamUyari" class="hidden rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                bg-amber-50 text-amber-800 border-2 border-amber-300
+                                dark:bg-amber-500/10 dark:text-amber-200 dark:border-amber-500/30"></div>
+    </div>
+
+    <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
+      <button id="zamVazgec"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="zamTamam"
+              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-rose-600 hover:bg-rose-700
+                     transition active:scale-95 shadow-lg">ZAMMI UYGULA</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     EXCEL İÇE AKTARMA SİHİRBAZI (SÜTUN EŞLEŞTİRME + İLERLEME)
+
+     Tek pencere, iki aşama:
+       1) #excelEslestirme — dosyanın sütunlarını panelin alanlarına bağlar.
+          Tanıdık başlıklar (Fiyat, SKU, Stok…) kendiliğinden seçilir;
+          otomatik seçilenler yeşil çerçeveyle işaretlenir.
+       2) #excelIlerleme   — canlı yüzde çubuğu, sayaçlar ve satır günlüğü.
+
+     Mantığı renderer-excel.js yürütür.
+     ================================================================== -->
+<div id="excelModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-5xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700">
+
+    <div class="flex items-start gap-4 p-6 border-b-2 border-slate-200 dark:border-slate-700
+                sticky top-0 bg-white dark:bg-slate-800 rounded-t-3xl z-10">
+      <span class="text-4xl text-indigo-600"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg></span>
+      <div class="min-w-0 flex-1">
+        <div id="excelModalBaslik" class="text-2xl font-black">Sütun Eşleştirme</div>
+        <div id="excelModalAciklama" class="text-base font-bold text-slate-500 dark:text-slate-400 truncate"></div>
+      </div>
+      <button id="excelKapatBtn" type="button" title="Kapat" aria-label="Kapat"
+              class="ml-auto w-12 h-12 shrink-0 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2
+                     border-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                     transition"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+    </div>
+
+    <!-- ---------- 1. AŞAMA: SÜTUN EŞLEŞTİRME ---------- -->
+    <div id="excelEslestirme" class="p-6 flex flex-col gap-6">
+
+      <p class="text-lg leading-relaxed text-slate-600 dark:text-slate-300">
+        Dosyanızdaki her sütunun panelde hangi alana karşılık geldiğini seçin.
+        Eşleştirme <b>SKU / Barkod</b> sütununa göre yapılır: kod sistemde varsa
+        ürün <b>güncellenir</b>, yoksa <b>yeni ürün olarak eklenir</b>.
+      </p>
+
+      <div id="excelEsleme" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+      <div>
+        <div class="text-lg font-extrabold mb-2">Dosya Önizlemesi (ilk 3 satır)</div>
+        <div id="excelOnizleme"
+             class="overflow-x-auto rounded-2xl border-2 border-slate-200 dark:border-slate-700"></div>
+      </div>
+
+      <div id="excelUyari" class="hidden"></div>
+    </div>
+
+    <!-- ---------- 2. AŞAMA: İÇE AKTARMA İLERLEMESİ ---------- -->
+    <div id="excelIlerleme" class="hidden p-6 flex flex-col gap-5">
+
+      <div id="excelIlerlemeMetin" class="text-2xl font-black">0 / 0 ürün işlendi…  %0</div>
+
+      <div class="h-7 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+        <div id="excelIlerlemeCubuk"
+             class="h-full w-0 bg-indigo-600 transition-all duration-200"></div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="rounded-2xl p-4 border-2 border-marka-600/40 bg-marka-700/10 dark:bg-marka-700/20">
+          <div class="text-sm font-black text-marka-700 dark:text-marka-300">GÜNCELLENEN</div>
+          <div id="excelSayacGuncel" class="text-3xl font-black">0</div>
+        </div>
+        <div class="rounded-2xl p-4 border-2 border-emerald-300 dark:border-emerald-500/40
+                    bg-emerald-50 dark:bg-emerald-500/10">
+          <div class="text-sm font-black text-emerald-700 dark:text-emerald-300">YENİ EKLENEN</div>
+          <div id="excelSayacYeni" class="text-3xl font-black">0</div>
+        </div>
+        <div class="rounded-2xl p-4 border-2 border-slate-300 dark:border-slate-600
+                    bg-slate-50 dark:bg-slate-900/40">
+          <div class="text-sm font-black text-slate-500 dark:text-slate-400">ATLANAN</div>
+          <div id="excelSayacAtlanan" class="text-3xl font-black">0</div>
+        </div>
+        <div class="rounded-2xl p-4 border-2 border-red-300 dark:border-red-500/40
+                    bg-red-50 dark:bg-red-500/10">
+          <div class="text-sm font-black text-red-700 dark:text-red-300">HATA</div>
+          <div id="excelSayacHata" class="text-3xl font-black">0</div>
+        </div>
+      </div>
+
+      <div id="excelGunluk"
+           class="h-56 overflow-y-auto rounded-2xl p-4 text-sm leading-relaxed
+                  bg-slate-50 dark:bg-slate-900/60 border-2 border-slate-200 dark:border-slate-700"
+           style="font-family: Consolas, 'Courier New', monospace"></div>
+    </div>
+
+    <div class="flex flex-wrap gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2
+                border-slate-200 dark:border-slate-700 sticky bottom-0 rounded-b-3xl">
+      <button id="excelVazgecBtn" type="button"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
+                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button id="excelBaslatBtn" type="button"
+              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-indigo-600 hover:bg-indigo-700
+                     transition active:scale-95 shadow-lg">
+        <svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> İÇE AKTARMAYI BAŞLAT
+      </button>
+      <button id="excelDurdurBtn" type="button"
+              class="hidden flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-red-600 hover:bg-red-700
+                     transition active:scale-95 shadow-lg">
+        <svg class="ik" aria-hidden="true"><use href="#ik-durakla"></use></svg> DURDUR
+      </button>
+      <button id="excelBitirBtn" type="button"
+              class="hidden flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600
+                     hover:bg-emerald-700 transition active:scale-95 shadow-lg">
+        <svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> KAPAT
+      </button>
     </div>
   </div>
 </div>
@@ -2536,7 +3431,7 @@
 <div id="markaImzasi"
      class="fixed left-0 bottom-0 z-30 p-2 text-[10px] text-slate-500/70
             font-medium tracking-wide select-none pointer-events-none">
-  Bu bir BYOM TECH ürünüdür &bull; v1.0.3
+  Bu bir BYOM TECH ürünüdür
 </div>
 
 <script src="renderer.js"></script>
@@ -2546,6 +3441,22 @@
 <!-- BYOM Brain entegrasyonu: lisans rozeti + BYOM Destek sekmesi.
  renderer.js ve renderer-ek.js'ten SONRA yüklenir; sekmeAc / bildir gibi
  genel fonksiyonları sarmalayarak genişletir. -->
+<!-- Ürün veri ızgarası (Excel tipi tablo), kategori ağacı ve toplu işlemler.
+     renderer.js + renderer-ek.js icindeki genel yardimcilari kullandigi ve
+     birkac fonksiyonlarini sardigi icin MUTLAKA onlardan SONRA gelir. -->
+<script src="renderer-izgara.js"></script>
+<!-- Excel dökümü ve sütun eşleştirmeli içe aktarma.
+     renderer-izgara.js'teki izgOlaylariBagla'yı sardığı ve `izg()` durumunu
+     okuduğu için ondan SONRA gelir. Dosya okuma/yazma ana süreçtedir
+     (src/main/byom-excel.js). -->
+<script src="renderer-excel.js"></script>
+
 <script src="renderer-byom.js"></script>
+<!-- BYOM 2.0 Vitrin Editörü: DOM'suz motor (indirgeyici + Offline-Outbox) ve arayüz.
+     renderer.js / renderer-ek.js'teki genel yardımcıları (durum, $, kacis, bildir,
+     onayla, api/b2b/woo, ikon, butonuMesgulEt, tumKategorileriGetir) kullanır;
+     bu yüzden EN SONA yüklenir. -->
+<script src="src/renderer/vitrin-motor.js"></script>
+<script src="renderer-vitrin.js"></script>
 </body>
 </html>
