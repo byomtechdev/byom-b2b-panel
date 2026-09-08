@@ -109,7 +109,8 @@
   var BLOK_IKONLARI = {
     'hero-combo': 'panel', 'flash-deals': 'parlak', 'category-pills': 'etiket', 'grid-showcase': 'paket',
     'quick-matrix': 'sepet', 'trust-badges': 'kalkan', slider: 'resim', 'dual-banner': 'resim',
-    'strip-banner': 'resim', 'category-grid': 'klasor', 'trust-bar': 'kalkan', 'cta-band': 'bina'
+    'strip-banner': 'resim', 'category-grid': 'klasor', 'trust-bar': 'kalkan', 'cta-band': 'bina',
+    'category-shelf': 'liste', 'hero-slider': 'resim', 'catalog-cta': 'kure'
   };
 
   function blokIkonu(tip, registry) {
@@ -162,8 +163,10 @@
     /* Vitrin içeriği (theme-config > showcase): banner + öne çıkan ürünler. */
     showcase: { banners: [], featured: [], yuklendi: false, kirli: false, kaydediliyor: false, durum: '', hata: '', tekrar: false },
     showcaseZaman: null,
-    /* Önizlemenin "içerik yok" dediği bloklar (BYOM_READY). */
-    bosBloklar: {}
+    /* Önizlemenin "içerik yok" dediği bloklar (BYOM_READY / BYOM_APPLIED refresh). */
+    bosBloklar: {},
+    /* Ürün seçici için ad/kod/görsel önbelleği: id → {ad, kod, gorsel}. */
+    urunAdlari: {}
   };
 
   var UI = {};
@@ -332,7 +335,7 @@
             '<span class="ve-row__icon">' + ikn(blokIkonu(b.type, VE.registry)) + '</span>' +
             '<span class="ve-row__label" data-ve-select>' +
               '<span class="ve-row__title">' + kac(blokEtiketi(b.type)) + '</span>' +
-              '<span class="ve-row__sub">' + kac(g.description || b.type) + (yeniMi ? ' · <b class="text-amber-600 dark:text-amber-300">yayınla → önizlemede görünür</b>' : '') + (bosMu ? ' · <b class="ve-badge-empty" title="Önizlemede bu blok için gösterilecek içerik yok">içerik yok → ⚙ ile ekleyin</b>' : '') + '</span>' +
+              '<span class="ve-row__sub">' + kac(g.description || b.type) + (yeniMi ? ' · <b class="text-amber-600 dark:text-amber-300">yayınla → önizlemede görünür</b>' : '') + '<b class="ve-badge-empty" data-ve-bos title="Önizlemede bu blok için gösterilecek içerik yok"' + (bosMu ? '' : ' hidden') + '> · içerik yok → ⚙ ile ekleyin</b></span>' +
             '</span>' +
             '<button type="button" class="ve-switch" role="switch" aria-checked="' + (b.enabled ? 'true' : 'false') + '" data-ve-toggle title="' + (b.enabled ? 'Kapat' : 'Aç') + '"><span class="ve-switch__knob"></span></button>' +
             (ayarVar ? '<button type="button" class="ve-iconbtn" data-ve-settings title="Ayarlar" aria-expanded="' + (acik ? 'true' : 'false') + '">' + ikn('ayar') + '</button>' : '') +
@@ -416,6 +419,9 @@
           '<div class="ve-product__sonuc hidden" data-ve-product-results></div>' +
           '<input type="hidden" data-ve-field="' + k + '" data-ve-type="product" value="' + kac(String(deger || 0)) + '" />' +
         '</div>';
+        break;
+      case 'products':
+        govde = urunlerAlaniHtml(alan, deger);
         break;
       case 'category':
         govde = '<select class="' + INPUT_SINIF + '" data-ve-field="' + k + '" data-ve-type="category" data-ve-category>' +
@@ -635,6 +641,7 @@
     });
 
     showcaseOlaylariBagla(form);
+    urunlerAlaniniBagla(form, uygula);
 
     function urunSec(kutu, id, ad) {
       var gizli = secDeg('input[data-ve-type="product"]', kutu);
@@ -648,6 +655,160 @@
       if (arama) arama.value = '';
       uygula(gizli.getAttribute('data-ve-field'), id);
     }
+  }
+
+  /* ---------- Çoklu ürün seçici (type: products) ----------
+   * Bloğun KENDİ listesi: kaynak "Seçtiğim ürünler" iken sitede yalnızca bu
+   * ürünler basılır (başka bloğun ürünü kopyalanmaz). Değişiklik BYOM_SETTINGS
+   * ile önizlemeye gider; dinleyici bloğu sunucuda yeniden çizer. */
+
+  function urunlerAlaniHtml(alan, deger) {
+    var k = kac(alan.key);
+    var ids = urunIdleriTemizle(deger, sayi(alan.max, 24));
+    return '<div class="ve-products" data-ve-products="' + k + '" data-ve-max="' + sayi(alan.max, 24) + '">' +
+      '<input type="hidden" data-ve-field="' + k + '" data-ve-type="products" value="' + kac(JSON.stringify(ids)) + '" />' +
+      '<div class="ve-product">' +
+        '<input type="text" class="' + INPUT_SINIF + '" data-ve-products-search placeholder="Ürün ara ve listeye ekle (ad / stok kodu)…" autocomplete="off" />' +
+        '<div class="ve-product__sonuc hidden" data-ve-products-results></div>' +
+      '</div>' +
+      '<div class="ve-featured-list" data-ve-products-list>' + urunlerListesiHtml(ids) + '</div>' +
+    '</div>';
+  }
+
+  function urunIdleriTemizle(deger, max) {
+    var kaynak = deger;
+    if (typeof kaynak === 'string') { try { kaynak = JSON.parse(kaynak); } catch (e) { kaynak = kaynak.split(','); } }
+    if (!Array.isArray(kaynak)) return [];
+    var gorulen = {};
+    var out = [];
+    kaynak.forEach(function (v) {
+      if (v && typeof v === 'object') v = v.id;
+      var id = parseInt(v, 10);
+      if (id > 0 && !gorulen[id] && out.length < max) { gorulen[id] = true; out.push(id); }
+    });
+    return out;
+  }
+
+  function urunlerListesiHtml(ids) {
+    if (!ids.length) {
+      return '<div class="ve-banner-list__bos">Henüz ürün seçilmedi; aramadan ekleyin. Kaynak “Seçtiğim ürünler” iken sitede yalnızca bu liste basılır.</div>';
+    }
+    return ids.map(function (id, i) {
+      var u = VE.urunAdlari[id] || {};
+      return '<div class="ve-featured__row" data-ve-products-row="' + i + '">' +
+        (u.gorsel ? '<img class="ve-featured__img" src="' + kac(u.gorsel) + '" alt="" />' : '<span class="ve-featured__img ve-featured__img--bos">' + ikn('paket', 'ik-sm') + '</span>') +
+        '<span class="ve-featured__body"><b>' + kac(u.ad || ('Ürün #' + id)) + '</b><small class="font-mono">' + kac(u.kod || ('#' + id)) + '</small></span>' +
+        '<span class="ve-banner__actions">' +
+          '<button type="button" class="ve-iconbtn" data-ve-products-yukari title="Yukarı">' + ikn('yukariOk', 'ik-sm') + '</button>' +
+          '<button type="button" class="ve-iconbtn" data-ve-products-asagi title="Aşağı">' + ikn('asagiOk', 'ik-sm') + '</button>' +
+          '<button type="button" class="ve-iconbtn ve-iconbtn--danger" data-ve-products-sil title="Listeden çıkar">' + ikn('cop', 'ik-sm') + '</button>' +
+        '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  /** Bilinmeyen kimliklerin adlarını doldurur (önce hafızadaki ürün listesi, sonra site). */
+  function urunAdlariniGetir(ids) {
+    var d = durumNesnesi();
+    var eksik = [];
+    ids.forEach(function (id) {
+      if (VE.urunAdlari[id]) return;
+      var k = d && Array.isArray(d.urunler) ? d.urunler.filter(function (x) { return Number(x.id) === Number(id); })[0] : null;
+      if (k) VE.urunAdlari[id] = { ad: k.ad || '', kod: k.kod || '', gorsel: guvenliGorselUrl(k.gorsel) };
+      else eksik.push(id);
+    });
+    if (!eksik.length || VE.demo) return Promise.resolve();
+    return wooCagir('products', { sorgu: { include: eksik.join(','), per_page: 100 }, sureAsimi: 20000 }).then(function (c) {
+      if (!c || !c.ok || !Array.isArray(c.veri)) return;
+      c.veri.forEach(function (u) {
+        VE.urunAdlari[Number(u.id)] = { ad: u.name || '', kod: u.sku || '', gorsel: guvenliGorselUrl(u.images && u.images[0] && u.images[0].src) };
+      });
+    }).catch(function () { /* ad tamamlama isteğe bağlı */ });
+  }
+
+  function urunlerAlaniniBagla(form, uygula) {
+    secHep('[data-ve-products]', form).forEach(function (kutu) {
+      var k = kutu.getAttribute('data-ve-products');
+      var max = parseInt(kutu.getAttribute('data-ve-max'), 10) || 24;
+      var gizli = secDeg('input[data-ve-type="products"]', kutu);
+      var liste = secDeg('[data-ve-products-list]', kutu);
+      var arama = secDeg('[data-ve-products-search]', kutu);
+      var sonuc = secDeg('[data-ve-products-results]', kutu);
+
+      var oku = function () { return urunIdleriTemizle(gizli.value, max); };
+      var yaz = function (ids) {
+        gizli.value = JSON.stringify(ids);
+        liste.innerHTML = urunlerListesiHtml(ids);
+        uygula(k, ids);
+      };
+
+      urunAdlariniGetir(oku()).then(function () { if (document.body.contains(liste)) liste.innerHTML = urunlerListesiHtml(oku()); });
+
+      var ara = debounce(function () {
+        var q = arama.value.trim();
+        if (q.length < 2) { sonuc.classList.add('hidden'); sonuc.innerHTML = ''; return; }
+        sonuc.classList.remove('hidden');
+        if (VE.demo) {
+          var d = durumNesnesi();
+          var yerel = (d && Array.isArray(d.urunler) ? d.urunler : []).filter(function (u) {
+            var m = q.toLocaleLowerCase('tr-TR');
+            return String(u.ad || '').toLocaleLowerCase('tr-TR').indexOf(m) !== -1 || String(u.kod || '').toLocaleLowerCase('tr-TR').indexOf(m) !== -1;
+          }).slice(0, 8);
+          sonuc.innerHTML = yerel.length
+            ? yerel.map(function (u) { return urunSonucHtml(u.id, u.ad, u.kod, u.gorsel); }).join('')
+            : '<div class="ve-product__hint">Demo verisinde sonuç yok.</div>';
+          return;
+        }
+        sonuc.innerHTML = '<div class="ve-product__hint"><span class="donuyor">' + ikn('donen', 'ik-sm') + '</span> Aranıyor…</div>';
+        wooCagir('products', { sorgu: { search: q, per_page: 8, status: 'publish' }, sureAsimi: 15000 }).then(function (c) {
+          if (!c || !c.ok) { sonuc.innerHTML = '<div class="ve-product__hint text-red-600">' + kac((c && c.hata) || 'Arama başarısız') + '</div>'; return; }
+          var secili = {};
+          oku().forEach(function (id) { secili[id] = true; });
+          var urunler = (Array.isArray(c.veri) ? c.veri : []).filter(function (u) { return !secili[u.id]; });
+          if (!urunler.length) { sonuc.innerHTML = '<div class="ve-product__hint">Sonuç yok (ya da hepsi listede).</div>'; return; }
+          sonuc.innerHTML = urunler.map(function (u) { return urunSonucHtml(u.id, u.name, u.sku, u.images && u.images[0] && u.images[0].src); }).join('');
+        });
+      }, 300);
+      arama.addEventListener('input', ara);
+
+      kutu.addEventListener('click', function (o) {
+        var ekle = o.target.closest('[data-ve-products-ekle]');
+        if (ekle) {
+          var id = parseInt(ekle.getAttribute('data-ve-products-ekle'), 10);
+          var ids = oku();
+          if (id > 0 && ids.indexOf(id) === -1) {
+            if (ids.length >= max) { uyar('En fazla ' + max + ' ürün seçilebilir.', 'uyari'); return; }
+            VE.urunAdlari[id] = { ad: ekle.getAttribute('data-ad') || '', kod: ekle.getAttribute('data-kod') || '', gorsel: ekle.getAttribute('data-gorsel') || '' };
+            ids.push(id);
+            yaz(ids);
+          }
+          sonuc.classList.add('hidden');
+          sonuc.innerHTML = '';
+          arama.value = '';
+          return;
+        }
+        var satir = o.target.closest('[data-ve-products-row]');
+        if (!satir) return;
+        var i = parseInt(satir.getAttribute('data-ve-products-row'), 10);
+        var liste2 = oku();
+        if (o.target.closest('[data-ve-products-sil]')) {
+          liste2.splice(i, 1);
+        } else if (o.target.closest('[data-ve-products-yukari]') && i > 0) {
+          var t = liste2[i - 1]; liste2[i - 1] = liste2[i]; liste2[i] = t;
+        } else if (o.target.closest('[data-ve-products-asagi]') && i < liste2.length - 1) {
+          var t2 = liste2[i + 1]; liste2[i + 1] = liste2[i]; liste2[i] = t2;
+        } else {
+          return;
+        }
+        yaz(liste2);
+      });
+    });
+  }
+
+  function urunSonucHtml(id, ad, kod, gorsel) {
+    return '<button type="button" class="ve-product__pick" data-ve-products-ekle="' + kac(String(id)) + '" data-ad="' + kac(ad || '') + '" data-kod="' + kac(kod || '') + '" data-gorsel="' + kac(guvenliGorselUrl(gorsel)) + '">' +
+      '<span class="font-bold">' + kac(ad || '') + '</span>' + (kod ? '<span class="text-xs text-slate-500 font-mono ml-2">' + kac(kod) + '</span>' : '') +
+    '</button>';
   }
 
   function itemsOku(kap, alan) {
@@ -1097,6 +1258,15 @@
       /* Yeniden yüklenen çerçeve taslağı bilmez: tam senkron gönder. */
       if (VE.state) onizlemeyeGonder(M.mesaj('BYOM_LAYOUT', { layout: M.klon(VE.state.layout) }));
       if (VE.secili) onizlemeyeGonder(M.mesaj('BYOM_SELECT', { id: VE.secili }));
+    } else if (veri.type === 'BYOM_APPLIED') {
+      /* Sunucuda yeniden çizilen blok: "içerik yok" rozeti yerinde güncellenir (form yeniden çizilmez, odak kaybolmaz). */
+      var p = veri.payload || {};
+      if (p.what === 'refresh' && p.id) {
+        var bosId = String(p.id);
+        if (p.empty) VE.bosBloklar[bosId] = true; else delete VE.bosBloklar[bosId];
+        var rozet = secDeg('[data-ve-row][data-id="' + cssKac(bosId) + '"] [data-ve-bos]', UI.liste);
+        if (rozet) rozet.hidden = !p.empty;
+      }
     } else if (veri.type === 'BYOM_ERROR') {
       console.warn('[Vitrin Editörü] önizleme:', veri.payload && veri.payload.message);
     }
@@ -1535,7 +1705,7 @@
    * ========================================================================*/
 
   /* Blok tipi -> theme-config banner "slot" değeri (tema byom_showcase_layout ile dağıtır). */
-  var BLOK_SLOT = { slider: 'slider', 'dual-banner': 'dual', 'strip-banner': 'strip', 'hero-combo': 'slider' };
+  var BLOK_SLOT = { slider: 'slider', 'hero-slider': 'slider', 'dual-banner': 'dual', 'strip-banner': 'strip', 'hero-combo': 'slider' };
   var SLOT_ETIKET = { slider: 'Slider / hero görselleri', dual: "2'li banner görselleri", strip: 'Geniş şerit görselleri' };
 
   function bannerSlotu(blok) {

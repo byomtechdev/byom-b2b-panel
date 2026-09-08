@@ -160,6 +160,26 @@
       case 'product':
       case 'category':
         return Math.max(0, parseInt(deger, 10) || 0);
+      case 'products': {
+        /* Kimlik listesi: dizi, JSON dizesi ya da "1,2,3"; tekrar/gecersiz atilir, max ile kirpilir. */
+        var kaynak = deger;
+        if (typeof kaynak === 'string') {
+          try { kaynak = JSON.parse(kaynak); } catch (e) { kaynak = kaynak.split(','); }
+        }
+        if (!Array.isArray(kaynak)) return [];
+        var gorulen = {};
+        var idler = [];
+        var enCok = Number(alan.max) > 0 ? Number(alan.max) : 24;
+        for (var pi = 0; pi < kaynak.length && idler.length < enCok; pi++) {
+          var oge = kaynak[pi];
+          if (oge && typeof oge === 'object') oge = oge.id;
+          var pid = parseInt(oge, 10);
+          if (!(pid > 0) || gorulen[pid]) continue;
+          gorulen[pid] = true;
+          idler.push(pid);
+        }
+        return idler;
+      }
       case 'items': {
         if (!Array.isArray(deger)) return klon(alan.default);
         var max = alan.max || 6;
@@ -728,8 +748,8 @@
       return Object.assign({ key: key, type: type, label: label, default: def, live: !!live }, extra || {});
     }
     function opts(map) { return Object.keys(map).map(function (k) { return { value: k, label: map[k] }; }); }
-    var kaynakAuto = opts({ auto: 'Otomatik', featured: 'Panelden seçilenler', onsale: 'İndirimdekiler', latest: 'En yeniler' });
-    var kaynakKat = opts({ bestsellers: 'Çok satanlar', featured: 'Panelden seçilenler', onsale: 'İndirimdekiler', latest: 'En yeniler', category: 'Kategori' });
+    var kaynakAuto = opts({ auto: 'Otomatik', manual: 'Seçtiğim ürünler', featured: 'Panelden seçilenler', onsale: 'İndirimdekiler', latest: 'En yeniler' });
+    var kaynakKat = opts({ manual: 'Seçtiğim ürünler', bestsellers: 'Çok satanlar', featured: 'Panelden seçilenler', onsale: 'İndirimdekiler', latest: 'En yeniler', category: 'Kategori' });
     var ikonlar = ['percent', 'box', 'truck', 'shield', 'wallet', 'clock', 'check', 'bolt', 'star', 'tag'];
     var ikonOpts = ikonlar.map(function (i) { return { value: i, label: i }; });
 
@@ -739,12 +759,14 @@
         f('banner_mode', 'select', 'Merkez alan', 'auto', { options: opts({ auto: 'Otomatik', banners: 'Banner slider', product: 'Kampanya ürünü' }) }),
         f('product_id', 'product', 'Kampanya ürünü', 0),
         f('deal_source', 'select', 'Fırsat kaynağı', 'auto', { options: kaynakAuto }),
+        f('deal_products', 'products', 'Fırsat ürünleri (elle)', [], { max: 24 }),
         f('deal_count', 'number', 'Fırsat kartı adedi', 3, { min: 2, max: 4, step: 1 }),
         f('show_categories', 'toggle', 'Kategori ağacını göster', true, {}, true)
       ] },
       'flash-deals': { type: 'flash-deals', label: 'Flaş Fırsatlar', description: 'Geri sayım + indirimli vitrin', icon: 'parlak', group: 'lego', singleton: false, settings: [
         f('title', 'text', 'Başlık', '', { max: 120 }, true),
         f('source', 'select', 'Ürün kaynağı', 'auto', { options: kaynakAuto }),
+        f('products', 'products', 'Ürünler (elle seçim)', [], { max: 24 }),
         f('limit', 'number', 'Ürün adedi', 8, { min: 2, max: 24, step: 1 }),
         f('columns', 'select', 'Sütun', '4', { options: opts({ 4: '4', 5: '5', 6: '6' }) }, true),
         f('countdown', 'select', 'Geri sayım', 'daily', { options: opts({ off: 'Kapalı', daily: 'Her gece 00:00', weekly: 'Pazar 23:59', fixed: 'Belirli tarih' }) }, true),
@@ -761,6 +783,7 @@
         f('subtitle', 'text', 'Alt başlık', '', { max: 200 }, true),
         f('source', 'select', 'Ürün kaynağı', 'latest', { options: kaynakKat }),
         f('category', 'category', 'Kategori', 0),
+        f('products', 'products', 'Ürünler (elle seçim)', [], { max: 24 }),
         f('columns', 'select', 'Sütun', '4', { options: opts({ 4: '4', 5: '5' }) }, true),
         f('limit', 'number', 'Ürün adedi', 8, { min: 4, max: 20, step: 1 })
       ] },
@@ -769,6 +792,7 @@
         f('subtitle', 'text', 'Alt başlık', 'Adetleri girin, tek tıkla hepsini sepete atın.', { max: 200 }, true),
         f('source', 'select', 'Ürün kaynağı', 'bestsellers', { options: kaynakKat }),
         f('category', 'category', 'Kategori', 0),
+        f('products', 'products', 'Ürünler (elle seçim)', [], { max: 24 }),
         f('limit', 'number', 'Satır adedi', 10, { min: 3, max: 30, step: 1 }),
         f('show_case', 'toggle', 'Koli sütunu', true, {}, true)
       ] },
@@ -783,6 +807,29 @@
           f('title', 'text', 'Başlık', '', { max: 40 }),
           f('text', 'text', 'Açıklama', '', { max: 90 })
         ] }, true)
+      ] },
+      'category-shelf': { type: 'category-shelf', label: 'Kategori Rafı', description: 'Yatay kaydırmalı raf: kategori + ürün sayısı + oklar', icon: 'liste', group: 'lego', singleton: false, settings: [
+        f('category', 'category', 'Kategori', 0),
+        f('title', 'text', 'Başlık', '', { max: 80 }, true),
+        f('products', 'products', 'Ürünler (elle seçim)', [], { max: 24 }),
+        f('limit', 'number', 'Raftaki ürün adedi', 10, { min: 4, max: 24, step: 1 }),
+        f('columns', 'select', 'Yan yana kart', '5', { options: opts({ 4: '4', 5: '5', 6: '6' }) }, true),
+        f('show_count', 'toggle', 'Ürün sayısı rozeti', true, {}, true),
+        f('show_all_link', 'toggle', '"Tüm Kategoriyi Gör" bağlantısı', true, {}, true)
+      ] },
+      'hero-slider': { type: 'hero-slider', label: 'Grafik Banner Slider', description: 'Panelden yüklenen bannerlar: otomatik/elle kaydırma, noktalar, oklar', icon: 'resim', group: 'lego', singleton: true, settings: [
+        f('autoplay', 'number', 'Otomatik geçiş (sn)', 5, { min: 0, max: 30, step: 1 }, true),
+        f('height', 'select', 'Yükseklik', 'normal', { options: opts({ compact: 'Kompakt', normal: 'Normal', tall: 'Yüksek' }) }, true),
+        f('fit', 'select', 'Görsel sığdırma', 'cover', { options: opts({ cover: 'Doldur', contain: 'Sığdır' }) }, true),
+        f('show_dots', 'toggle', 'Sayfalama noktaları', true, {}, true),
+        f('show_arrows', 'toggle', 'Yön okları', true, {}, true)
+      ] },
+      'catalog-cta': { type: 'catalog-cta', label: 'Kataloğa Yönlendirme', description: '"1.100+ çeşit" kartı: Tüm Ürünler / Mağazaya Git', icon: 'kure', group: 'lego', singleton: true, settings: [
+        f('title', 'text', 'Başlık', '', { max: 120 }, true),
+        f('text', 'text', 'Açıklama', '', { max: 200 }, true),
+        f('button_label', 'text', 'Düğme yazısı', '', { max: 60 }, true),
+        f('show_stats', 'toggle', 'Sayaçlar', true, {}, true),
+        f('style', 'select', 'Renk', 'dark', { options: opts({ dark: 'Koyu', light: 'Açık', primary: 'Marka rengi' }) }, true)
       ] },
       slider: { type: 'slider', label: 'Slider', description: 'Panel banner slider', icon: 'resim', group: 'classic', singleton: true, settings: [
         f('autoplay', 'number', 'Otomatik geçiş (sn)', 6, { min: 0, max: 30, step: 1 })
@@ -799,15 +846,19 @@
 
   function demoLayout(registry) {
     registry = registry || demoRegistry();
-    var sira = ['hero-combo', 'trust-badges', 'category-pills', 'flash-deals', 'grid-showcase', 'quick-matrix', 'dual-banner', 'strip-banner', 'cta-band'];
+    /* Eklentideki default_layout() ile AYNI showroom sirasi (BYOM-REGISTRY.md §2.2). */
+    var sira = [
+      ['hero-slider'], ['category-pills'], ['category-shelf', 'category-shelf-1'], ['category-shelf', 'category-shelf-2'],
+      ['dual-banner'], ['category-shelf', 'category-shelf-3'], ['flash-deals'], ['catalog-cta'], ['trust-badges'], ['cta-band']
+    ];
     return {
       schema_version: SCHEMA_VERSION,
       revision: 0,
       updated_at: '',
       updated_by: 'default',
       tokens: klon(VARSAYILAN_TOKENLAR),
-      blocks: sira.map(function (tip) {
-        return { id: tip + '-default', type: tip, enabled: true, settings: varsayilanAyarlar(registry, tip) };
+      blocks: sira.map(function (p) {
+        return { id: p[1] || (p[0] + '-default'), type: p[0], enabled: true, settings: varsayilanAyarlar(registry, p[0]) };
       })
     };
   }
