@@ -208,10 +208,10 @@ function varsayilanAyarlar() {
     // Bağlantı kurulduğunda sitenin b2b-core theme-config'inden çekilen logo
     // adresi (bkz. siteLogosunuGetir). Sitede/eklentide logo yoksa boş kalır.
     siteLogosu: '',
-    // Site logosu yoksa/çekilemezse "Web Vitrini" sekmesinden yüklenen
+    // Site logosu yoksa/çekilemezse Vitrin Editörü › Marka Görselleri panelinden yüklenen
     // yerel logo (data:image/... base64) — bkz. yerelLogoYukle.
     yerelLogo: '',
-    // Sitenin tarayıcı sekmesi simgesi (favicon). Yine Web Vitrini sekmesinden
+    // Sitenin tarayıcı sekmesi simgesi (favicon). Yine Marka Görselleri panelinden
     // yüklenir ve theme-config'in branding.favicon alanına gönderilir.
     yerelFavicon: '',
     lisansBitis: bitis.toISOString().slice(0, 10),

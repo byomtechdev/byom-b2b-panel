@@ -158,7 +158,12 @@
     cihaz: 'desktop',
     kategoriler: null,
     tokenKare: 0,
-    bekleyenToken: null
+    bekleyenToken: null,
+    /* Vitrin içeriği (theme-config > showcase): banner + öne çıkan ürünler. */
+    showcase: { banners: [], featured: [], yuklendi: false, kirli: false, kaydediliyor: false, durum: '', hata: '', tekrar: false },
+    showcaseZaman: null,
+    /* Önizlemenin "içerik yok" dediği bloklar (BYOM_READY). */
+    bosBloklar: {}
   };
 
   var UI = {};
@@ -315,7 +320,8 @@
     UI.liste.innerHTML = bloklar.map(function (b, i) {
       var g = VE.registry[b.type] || {};
       var yeniMi = VE.cache && Array.isArray(VE.cache.blokIdleri) && VE.cache.blokIdleri.indexOf(b.id) === -1;
-      var ayarVar = Array.isArray(g.settings) && g.settings.length > 0;
+      var ayarVar = (Array.isArray(g.settings) && g.settings.length > 0) || !!bannerSlotu(b) || oneCikanGosterilsinMi(b);
+      var bosMu = !!VE.bosBloklar[b.id];
       var acik = VE.acikAyar === b.id;
       return (
         '<li class="ve-row' + (b.enabled ? '' : ' is-off') + (acik ? ' is-open' : '') + (VE.secili === b.id ? ' is-selected' : '') + '" ' +
@@ -326,7 +332,7 @@
             '<span class="ve-row__icon">' + ikn(blokIkonu(b.type, VE.registry)) + '</span>' +
             '<span class="ve-row__label" data-ve-select>' +
               '<span class="ve-row__title">' + kac(blokEtiketi(b.type)) + '</span>' +
-              '<span class="ve-row__sub">' + kac(g.description || b.type) + (yeniMi ? ' · <b class="text-amber-600 dark:text-amber-300">yayınla → önizlemede görünür</b>' : '') + '</span>' +
+              '<span class="ve-row__sub">' + kac(g.description || b.type) + (yeniMi ? ' · <b class="text-amber-600 dark:text-amber-300">yayınla → önizlemede görünür</b>' : '') + (bosMu ? ' · <b class="ve-badge-empty" title="Önizlemede bu blok için gösterilecek içerik yok">içerik yok → ⚙ ile ekleyin</b>' : '') + '</span>' +
             '</span>' +
             '<button type="button" class="ve-switch" role="switch" aria-checked="' + (b.enabled ? 'true' : 'false') + '" data-ve-toggle title="' + (b.enabled ? 'Kapat' : 'Aç') + '"><span class="ve-switch__knob"></span></button>' +
             (ayarVar ? '<button type="button" class="ve-iconbtn" data-ve-settings title="Ayarlar" aria-expanded="' + (acik ? 'true' : 'false') + '">' + ikn('ayar') + '</button>' : '') +
@@ -351,8 +357,11 @@
 
   function ayarFormuHtml(blok, girdi) {
     var alanlar = Array.isArray(girdi.settings) ? girdi.settings : [];
-    if (!alanlar.length) return '<p class="text-sm text-slate-500">Bu bloğun ayarı yok.</p>';
-    return alanlar.map(function (alan) { return alanHtml(alan, blok.settings[alan.key], blok.type); }).join('');
+    var html = alanlar.map(function (alan) { return alanHtml(alan, blok.settings[alan.key], blok.type); }).join('');
+    /* Görsel ve ürün içeriği: sunucuda çizilir, theme-config'e kaydedilir (bkz. bölüm 12). */
+    html += bannerYoneticiHtml(blok) + oneCikanYoneticiHtml(blok);
+    if (!html) return '<p class="text-sm text-slate-500">Bu bloğun ayarı yok.</p>';
+    return html;
   }
 
   var INPUT_SINIF = 'w-full h-11 px-3 rounded-xl text-base font-semibold bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition';
@@ -480,8 +489,10 @@
     var uygula = function (anahtar, deger) {
       var kismi = {};
       kismi[anahtar] = deger;
-      dispatch(M.updateSettings(VE.state, id, kismi, VE.registry), { listeyiAtla: true });
+      var degisti = dispatch(M.updateSettings(VE.state, id, kismi, VE.registry), { listeyiAtla: true });
       revizyonCiz();
+      /* Kaynak / banner modu değişince banner ya da öne çıkan ürün yöneticisi belirir/kaybolur. */
+      if (degisti && (anahtar === 'source' || anahtar === 'deal_source' || anahtar === 'banner_mode')) listeCiz();
     };
     var uygulaGec = debounce(uygula, 90);
 
@@ -622,6 +633,8 @@
         }
       });
     });
+
+    showcaseOlaylariBagla(form);
 
     function urunSec(kutu, id, ad) {
       var gizli = secDeg('input[data-ve-type="product"]', kutu);
@@ -1068,10 +1081,19 @@
     if (!veri || typeof veri !== 'object' || veri.source !== 'byom-preview') return;
     if (UI.iframe && e.source && UI.iframe.contentWindow && e.source !== UI.iframe.contentWindow) return;
 
+    if (veri.type === 'BYOM_EDIT_REQUEST') {
+      duzenlemeIstegi(veri.payload && veri.payload.id);
+      return;
+    }
+
     if (veri.type === 'BYOM_READY') {
       VE.onizlemeHazir = true;
       pingDurdur();
       baglantiCiz();
+      /* Önizlemenin bildirdiği boş bloklar listede rozetlenir. */
+      VE.bosBloklar = {};
+      ((veri.payload && veri.payload.blocks) || []).forEach(function (b) { if (b && b.empty) VE.bosBloklar[String(b.id)] = true; });
+      listeCiz();
       /* Yeniden yüklenen çerçeve taslağı bilmez: tam senkron gönder. */
       if (VE.state) onizlemeyeGonder(M.mesaj('BYOM_LAYOUT', { layout: M.klon(VE.state.layout) }));
       if (VE.secili) onizlemeyeGonder(M.mesaj('BYOM_SELECT', { id: VE.secili }));
@@ -1230,6 +1252,7 @@
 
     if (VE.demo) {
       VE.registry = M.demoRegistry();
+      showcaseYukle();
       var demoLay = M.demoLayout(VE.registry);
       VE.cache = { layout: demoLay, registry: VE.registry, preview: { url: '', token: '' }, revision: 0, tokens_effective: M.VARSAYILAN_TOKENLAR, blokIdleri: demoLay.blocks.map(function (b) { return b.id; }) };
       VE.revision = 0;
@@ -1270,6 +1293,7 @@
         }
 
         if (VE.agDurumu === 'offline' || VE.agDurumu === 'error') { VE.agDurumu = 'online'; VE.agAyrinti = {}; durumCiz(); }
+        showcaseYukle();
       } else {
         var onbellek = VE.outbox ? VE.outbox.loadCache() : null;
         var hataMetni = (cevap && (cevap.hata || (cevap.veri && cevap.veri.message))) || 'Siteye ulaşılamadı.';
@@ -1283,6 +1307,12 @@
           var taslak2 = VE.outbox ? VE.outbox.loadDraft() : null;
           var kuyruk2 = VE.outbox ? VE.outbox.peek() : null;
           var lay = (kuyruk2 && kuyruk2.layout) || (taslak2 && taslak2.layout) || onbellek.layout;
+          if (onbellek.showcase) {
+            VE.showcase.banners = (onbellek.showcase.banners || []).map(bannerNormalle).filter(Boolean);
+            VE.showcase.featured = (onbellek.showcase.featured || []).slice();
+            VE.showcase.yuklendi = true;
+            VE.showcase.durum = 'offline';
+          }
           editoruKur(M.normalizeClient(lay, VE.registry));
           if (kuyruk2 || taslak2) { VE.state.dirty = true; revizyonCiz(); }
           VE.agDurumu = kuyruk2 ? 'queued' : 'offline';
@@ -1319,7 +1349,10 @@
     var geriAl = UI.yayinlaBtn && typeof butonuMesgulEt === 'function' ? butonuMesgulEt(UI.yayinlaBtn, 'YAYINLANIYOR…') : function () {};
     var layout = M.klon(VE.state.layout);
 
-    return VE.outbox.publish(layout, VE.revision, !!force).then(function (sonuc) {
+    /* Bekleyen görsel/ürün değişikliği varsa önce o gider (bağımsız uç, hata yayını engellemez). */
+    var on = VE.showcase.kirli && !VE.showcase.kaydediliyor ? showcaseKaydet({}) : Promise.resolve();
+
+    return on.then(function () { return VE.outbox.publish(layout, VE.revision, !!force); }).then(function (sonuc) {
       geriAl();
       return yayinSonucu(sonuc);
     }).catch(function (e) {
@@ -1448,6 +1481,7 @@
     });
 
     window.addEventListener('online', function () {
+      if (VE.showcase.kirli && !VE.showcase.kaydediliyor) showcaseKaydet({});
       VE.outbox.goOnline().then(function (s) {
         if (s && s.synced) {
           uyar('Kuyruktaki yayın eşitlendi (sürüm ' + (s.revision || VE.revision) + ').', 'basari');
@@ -1487,6 +1521,477 @@
   }
 
   /* ==========================================================================
+   *  12) VİTRİN İÇERİĞİ — BANNER, ÖNE ÇIKAN ÜRÜN, MARKA (eski "Web Vitrini" sekmesi)
+   *  ---------------------------------------------------------------------------
+   *  Banner ve öne çıkan ürünler DÜZENİN parçası değildir; eklentinin
+   *  theme-config'inde (showcase.banners / showcase.featured_products) yaşar ve
+   *  tema onları sunucuda çizer. Bu yüzden:
+   *   - blok ayar çarkında (⚙) yönetilir, ama YAYINLA'dan bağımsız olarak
+   *     değişiklikten ~1 sn sonra kendiliğinden kaydedilir (debounce);
+   *   - çevrimdışıysa "bağlantı gelince kaydedilecek" olarak bekler;
+   *   - kayıt sonrası önizleme iframe'i yenilenir (sunucu çizimi gerekir).
+   *  Görsel yükleme (media ucu) bağlantı ister; çevrimdışı/demo modda kutu
+   *  bunu söyler.
+   * ========================================================================*/
+
+  /* Blok tipi -> theme-config banner "slot" değeri (tema byom_showcase_layout ile dağıtır). */
+  var BLOK_SLOT = { slider: 'slider', 'dual-banner': 'dual', 'strip-banner': 'strip', 'hero-combo': 'slider' };
+  var SLOT_ETIKET = { slider: 'Slider / hero görselleri', dual: "2'li banner görselleri", strip: 'Geniş şerit görselleri' };
+
+  function bannerSlotu(blok) {
+    if (!blok) return '';
+    if (blok.type === 'hero-combo' && blok.settings && blok.settings.banner_mode === 'product') return '';
+    return BLOK_SLOT[blok.type] || '';
+  }
+
+  function oneCikanGosterilsinMi(blok) {
+    if (!blok || !blok.settings) return false;
+    var kaynak = blok.settings.source || blok.settings.deal_source;
+    return kaynak === 'featured' || kaynak === 'auto';
+  }
+
+  function bannerNormalle(b) {
+    if (!b || typeof b !== 'object') return null;
+    var image = String(b.image || b.url || b.gorselUrl || '').trim();
+    if (!image) return null;
+    var slot = String(b.slot || '');
+    if (['slider', 'dual', 'strip'].indexOf(slot) === -1) slot = '';
+    return {
+      image: image,
+      media_id: Number(b.media_id || b.mediaId || 0) || 0,
+      alt: String(b.alt || b.title || b.baslik || ''),
+      link: String(b.link || ''),
+      slot: slot
+    };
+  }
+
+  function guvenliGorselUrl(u) {
+    u = String(u || '');
+    return /^(https?:\/\/|data:image\/)/i.test(u) ? u : '';
+  }
+
+  function dosyaOku(dosya) {
+    if (typeof dosyayiVeriAdresineCevir === 'function') return dosyayiVeriAdresineCevir(dosya);
+    return new Promise(function (coz, red) {
+      var r = new FileReader();
+      r.onload = function () { coz(String(r.result)); };
+      r.onerror = function () { red(new Error('Dosya okunamadı')); };
+      r.readAsDataURL(dosya);
+    });
+  }
+
+  /* ---------- yükleme ---------- */
+
+  function showcaseYukle() {
+    VE.showcase.yuklendi = false;
+    if (VE.demo) {
+      VE.showcase.banners = [];
+      VE.showcase.featured = [];
+      VE.showcase.yuklendi = true;
+      return Promise.resolve();
+    }
+    return b2bCagir('theme-config', { sureAsimi: 20000 }).then(function (cevap) {
+      if (!cevap || !cevap.ok) {
+        VE.showcase.durum = 'hata';
+        VE.showcase.hata = (cevap && cevap.hata) || 'Vitrin görselleri alınamadı.';
+        showcaseDurumCiz();
+        return;
+      }
+      var sc = (cevap.veri && cevap.veri.config && cevap.veri.config.showcase) || {};
+      VE.showcase.banners = (Array.isArray(sc.banners) ? sc.banners : []).map(bannerNormalle).filter(Boolean);
+      var idler = (Array.isArray(sc.featured_products) ? sc.featured_products : []).map(function (u) {
+        return Number(u && typeof u === 'object' ? u.id : u) || 0;
+      }).filter(Boolean);
+      var d = durumNesnesi();
+      VE.showcase.featured = idler.map(function (id) {
+        var k = d && Array.isArray(d.urunler) ? d.urunler.filter(function (x) { return Number(x.id) === id; })[0] : null;
+        return { id: id, ad: (k && k.ad) || ('Ürün #' + id), kod: (k && k.kod) || '', gorsel: guvenliGorselUrl(k && k.gorsel) };
+      });
+      VE.showcase.yuklendi = true;
+      VE.showcase.kirli = false;
+      VE.showcase.durum = 'ok';
+      if (VE.cache) { VE.cache.showcase = { banners: VE.showcase.banners, featured: VE.showcase.featured }; if (VE.outbox) VE.outbox.saveCache(VE.cache); }
+      if (VE.acikAyar) listeCiz();
+      return urunAdlariniTamamla(idler.filter(function (id) { return !(d && Array.isArray(d.urunler) && d.urunler.some(function (x) { return Number(x.id) === id; })); }));
+    }).catch(function (e) {
+      VE.showcase.durum = 'hata';
+      VE.showcase.hata = String((e && e.message) || e);
+      showcaseDurumCiz();
+    });
+  }
+
+  function urunAdlariniTamamla(idler) {
+    if (!idler.length || VE.demo) return Promise.resolve();
+    return wooCagir('products', { sorgu: { include: idler.join(','), per_page: 100 }, sureAsimi: 20000 }).then(function (c) {
+      if (!c || !c.ok || !Array.isArray(c.veri)) return;
+      c.veri.forEach(function (u) {
+        VE.showcase.featured.forEach(function (f) {
+          if (Number(f.id) === Number(u.id)) {
+            f.ad = u.name || f.ad;
+            f.kod = u.sku || f.kod;
+            f.gorsel = guvenliGorselUrl(u.images && u.images[0] && u.images[0].src) || f.gorsel;
+          }
+        });
+      });
+      if (VE.acikAyar) listeCiz();
+    }).catch(function () { /* ad tamamlama isteğe bağlı */ });
+  }
+
+  /* ---------- kaydetme (debounce) ---------- */
+
+  function showcaseKaydetPlanla() {
+    VE.showcase.kirli = true;
+    VE.showcase.durum = 'bekliyor';
+    showcaseDurumCiz();
+    clearTimeout(VE.showcaseZaman);
+    VE.showcaseZaman = setTimeout(function () { showcaseKaydet({}); }, 900);
+  }
+
+  function showcaseKaydet(secenek) {
+    secenek = secenek || {};
+    clearTimeout(VE.showcaseZaman);
+    if (VE.demo) {
+      VE.showcase.kirli = false;
+      VE.showcase.durum = 'demo';
+      showcaseDurumCiz();
+      return Promise.resolve({ ok: false, demo: true });
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      VE.showcase.durum = 'offline';
+      showcaseDurumCiz();
+      return Promise.resolve({ ok: false, offline: true });
+    }
+    if (VE.showcase.kaydediliyor) {
+      VE.showcase.tekrar = true;
+      return Promise.resolve({ ok: false, busy: true });
+    }
+
+    var govde = { config: { showcase: {
+      banners: VE.showcase.banners.map(function (b, i) {
+        return { image: b.image, media_id: b.media_id || 0, title: b.alt || '', alt: b.alt || '', link: b.link || '', slot: b.slot || '', menu_order: i };
+      }),
+      featured_products: VE.showcase.featured.map(function (u) { return Number(u.id); })
+    } } };
+
+    /* Marka görselleri yalnızca kullanıcı "SİTEYE GÖNDER" dediğinde gider;
+       boş dize gönderilmez (deep_merge sitedeki logoyu silerdi). */
+    if (secenek.branding) {
+      var d = durumNesnesi();
+      var marka = {};
+      if (d && d.ayarlar && d.ayarlar.yerelLogo) marka.logo = d.ayarlar.yerelLogo;
+      if (d && d.ayarlar && d.ayarlar.yerelFavicon) marka.favicon = d.ayarlar.yerelFavicon;
+      if (Object.keys(marka).length) govde.config.branding = marka;
+      else { uyar('Gönderilecek yerel logo/favicon yok. Önce dosya yükleyin.', 'uyari'); return Promise.resolve({ ok: false }); }
+    }
+
+    VE.showcase.kaydediliyor = true;
+    VE.showcase.durum = 'kaydediliyor';
+    showcaseDurumCiz();
+
+    return b2bCagir('theme-config', { metod: 'POST', govde: govde, sureAsimi: 30000 }).then(function (cevap) {
+      VE.showcase.kaydediliyor = false;
+      if (cevap && cevap.ok) {
+        VE.showcase.kirli = false;
+        VE.showcase.durum = 'ok';
+        VE.showcase.hata = '';
+        if (VE.cache) { VE.cache.showcase = { banners: VE.showcase.banners, featured: VE.showcase.featured }; if (VE.outbox) VE.outbox.saveCache(VE.cache); }
+        showcaseDurumCiz();
+        if (secenek.branding) uyar('Marka görselleri siteye gönderildi.', 'basari');
+        if (VE.showcase.tekrar) { VE.showcase.tekrar = false; return showcaseKaydet({}); }
+        onizlemeYukle();
+        return { ok: true };
+      }
+      var agHatasi = !cevap || cevap.agSorunu || (!cevap.durum && !cevap.hata) || Number(cevap.durum) >= 500;
+      VE.showcase.durum = agHatasi ? 'offline' : 'hata';
+      VE.showcase.hata = (cevap && cevap.hata) || 'Kaydedilemedi.';
+      showcaseDurumCiz();
+      if (!agHatasi) uyar('Vitrin görselleri kaydedilemedi:\n' + VE.showcase.hata, 'hata');
+      return { ok: false, hata: VE.showcase.hata };
+    }).catch(function (e) {
+      VE.showcase.kaydediliyor = false;
+      VE.showcase.durum = 'hata';
+      VE.showcase.hata = String((e && e.message) || e);
+      showcaseDurumCiz();
+      return { ok: false };
+    });
+  }
+
+  function showcaseDurumMetni() {
+    var s = VE.showcase;
+    switch (s.durum) {
+      case 'kaydediliyor': return { m: 'Kaydediliyor…', c: 'is-busy' };
+      case 'bekliyor': return { m: 'Değişiklik var, kaydedilecek…', c: 'is-busy' };
+      case 'ok': return { m: s.kirli ? 'Kaydedilmemiş değişiklik var' : 'Siteye kaydedildi ✓', c: s.kirli ? 'is-warn' : 'is-ok' };
+      case 'offline': return { m: 'Çevrimdışı: bağlantı gelince kaydedilecek', c: 'is-warn' };
+      case 'demo': return { m: 'Demo modu: siteye kaydedilmez', c: 'is-warn' };
+      case 'hata': return { m: 'Hata: ' + String(s.hata || '').split('\n')[0], c: 'is-err' };
+      default: return { m: s.yuklendi ? '' : 'Vitrin görselleri yükleniyor…', c: '' };
+    }
+  }
+
+  function showcaseDurumCiz() {
+    var bilgi = showcaseDurumMetni();
+    secHep('[data-ve-showcase-durum]').forEach(function (el) {
+      el.textContent = bilgi.m;
+      el.className = 've-showcase-durum ' + bilgi.c;
+    });
+    var marka = secDeg('#veMarkaDurum');
+    if (marka && VE.showcase.durum) { marka.textContent = bilgi.m; }
+  }
+
+  /* ---------- HTML ---------- */
+
+  function bannerYoneticiHtml(blok) {
+    var slot = bannerSlotu(blok);
+    if (!slot) return '';
+    var liste = VE.showcase.banners.map(function (b, i) { return { b: b, i: i }; });
+    var bunlar = liste.filter(function (x) { return x.b.slot === slot; });
+    var serbest = liste.filter(function (x) { return !x.b.slot; });
+    var notu = blok.type === 'hero-combo'
+      ? 'Hero bloğu Slider ile aynı görsel havuzunu kullanır.'
+      : (slot === 'dual' ? 'İlk iki görsel yan yana basılır.' : (slot === 'strip' ? 'Her görsel tam genişlik bir şerit olur.' : 'Sırayla kayar; ilk görsel öncelikli yüklenir.'));
+
+    var ogeHtml = function (x, tasima) {
+      var b = x.b;
+      return '<div class="ve-banner" data-ve-banner="' + x.i + '">' +
+        '<img class="ve-banner__img" src="' + kac(guvenliGorselUrl(b.image)) + '" alt="" loading="lazy" />' +
+        '<div class="ve-banner__fields">' +
+          '<input type="text" class="' + INPUT_SINIF + ' h-9 text-sm" data-ve-banner-alan="alt" value="' + kac(b.alt) + '" placeholder="Başlık (opsiyonel)" maxlength="120" />' +
+          '<input type="text" class="' + INPUT_SINIF + ' h-9 text-sm font-mono" data-ve-banner-alan="link" value="' + kac(b.link) + '" placeholder="Bağlantı: https://… veya /kategori/…" maxlength="500" />' +
+        '</div>' +
+        '<div class="ve-banner__actions">' +
+          (tasima
+            ? '<button type="button" class="ve-iconbtn" data-ve-banner-tasi title="Bu bloğa taşı">' + ikn('yukle', 'ik-sm') + '</button>'
+            : '<button type="button" class="ve-iconbtn" data-ve-banner-yukari title="Yukarı">' + ikn('yukariOk', 'ik-sm') + '</button>' +
+              '<button type="button" class="ve-iconbtn" data-ve-banner-asagi title="Aşağı">' + ikn('asagiOk', 'ik-sm') + '</button>') +
+          '<button type="button" class="ve-iconbtn ve-iconbtn--danger" data-ve-banner-sil title="Kaldır">' + ikn('cop', 'ik-sm') + '</button>' +
+        '</div>' +
+      '</div>';
+    };
+
+    return '<div class="ve-field ve-banners" data-ve-banners="' + kac(slot) + '">' +
+      '<label class="ve-field__label">' + ikn('resim', 'ik-sm') + ' ' + kac(SLOT_ETIKET[slot] || 'Banner görselleri') + '<span class="ve-stale" title="Sunucu çizer; kaydedilince önizleme yenilenir">sunucu</span></label>' +
+      '<span class="ve-field__help">' + kac(notu) + '</span>' +
+      '<div class="ve-drop" data-ve-drop tabindex="0" role="button" aria-label="Görsel yükle">' +
+        '<input type="file" accept="image/*" multiple data-ve-banner-file hidden />' +
+        ikn('yukle') + '<span>Görseli buraya <b>sürükleyip bırakın</b> ya da <b>tıklayıp seçin</b></span>' +
+        '<small>PNG · JPG · WEBP · en fazla 5 MB' + (VE.demo ? ' · demo modunda yalnızca önizlenir' : '') + '</small>' +
+      '</div>' +
+      '<div class="ve-banner-list" data-ve-banner-list>' +
+        (bunlar.length ? bunlar.map(function (x) { return ogeHtml(x, false); }).join('') : '<div class="ve-banner-list__bos">Bu blok için henüz görsel yok.</div>') +
+      '</div>' +
+      (serbest.length
+        ? '<div class="ve-banner-list__grup">Yerleşimi belirlenmemiş (eski) görseller — tema otomatik dağıtır</div>' +
+          '<div class="ve-banner-list">' + serbest.map(function (x) { return ogeHtml(x, true); }).join('') + '</div>'
+        : '') +
+      '<div class="ve-showcase-durum" data-ve-showcase-durum></div>' +
+    '</div>';
+  }
+
+  function oneCikanYoneticiHtml(blok) {
+    if (!oneCikanGosterilsinMi(blok)) return '';
+    var liste = VE.showcase.featured;
+    return '<div class="ve-field ve-featured" data-ve-featured>' +
+      '<label class="ve-field__label">' + ikn('yildiz', 'ik-sm') + ' Öne çıkan ürünler (panel seçimi)<span class="ve-stale" title="Sunucu çizer; kaydedilince önizleme yenilenir">sunucu</span></label>' +
+      '<span class="ve-field__help">"Otomatik" kaynak önce bu listeyi kullanır; boşsa indirimli ve yeni ürünlere düşer. Sıra sitede aynen korunur.</span>' +
+      '<div class="ve-product">' +
+        '<input type="text" class="' + INPUT_SINIF + '" data-ve-featured-search placeholder="Ürün ara (ad veya stok kodu)…" autocomplete="off" />' +
+        '<div class="ve-product__sonuc hidden" data-ve-featured-results></div>' +
+      '</div>' +
+      '<div class="ve-featured-list" data-ve-featured-list>' +
+        (liste.length
+          ? liste.map(function (u, i) {
+              return '<div class="ve-featured__row" data-ve-featured-row="' + i + '">' +
+                (u.gorsel ? '<img class="ve-featured__img" src="' + kac(guvenliGorselUrl(u.gorsel)) + '" alt="" />' : '<span class="ve-featured__img ve-featured__img--bos">' + ikn('paket', 'ik-sm') + '</span>') +
+                '<span class="ve-featured__body"><b>' + kac(u.ad) + '</b>' + (u.kod ? '<small class="font-mono">' + kac(u.kod) + '</small>' : '') + '</span>' +
+                '<span class="ve-banner__actions">' +
+                  '<button type="button" class="ve-iconbtn" data-ve-featured-yukari title="Yukarı">' + ikn('yukariOk', 'ik-sm') + '</button>' +
+                  '<button type="button" class="ve-iconbtn" data-ve-featured-asagi title="Aşağı">' + ikn('asagiOk', 'ik-sm') + '</button>' +
+                  '<button type="button" class="ve-iconbtn ve-iconbtn--danger" data-ve-featured-sil title="Listeden çıkar">' + ikn('cop', 'ik-sm') + '</button>' +
+                '</span>' +
+              '</div>';
+            }).join('')
+          : '<div class="ve-banner-list__bos">Henüz ürün seçilmedi; arama kutusundan ekleyin.</div>') +
+      '</div>' +
+      '<div class="ve-showcase-durum" data-ve-showcase-durum></div>' +
+    '</div>';
+  }
+
+  /* ---------- olaylar (ayar formu içinde) ---------- */
+
+  function showcaseOlaylariBagla(form) {
+    var bannerKutu = secDeg('[data-ve-banners]', form);
+
+    if (bannerKutu) {
+      var slot = bannerKutu.getAttribute('data-ve-banners');
+      var drop = secDeg('[data-ve-drop]', bannerKutu);
+      var dosyaGirdi = secDeg('[data-ve-banner-file]', bannerKutu);
+
+      var yukle = function (dosyalar) {
+        var liste = Array.prototype.slice.call(dosyalar || []).filter(function (f) { return f && /^image\//.test(f.type); });
+        if (!liste.length) { uyar('Lütfen bir görsel dosyası seçin (PNG, JPG, WEBP).', 'uyari'); return; }
+        if (!VE.demo && typeof navigator !== 'undefined' && navigator.onLine === false) { uyar('Görsel yüklemek için internet bağlantısı gerekir. Çevrimdışısınız.', 'uyari'); return; }
+        drop.classList.add('is-busy');
+        var sira = Promise.resolve();
+        liste.forEach(function (dosya) {
+          sira = sira.then(function () {
+            if (dosya.size > 5 * 1024 * 1024) { uyar('"' + dosya.name + '" çok büyük (en fazla 5 MB).', 'uyari'); return; }
+            return dosyaOku(dosya).then(function (veri) {
+              if (VE.demo) { VE.showcase.banners.push({ image: veri, media_id: 0, alt: '', link: '', slot: slot }); return; }
+              return b2bCagir('media', { metod: 'POST', govde: { filename: dosya.name, data: veri, title: 'Banner' }, sureAsimi: 45000 }).then(function (c) {
+                if (!c || !c.ok || !c.veri || !c.veri.url) { uyar('"' + dosya.name + '" yüklenemedi:\n' + kac((c && c.hata) || ''), 'hata'); return; }
+                VE.showcase.banners.push({ image: String(c.veri.url), media_id: Number(c.veri.id || 0), alt: '', link: '', slot: slot });
+              });
+            });
+          });
+        });
+        sira.then(function () {
+          drop.classList.remove('is-busy');
+          listeCiz();
+          showcaseKaydetPlanla();
+        }).catch(function (e) {
+          drop.classList.remove('is-busy');
+          uyar('Görsel yüklenirken hata: ' + String((e && e.message) || e), 'hata');
+        });
+      };
+
+      drop.addEventListener('click', function () { dosyaGirdi.click(); });
+      drop.addEventListener('keydown', function (o) { if (o.key === 'Enter' || o.key === ' ') { o.preventDefault(); dosyaGirdi.click(); } });
+      dosyaGirdi.addEventListener('change', function () { yukle(dosyaGirdi.files); dosyaGirdi.value = ''; });
+      drop.addEventListener('dragover', function (o) { o.preventDefault(); drop.classList.add('is-over'); });
+      drop.addEventListener('dragleave', function () { drop.classList.remove('is-over'); });
+      drop.addEventListener('drop', function (o) {
+        o.preventDefault();
+        drop.classList.remove('is-over');
+        yukle(o.dataTransfer && o.dataTransfer.files);
+      });
+
+      bannerKutu.addEventListener('input', debounce(function (o) {
+        var el = o.target;
+        var alan = el.getAttribute('data-ve-banner-alan');
+        if (!alan) return;
+        var kart = el.closest('[data-ve-banner]');
+        var b = VE.showcase.banners[parseInt(kart.getAttribute('data-ve-banner'), 10)];
+        if (!b) return;
+        b[alan] = String(el.value || '').slice(0, alan === 'link' ? 500 : 120);
+        showcaseKaydetPlanla();
+      }, 250));
+
+      bannerKutu.addEventListener('click', function (o) {
+        var kart = o.target.closest('[data-ve-banner]');
+        if (!kart) return;
+        var i = parseInt(kart.getAttribute('data-ve-banner'), 10);
+        var b = VE.showcase.banners[i];
+        if (!b) return;
+
+        if (o.target.closest('[data-ve-banner-sil]')) {
+          VE.showcase.banners.splice(i, 1);
+        } else if (o.target.closest('[data-ve-banner-tasi]')) {
+          b.slot = slot;
+        } else if (o.target.closest('[data-ve-banner-yukari]') || o.target.closest('[data-ve-banner-asagi]')) {
+          var yon = o.target.closest('[data-ve-banner-yukari]') ? -1 : 1;
+          var ayni = VE.showcase.banners.map(function (x, j) { return { x: x, j: j }; }).filter(function (p) { return p.x.slot === slot; });
+          var k = ayni.findIndex(function (p) { return p.j === i; });
+          var hedef = k + yon;
+          if (k === -1 || hedef < 0 || hedef >= ayni.length) return;
+          var a = ayni[k].j, c = ayni[hedef].j;
+          var t = VE.showcase.banners[a]; VE.showcase.banners[a] = VE.showcase.banners[c]; VE.showcase.banners[c] = t;
+        } else {
+          return;
+        }
+        listeCiz();
+        showcaseKaydetPlanla();
+      });
+    }
+
+    var featKutu = secDeg('[data-ve-featured]', form);
+
+    if (featKutu) {
+      var arama = secDeg('[data-ve-featured-search]', featKutu);
+      var sonuc = secDeg('[data-ve-featured-results]', featKutu);
+
+      var ara = debounce(function () {
+        var q = arama.value.trim();
+        if (q.length < 2) { sonuc.classList.add('hidden'); sonuc.innerHTML = ''; return; }
+        sonuc.classList.remove('hidden');
+        if (VE.demo) { sonuc.innerHTML = '<div class="ve-product__hint">Demo modunda ürün araması yapılamaz.</div>'; return; }
+        sonuc.innerHTML = '<div class="ve-product__hint"><span class="donuyor">' + ikn('donen', 'ik-sm') + '</span> Aranıyor…</div>';
+        wooCagir('products', { sorgu: { search: q, per_page: 8, status: 'publish' }, sureAsimi: 15000 }).then(function (c) {
+          if (!c || !c.ok) { sonuc.innerHTML = '<div class="ve-product__hint text-red-600">' + kac((c && c.hata) || 'Arama başarısız') + '</div>'; return; }
+          var secili = {};
+          VE.showcase.featured.forEach(function (u) { secili[u.id] = true; });
+          var urunler = (Array.isArray(c.veri) ? c.veri : []).filter(function (u) { return !secili[u.id]; });
+          if (!urunler.length) { sonuc.innerHTML = '<div class="ve-product__hint">Sonuç yok (ya da hepsi listede).</div>'; return; }
+          sonuc.innerHTML = urunler.map(function (u) {
+            return '<button type="button" class="ve-product__pick" data-ve-featured-ekle="' + kac(String(u.id)) + '" data-ad="' + kac(u.name || '') + '" data-kod="' + kac(u.sku || '') + '" data-gorsel="' + kac(guvenliGorselUrl(u.images && u.images[0] && u.images[0].src)) + '">' +
+              '<span class="font-bold">' + kac(u.name || '') + '</span>' + (u.sku ? '<span class="text-xs text-slate-500 font-mono ml-2">' + kac(u.sku) + '</span>' : '') +
+            '</button>';
+          }).join('');
+        });
+      }, 300);
+      arama.addEventListener('input', ara);
+
+      featKutu.addEventListener('click', function (o) {
+        var ekle = o.target.closest('[data-ve-featured-ekle]');
+        if (ekle) {
+          VE.showcase.featured.push({ id: parseInt(ekle.getAttribute('data-ve-featured-ekle'), 10), ad: ekle.getAttribute('data-ad') || '', kod: ekle.getAttribute('data-kod') || '', gorsel: ekle.getAttribute('data-gorsel') || '' });
+          listeCiz();
+          showcaseKaydetPlanla();
+          return;
+        }
+        var satir = o.target.closest('[data-ve-featured-row]');
+        if (!satir) return;
+        var i = parseInt(satir.getAttribute('data-ve-featured-row'), 10);
+        if (o.target.closest('[data-ve-featured-sil]')) {
+          VE.showcase.featured.splice(i, 1);
+        } else if (o.target.closest('[data-ve-featured-yukari]') && i > 0) {
+          var t = VE.showcase.featured[i - 1]; VE.showcase.featured[i - 1] = VE.showcase.featured[i]; VE.showcase.featured[i] = t;
+        } else if (o.target.closest('[data-ve-featured-asagi]') && i < VE.showcase.featured.length - 1) {
+          var t2 = VE.showcase.featured[i + 1]; VE.showcase.featured[i + 1] = VE.showcase.featured[i]; VE.showcase.featured[i] = t2;
+        } else {
+          return;
+        }
+        listeCiz();
+        showcaseKaydetPlanla();
+      });
+    }
+
+    showcaseDurumCiz();
+  }
+
+  /* ---------- marka görselleri (logo/favicon, renderer.js yardımcılarıyla) ---------- */
+
+  function markaOlaylariBagla() {
+    var btn = secDeg('#veMarkaGonderBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      if (VE.demo) { uyar('DEMO MODU: siteye gönderilmez.', 'uyari'); return; }
+      var geri = typeof butonuMesgulEt === 'function' ? butonuMesgulEt(btn, 'GÖNDERİLİYOR…') : function () {};
+      showcaseKaydet({ branding: true }).then(geri, geri);
+    });
+    if (typeof logoOnizlemeGuncelle === 'function') { try { logoOnizlemeGuncelle(); } catch (e) { /* ayarlar henüz yok */ } }
+    if (typeof faviconOnizlemeGuncelle === 'function') { try { faviconOnizlemeGuncelle(); } catch (e) { /* ayarlar henüz yok */ } }
+  }
+
+  /* ---------- önizlemeden gelen "ayarı aç" isteği ---------- */
+
+  function duzenlemeIstegi(id) {
+    if (!VE.state || !id) return;
+    var blok = VE.state.layout.blocks.filter(function (b) { return b.id === id; })[0];
+    if (!blok) return;
+    VE.acikAyar = id;
+    VE.secili = id;
+    listeCiz();
+    var satir = secDeg('[data-ve-row][data-id="' + cssKac(id) + '"]', UI.liste);
+    if (satir) {
+      satir.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      satir.classList.add('is-new');
+      var hedef = secDeg('[data-ve-drop], [data-ve-featured-search], [data-ve-field]', satir);
+      if (hedef) setTimeout(function () { try { hedef.focus(); } catch (e) { /* jsdom */ } }, 250);
+    }
+  }
+
+  /* ==========================================================================
    *  11) BAŞLAT
    * ========================================================================*/
 
@@ -1523,6 +2028,7 @@
 
     window.addEventListener('message', onizlemeMesaji);
     olcekDinleyiciBagla();
+    markaOlaylariBagla();
     listeOlaylariniBagla();
     paletOlaylari();
     tokenOlaylari();

@@ -968,6 +968,20 @@
   .dark .izg-kategori { color: #94a3b8; }
   .izg-bos { color: #94a3b8; }
   .izg-para { font-weight: 800; font-variant-numeric: tabular-nums; }
+  /* ---- Akıcılık: 150ms ease-out geçişler, rakam hizası, yapışkan kategori hapları ---- */
+  .izg-satir, .izg-kod, .izg-para, .izg-stok { font-variant-numeric: tabular-nums; }
+  .izg-veri { transition: background-color .15s ease-out, transform .15s ease-out, box-shadow .15s ease-out; will-change: transform; }
+  .izg-veri:hover { transform: translateX(2px); box-shadow: inset 3px 0 0 var(--aksiyon); }
+  .izg-h[data-duzenle] { transition: background-color .15s ease-out, box-shadow .15s ease-out; }
+  .izg-rozet, .izg-islem { transition: background-color .15s ease-out, transform .12s ease-out, filter .15s ease-out; }
+  .izg-haplar { position: sticky; top: 0; z-index: 6; display: flex; gap: 6px; padding: 8px 2px 10px; margin-bottom: 6px; overflow-x: auto; scrollbar-width: none; background: linear-gradient(var(--zemin) 82%, transparent); -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent); }
+  .izg-haplar::-webkit-scrollbar { display: none; }
+  .izg-hap { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--kenar); border-radius: 999px; background: var(--panel); color: var(--govde); font-size: 12.5px; font-weight: 650; white-space: nowrap; cursor: pointer; transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out, transform .15s ease-out; }
+  .izg-hap:hover { border-color: var(--aksiyon); color: var(--aksiyon); transform: translateY(-1px); }
+  .izg-hap:active { transform: scale(.97); }
+  .izg-hap.is-on { background: var(--aksiyon); border-color: var(--aksiyon); color: #fff; }
+  .izg-hap__adet { padding: 1px 7px; border-radius: 999px; background: var(--panel-alt); color: var(--ikincil); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .izg-hap.is-on .izg-hap__adet { background: rgba(255,255,255,.22); color: #fff; }
   .izg-stok { font-weight: 900; font-variant-numeric: tabular-nums; }
 
   /* Düzenlenebilir hücrede imleç ve hafif bir çerçeve ipucu. */
@@ -1389,11 +1403,6 @@
         <span class="align-middle">İskonto Oranları</span>
       </button>
 
-      <button data-sekme="vitrin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
-        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-resim"></use></svg>
-        <span class="align-middle">Web Vitrini</span>
-      </button>
-
       <!-- BYOM 2.0 — Lego vitrin editörü: ana sayfa bloklarını sürükle-bırak ile düzenler,
            canlı önizler ve tek PUT ile yayınlar (renderer-vitrin.js). -->
       <button data-sekme="vitrin-editor" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
@@ -1554,10 +1563,16 @@
                  Flex ögesinde vertical-align yok sayılır; ikon tam ortada durur. -->
             <span class="absolute left-5 top-0 bottom-0 flex items-center text-3xl pointer-events-none"><svg class="ik" aria-hidden="true"><use href="#ik-ara"></use></svg></span>
             <input id="urunArama" type="search" autocomplete="off"
-                   placeholder="Ürün adı veya stok kodu yazın…"
-                   class="w-full h-16 pl-16 pr-5 rounded-2xl text-xl font-semibold
+                   placeholder="Ürün adı veya stok kodu yazın…  (Ctrl+F)"
+                   class="w-full h-16 pl-16 pr-14 rounded-2xl text-xl font-semibold
                           bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600
                           focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+            <!-- Hızlı temizle: yazı varken belirir (Esc de temizler) -->
+            <button id="urunAramaTemizle" type="button" title="Aramayı temizle (Esc)" aria-label="Aramayı temizle"
+                    class="hidden absolute right-3 top-0 bottom-0 my-auto h-9 w-9 rounded-lg grid place-items-center
+                           text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+              <svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg>
+            </button>
           </div>
           <!-- Yükseklik (h-16) ve iç boşluk (px-5) arama kutusuyla birebir aynı. -->
           <select id="urunDurumSuzgec"
@@ -1658,6 +1673,9 @@
                SAĞ TARAF — LİSTE (tablo veya kart)
                ======================================================== -->
           <div class="flex-1 min-w-0">
+            <!-- Yapışkan kategori hapları: tıklayınca liste anında (yerel) süzülür.
+                 renderer-izgara.js > izgKategoriHaplariCiz çizer. -->
+            <div id="izgKategoriHaplari" class="izg-haplar hidden" role="tablist" aria-label="Kategoriye göre süz"></div>
             <div id="urunIzgara" class="hidden"></div>
             <div id="urunListesi" class="hidden flex-col gap-4"></div>
           </div>
@@ -1779,170 +1797,7 @@
           </div>
         </div>
       </section>
-      <!-- ============================================================
- SEKME — WEB VİTRİNİ (kampanyalı ürünler + banner/slider)
- İçerik renderer-ek.js tarafından doldurulur.
- ============================================================ -->
-      <section id="sekme-vitrin" class="sekme-govde">
-
-        <div class="flex flex-wrap items-center gap-4 mb-5">
-          <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-resim"></use></svg> Web Vitrini</h1>
-          <button id="vitrinYenileBtn"
-                  class="ml-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> SİTEDEN YÜKLE
- </button>
-        </div>
-
-        <p class="mb-6 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
-                  border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4 leading-relaxed">
- <svg class="ik" aria-hidden="true"><use href="#ik-bilgi"></use></svg> Burada seçtiğiniz <b>Öne Çıkan Ürünler</b> ve <b>Banner/Slider</b> görselleri
-          sitenizin B2B Core yapılandırmasına (<code>theme-config</code>) kaydedilir —
-          <b>B2B Core eklentisi</b> gerektirir. Bu veriyi ana sayfada göstermek, sitenizin
-          <b>temasının</b> bu alanları okuyacak şekilde uyarlanmasına bağlıdır.
-        </p>
-
-        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-          <!-- Sol: Kampanyalı / Öne Çıkan Ürünler -->
-          <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700
-                      shadow-sm flex flex-col gap-4">
-            <div class="text-xl font-black"><svg class="ik" aria-hidden="true"><use href="#ik-yildiz"></use></svg> Kampanyalı / Öne Çıkan Ürünler</div>
-            <p class="text-base text-slate-500 dark:text-slate-400">
-              Ürün ara, tek tıkla vitrine ekle. Sıra ▲▼ ile değiştirilir; listedeki
-              ürün sırası web sitesinde de aynen kullanılır.
-            </p>
-
-            <div class="relative">
-              <input id="vitrinUrunArama" type="text" placeholder="Ürün ara (ad veya stok kodu)…" autocomplete="off"
- class="w-full h-14 px-4 rounded-xl text-lg font-semibold
- bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
- focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
-              <div id="vitrinUrunAramaSonuc"
-                   class="hidden absolute z-10 mt-2 w-full max-h-72 overflow-y-auto rounded-xl border-2
-                          border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl p-2
-                          flex flex-col gap-1"></div>
-            </div>
-
-            <div class="text-base font-bold text-slate-500 dark:text-slate-400">
-              Vitrindeki Ürünler (<span id="vitrinUrunSayisi">0</span>)
-            </div>
-            <div id="vitrinUrunListesi" class="flex flex-col gap-2"></div>
-          </div>
-
-          <!-- Sağ: Ana Sayfa Slider / Banner -->
-          <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700
-                      shadow-sm flex flex-col gap-4">
-            <div class="flex items-center gap-3">
-              <div class="text-xl font-black"><svg class="ik" aria-hidden="true"><use href="#ik-panel"></use></svg> Ana Sayfa Slider / Banner</div>
-              <button id="vitrinBannerEkleBtn" type="button"
-                      class="ml-auto h-12 px-5 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                             dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                             text-base font-extrabold transition"><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> BANNER EKLE</button>
-              <input id="vitrinBannerDosyaSec" type="file" accept="image/*" class="hidden" />
-            </div>
-            <p class="text-base text-slate-500 dark:text-slate-400">
-              Görsel yükleyin, isterseniz başlık ve tıklanınca gidilecek bağlantıyı yazın.
-              Sıra ▲▼ ile değiştirilir.
-            </p>
-
-            <div id="vitrinBannerListesi" class="flex flex-col gap-4"></div>
-          </div>
-
-        </div>
-
-        <!-- ============================================================
- MARKA GÖRSELLERİ — LOGO & FAVICON
- Eskiden "API & Site Ayarları" sekmesindeydi; oraya yalnızca
- geliştirici girebildiği için mağaza sahibi kendi logosunu
- değiştiremiyordu. Vitrin yönetimiyle aynı yere alındı.
-
- Logo ve favicon HEM yerelde (ayarlar.json) saklanır — üst çubuk
- ve uygulama simgesi internetsiz de doğru görünsün diye — HEM de
- "GÖNDER" ile theme-config'in `branding` anahtarına yazılır.
- ============================================================ -->
-        <div id="markaLogoKutusu"
-             class="mt-6 bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700
-                    shadow-sm grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-          <!-- Firma logosu -->
-          <div>
-            <div class="text-xl font-black mb-1"><svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg> Firma Logosu</div>
-            <p class="text-base text-slate-500 dark:text-slate-400 mb-4">
-              Üst çubukta ve depo fişlerinin başlığında görünür.
-              Sitenize bağlandığınızda logo otomatik çekilir; site logosu yoksa
-              veya çekilemezse burada yüklediğiniz yerel logo kullanılır.
-            </p>
-            <div class="flex items-center gap-4">
-              <div id="logoOnizlemeKutu" class="hidden w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
-                          border-2 border-slate-300 dark:border-slate-600 overflow-hidden shrink-0 grid place-items-center">
-                <img id="logoOnizleme" alt="Logo önizleme" class="max-w-full max-h-full object-contain" />
-              </div>
-              <div id="logoYokKutu" class="w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
-                          border-2 border-dashed border-slate-300 dark:border-slate-600 shrink-0 grid place-items-center text-3xl text-slate-400">
- <svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg>
- </div>
-              <div class="flex-1 flex flex-wrap gap-2">
-                <button id="logoYukleBtn" type="button"
-                        class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                               text-base font-extrabold transition"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> LOGO YÜKLE</button>
-                <button id="logoKaldirBtn" type="button"
-                        class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
-                               dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
-                               text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
-              </div>
-              <input id="logoDosyaSec" type="file" accept="image/*" class="hidden" />
-            </div>
-            <p id="logoAciklama" class="mt-2 text-sm text-slate-500">
-              En fazla 3 MB · PNG, JPG, WEBP veya SVG.
-            </p>
-          </div>
-
-          <!-- Site favicon'u -->
-          <div>
-            <div class="text-xl font-black mb-1"><svg class="ik" aria-hidden="true"><use href="#ik-yerimi"></use></svg> Site Favicon'u</div>
-            <p class="text-base text-slate-500 dark:text-slate-400 mb-4">
-              Tarayıcı sekmesinde ve yer imlerinde görünen küçük simge.
-              Kare bir görsel seçin (önerilen: 512×512 PNG).
-            </p>
-            <div class="flex items-center gap-4">
-              <div id="faviconOnizlemeKutu" class="hidden w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
-                          border-2 border-slate-300 dark:border-slate-600 overflow-hidden shrink-0 grid place-items-center">
-                <img id="faviconOnizleme" alt="Favicon önizleme" class="max-w-full max-h-full object-contain" />
-              </div>
-              <div id="faviconYokKutu" class="w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
-                          border-2 border-dashed border-slate-300 dark:border-slate-600 shrink-0 grid place-items-center text-3xl text-slate-400">
- <svg class="ik" aria-hidden="true"><use href="#ik-yerimi"></use></svg>
- </div>
-              <div class="flex-1 flex flex-wrap gap-2">
-                <button id="faviconYukleBtn" type="button"
-                        class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                               text-base font-extrabold transition"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> FAVICON YÜKLE</button>
-                <button id="faviconKaldirBtn" type="button"
-                        class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
-                               dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
-                               text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
-              </div>
-              <input id="faviconDosyaSec" type="file" accept="image/*" class="hidden" />
-            </div>
-            <p class="mt-2 text-sm text-slate-500">
-              En fazla 1 MB · PNG, ICO, SVG veya WEBP.
-            </p>
-          </div>
-        </div>
-
-        <div class="mt-6 flex flex-wrap items-center gap-4">
-          <button id="vitrinGonderBtn"
-                  class="h-16 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER
- </button>
-          <div id="vitrinDurum" class="text-lg font-bold whitespace-pre-line"></div>
-        </div>
-      </section>
-
+      
       <!-- ============================================================
  SEKME — VİTRİN EDİTÖRÜ (BYOM 2.0 Lego Vitrin)
  Sol: Lego Çantası (blok listesi, palet, renk & stil).
@@ -2008,6 +1863,93 @@
                 <span class="ve-panel__hint">Anında önizlenir</span>
               </div>
               <div id="veTokenlar"></div>
+            </div>
+
+            <!-- Marka görselleri: eski "Web Vitrini" sekmesinden taşındı. Kimlikler
+                 (#logoOnizleme, #faviconYukleBtn …) renderer.js'teki yerel logo/favicon
+                 yardımcıları tarafından kullanılır; DEĞİŞTİRİLMEMELİ. -->
+            <div class="ve-panel" id="veMarkaPanel">
+              <div class="ve-panel__head">
+                <h2><svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg> Marka Görselleri</h2>
+                <span class="ve-panel__hint">Logo &amp; favicon</span>
+              </div>
+              <div id="markaLogoKutusu"
+             class="grid grid-cols-1 gap-4">
+
+          <!-- Firma logosu -->
+          <div>
+            <div class="text-base font-extrabold mb-1"><svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg> Firma Logosu</div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
+              Üst çubukta ve depo fişlerinin başlığında görünür.
+              Sitenize bağlandığınızda logo otomatik çekilir; site logosu yoksa
+              veya çekilemezse burada yüklediğiniz yerel logo kullanılır.
+            </p>
+            <div class="flex items-center gap-4">
+              <div id="logoOnizlemeKutu" class="hidden w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
+                          border-2 border-slate-300 dark:border-slate-600 overflow-hidden shrink-0 grid place-items-center">
+                <img id="logoOnizleme" alt="Logo önizleme" class="max-w-full max-h-full object-contain" />
+              </div>
+              <div id="logoYokKutu" class="w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
+                          border-2 border-dashed border-slate-300 dark:border-slate-600 shrink-0 grid place-items-center text-3xl text-slate-400">
+ <svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg>
+ </div>
+              <div class="flex-1 flex flex-wrap gap-2">
+                <button id="logoYukleBtn" type="button"
+                        class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                               text-base font-extrabold transition"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> LOGO YÜKLE</button>
+                <button id="logoKaldirBtn" type="button"
+                        class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
+                               dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
+                               text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
+              </div>
+              <input id="logoDosyaSec" type="file" accept="image/*" class="hidden" />
+            </div>
+            <p id="logoAciklama" class="mt-2 text-sm text-slate-500">
+              En fazla 3 MB · PNG, JPG, WEBP veya SVG.
+            </p>
+          </div>
+
+          <!-- Site favicon'u -->
+          <div>
+            <div class="text-base font-extrabold mb-1"><svg class="ik" aria-hidden="true"><use href="#ik-yerimi"></use></svg> Site Favicon'u</div>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
+              Tarayıcı sekmesinde ve yer imlerinde görünen küçük simge.
+              Kare bir görsel seçin (önerilen: 512×512 PNG).
+            </p>
+            <div class="flex items-center gap-4">
+              <div id="faviconOnizlemeKutu" class="hidden w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
+                          border-2 border-slate-300 dark:border-slate-600 overflow-hidden shrink-0 grid place-items-center">
+                <img id="faviconOnizleme" alt="Favicon önizleme" class="max-w-full max-h-full object-contain" />
+              </div>
+              <div id="faviconYokKutu" class="w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
+                          border-2 border-dashed border-slate-300 dark:border-slate-600 shrink-0 grid place-items-center text-3xl text-slate-400">
+ <svg class="ik" aria-hidden="true"><use href="#ik-yerimi"></use></svg>
+ </div>
+              <div class="flex-1 flex flex-wrap gap-2">
+                <button id="faviconYukleBtn" type="button"
+                        class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                               text-base font-extrabold transition"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> FAVICON YÜKLE</button>
+                <button id="faviconKaldirBtn" type="button"
+                        class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
+                               dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
+                               text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
+              </div>
+              <input id="faviconDosyaSec" type="file" accept="image/*" class="hidden" />
+            </div>
+            <p class="mt-2 text-sm text-slate-500">
+              En fazla 1 MB · PNG, ICO, SVG veya WEBP.
+            </p>
+          </div>
+        </div>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <button id="veMarkaGonderBtn" type="button"
+                        class="h-11 px-4 rounded-xl bg-marka-700 hover:bg-marka-800 text-white text-base font-extrabold transition">
+                  <svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> SİTEYE GÖNDER
+                </button>
+                <span id="veMarkaDurum" class="text-sm text-slate-500 dark:text-slate-400"></span>
+              </div>
             </div>
           </aside>
 
@@ -2139,6 +2081,34 @@
           /* Tailwind'in .hidden kurali bu <style> blogundan ONCE geldigi icin ezildi ve
              "Onizleme hazirlaniyor" kutusu iframe'in altinda yer kapliyordu. */
           .ve-frame.hidden, .ve-empty.hidden, .ve-frame[hidden], .ve-empty[hidden] { display: none !important; }
+          /* ---- Blok içi vitrin içeriği: banner yükleme, öne çıkan ürünler ---- */
+          .ve-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 14px 10px; border: 2px dashed var(--kenar-guclu); border-radius: 6px; background: var(--panel); color: var(--ikincil); font-size: 12px; text-align: center; cursor: pointer; transition: border-color .15s ease-out, background-color .15s ease-out, transform .15s ease-out; outline: none; }
+          .ve-drop:hover, .ve-drop:focus-visible { border-color: var(--aksiyon); background: var(--aksiyon-zemin); color: var(--baslik); }
+          .ve-drop.is-over { border-color: var(--aksiyon); background: var(--aksiyon-zemin); transform: scale(1.01); }
+          .ve-drop.is-busy { opacity: .6; pointer-events: none; }
+          .ve-drop .ik { width: 22px; height: 22px; color: var(--aksiyon); }
+          .ve-drop small { font-size: 10.5px; color: var(--soluk); }
+          .ve-banner-list { display: flex; flex-direction: column; gap: 6px; }
+          .ve-banner-list__bos { font-size: 12px; color: var(--soluk); font-style: italic; padding: 6px 2px; }
+          .ve-banner-list__grup { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ikincil); margin-top: 6px; }
+          .ve-banner { display: grid; grid-template-columns: 72px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 6px; border: 1px solid var(--kenar); border-radius: 6px; background: var(--panel); transition: border-color .15s ease-out, transform .15s ease-out; }
+          .ve-banner:hover { border-color: var(--kenar-guclu); transform: translateX(2px); }
+          .ve-banner__img { width: 72px; height: 48px; object-fit: cover; border-radius: 4px; background: var(--panel-alt); }
+          .ve-banner__fields { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+          .ve-banner__actions { display: flex; flex-direction: column; gap: 3px; }
+          .ve-banner__actions .ve-iconbtn { width: 26px; height: 26px; }
+          .ve-featured-list { display: flex; flex-direction: column; gap: 4px; }
+          .ve-featured__row { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 4px 6px; border: 1px solid var(--kenar); border-radius: 6px; background: var(--panel); transition: border-color .15s ease-out, transform .15s ease-out; }
+          .ve-featured__row:hover { border-color: var(--kenar-guclu); transform: translateX(2px); }
+          .ve-featured__row .ve-banner__actions { flex-direction: row; }
+          .ve-featured__img { width: 36px; height: 36px; object-fit: contain; border-radius: 4px; background: var(--panel-alt); display: inline-flex; align-items: center; justify-content: center; color: var(--soluk); }
+          .ve-featured__body { display: flex; flex-direction: column; min-width: 0; font-size: 12.5px; }
+          .ve-featured__body b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .ve-featured__body small { color: var(--ikincil); font-size: 11px; }
+          .ve-showcase-durum { font-size: 11.5px; font-weight: 650; color: var(--ikincil); min-height: 1em; }
+          .ve-showcase-durum.is-ok { color: #059669; } .ve-showcase-durum.is-warn { color: #b45309; } .ve-showcase-durum.is-err { color: #dc2626; } .ve-showcase-durum.is-busy { color: var(--aksiyon); }
+          .ve-badge-empty { color: #b45309; font-weight: 700; }
+          html.dark .ve-badge-empty { color: #fcd34d; }
           @media (max-width: 1280px) { .ve-grid { grid-template-columns: 340px minmax(0,1fr); } }
         </style>
       </section>
@@ -2239,9 +2209,9 @@
                 <p class="mt-1 text-sm text-slate-500">Depo fişlerinin başlığında ve üst çubukta görünür.</p>
               </div>
               <!-- Firma Logosu / Favicon alanları buradan KALDIRILDI:
- marka görselleri artık "Web Vitrini" sekmesinde, banner
- yönetiminin yanında toplanıyor (bkz. #markaLogoKutusu).
- Bu sekme yalnızca API anahtarları ve çekirdek ayarlar için. -->
+ marka görselleri Vitrin Editörü › "Marka Görselleri" panelinde
+ (bkz. #veMarkaPanel / #markaLogoKutusu). Bu sekme yalnızca API
+ anahtarları ve çekirdek ayarlar için. -->
 
               <div>
                 <label for="girdiUrl" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-kure"></use></svg> WooCommerce Site Adresi</label>

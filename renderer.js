@@ -2084,9 +2084,6 @@ function sekmeAc(ad) {
   if (ad === 'iskonto' && !durum.iskontoYuklendi && typeof iskontoSekmesiYukle === 'function') {
     iskontoSekmesiYukle();
   }
-  if (ad === 'vitrin' && !durum.vitrin.yuklendi && typeof vitrinSekmesiYukle === 'function') {
-    vitrinSekmesiYukle();
-  }
   // BYOM 2.0 Vitrin Editörü (renderer-vitrin.js): ilk açılışta siteden düzeni çeker.
   if (ad === 'vitrin-editor' && typeof vitrinEditorAc === 'function') {
     vitrinEditorAc();
@@ -5826,7 +5823,7 @@ async function yerelLogoKaldir() {
  *  --------------------------------------------------------------------------
  *  Logo ile aynı desende çalışır: dosya base64'e çevrilip ayarlar.json'a
  *  yazılır, "DEĞİŞİKLİKLERİ WEB SİTESİNE GÖNDER" ile theme-config'in
- *  `branding.favicon` alanına iletilir (bkz. renderer-ek.js → vitrinGonder).
+ *  `branding.favicon` alanına iletilir (bkz. renderer-vitrin.js → showcaseKaydet({branding:true})).
  *
  *  Boyut sınırı logodan küçüktür (1 MB): favicon her sayfa isteğinde
  *  yüklenir, base64 olarak yapılandırmaya gömülen büyük bir dosya sitenin
@@ -6617,7 +6614,7 @@ function olaylariBagla() {
     $('#firmaAdiBaslik').textContent = $('#girdiFirmaAdi').value || 'Firma Adı Girilmedi';
   });
 
-  /* --- Marka görselleri (Web Vitrini sekmesinde) --- */
+  /* --- Marka görselleri (Vitrin Editörü › Marka Görselleri paneli) --- */
   $('#logoYukleBtn').addEventListener('click', function () { $('#logoDosyaSec').click(); });
   $('#logoDosyaSec').addEventListener('change', function (o) {
     const dosya = o.target.files && o.target.files[0];
@@ -6665,8 +6662,8 @@ function olaylariBagla() {
     /* Alt+1…5 sol menüdeki İLK BEŞ sekmeye gider. Ayarlar sekmesi bilerek
        kısayolsuzdur: geliştirici kilidinin arkasındadır ve yanlışlıkla
        tetiklenmesi her seferinde şifre penceresi açardı. */
-    if (o.key >= '1' && o.key <= '6' && o.altKey) {
-      const sekmeler = ['siparisler', 'urunler', 'uyeler', 'iskonto', 'vitrin', 'vitrin-editor'];
+    if (o.key >= '1' && o.key <= '5' && o.altKey) {
+      const sekmeler = ['siparisler', 'urunler', 'uyeler', 'iskonto', 'vitrin-editor'];
       sekmeAc(sekmeler[Number(o.key) - 1]);
     }
   });

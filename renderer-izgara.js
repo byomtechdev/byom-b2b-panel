@@ -1954,3 +1954,146 @@ function izgOlaylariBagla() {
     urunleriCiz.izgSarildi = true;
   }
 }());
+
+/* ==========================================================================
+ *  BÖLÜM H — AKICILIK: YAPIŞKAN KATEGORİ HAPLARI, ARAMA KISAYOLLARI
+ *  --------------------------------------------------------------------------
+ *  Vitrin Editörü'ndeki tasarım dili ürün yönetimine taşınır:
+ *   - Tablonun tepesine yapışkan "kategori hapları": tıklanınca liste
+ *     SUNUCUYA GİTMEDEN (izgKategoriSuz → yerel süzgeç) anında süzülür.
+ *     Sol ağaç ve haplar aynı süzgeci paylaşır; biri değişince öteki de
+ *     işaretlenir.
+ *   - Arama kutusu: hızlı temizle düğmesi (×, Esc) ve Ctrl/⌘+F kısayolu.
+ *   - Geçişler (150ms ease-out) ve rakam hizası CSS'te (index.html).
+ *
+ *  BÖLÜM G ile aynı desen: mevcut fonksiyonlar sarmalanır, çağrı yerleri
+ *  değişmez, sarma idempotenttir.
+ * ========================================================================*/
+
+(function izgAkicilik() {
+  var HAP_SINIRI = 18;
+
+  /** Kategori haplarını çizer (ürün sayısına göre sıralı, en çok 18 + Tümü + Kategorisiz). */
+  function izgKategoriHaplariCiz() {
+    var g = izg();
+    var kap = $('#izgKategoriHaplari');
+    if (!g || !kap) return;
+
+    var d = (typeof durum !== 'undefined' && durum) ? durum : null;
+    var urunler = (d && d.urunler) || [];
+
+    var sayim = Object.create(null);
+    var kategorisiz = 0;
+    urunler.forEach(function (u) {
+      var kl = u.kategoriler || [];
+      if (!kl.length) { kategorisiz++; return; }
+      kl.forEach(function (k) { sayim[k.id] = (sayim[k.id] || 0) + 1; });
+    });
+
+    var liste = (g.kategoriler || []).map(function (k) {
+      return { id: Number(k.id), ad: String(k.ad || ''), adet: sayim[k.id] || 0 };
+    }).sort(function (a, b) {
+      return (b.adet - a.adet) || a.ad.localeCompare(b.ad, 'tr');
+    }).slice(0, HAP_SINIRI);
+
+    var hap = function (etiket, id, adet) {
+      var aktif = Number(g.kategoriSuzgec) === Number(id);
+      return '<button type="button" role="tab" aria-selected="' + (aktif ? 'true' : 'false') + '" ' +
+               'class="izg-hap' + (aktif ? ' is-on' : '') + '" data-izg-hap="' + id + '">' +
+               '<span>' + kacis(etiket) + '</span><span class="izg-hap__adet">' + adet + '</span></button>';
+    };
+
+    var html = hap('Tümü', 0, urunler.length);
+    if (kategorisiz) html += hap('Kategorisiz', -1, kategorisiz);
+    html += liste.map(function (k) { return hap(k.ad, k.id, k.adet); }).join('');
+
+    kap.innerHTML = html;
+    kap.classList.toggle('hidden', !urunler.length && !(g.kategoriler || []).length);
+
+    var aktifHap = kap.querySelector('.izg-hap.is-on');
+    if (aktifHap && aktifHap.scrollIntoView) {
+      try { aktifHap.scrollIntoView({ inline: 'nearest', block: 'nearest' }); } catch (e) { /* eski motor */ }
+    }
+  }
+
+  /* --- izgKategoriAgaciCiz: ağaç her çizildiğinde haplar da tazelenir --- */
+  if (typeof izgKategoriAgaciCiz === 'function' && !izgKategoriAgaciCiz.hapSarildi) {
+    var eskiAgac = izgKategoriAgaciCiz;
+    izgKategoriAgaciCiz = function () {
+      eskiAgac.apply(this, arguments);
+      izgKategoriHaplariCiz();
+    };
+    izgKategoriAgaciCiz.hapSarildi = true;
+  }
+
+  /* --- izgKategoriSuz: süzgeç değişince haplar da işaretlenir --- */
+  if (typeof izgKategoriSuz === 'function' && !izgKategoriSuz.hapSarildi) {
+    var eskiSuz = izgKategoriSuz;
+    izgKategoriSuz = function () {
+      eskiSuz.apply(this, arguments);
+      izgKategoriHaplariCiz();
+    };
+    izgKategoriSuz.hapSarildi = true;
+  }
+
+  /* --- izgOlaylariBagla: hap tıklaması, arama temizle, kısayollar --- */
+  if (typeof izgOlaylariBagla === 'function' && !izgOlaylariBagla.hapSarildi) {
+    var eskiBagla = izgOlaylariBagla;
+    izgOlaylariBagla = function () {
+      eskiBagla.apply(this, arguments);
+
+      var bolum = $('#sekme-urunler');
+      if (!bolum || bolum.dataset.hapBagli === '1') return;
+      bolum.dataset.hapBagli = '1';
+
+      var haplar = $('#izgKategoriHaplari');
+      if (haplar) {
+        haplar.addEventListener('click', function (o) {
+          var btn = o.target.closest ? o.target.closest('[data-izg-hap]') : null;
+          if (btn) izgKategoriSuz(btn.getAttribute('data-izg-hap'));
+        });
+      }
+
+      var arama = $('#urunArama');
+      var temizle = $('#urunAramaTemizle');
+
+      var temizleGoster = function () {
+        if (temizle && arama) temizle.classList.toggle('hidden', !arama.value);
+      };
+
+      var aramayiTemizle = function () {
+        if (!arama || !arama.value) return;
+        arama.value = '';
+        temizleGoster();
+        /* renderer.js'teki mevcut input dinleyicisi (debounce → yükle/çiz) tetiklenir. */
+        arama.dispatchEvent(new Event('input', { bubbles: true }));
+        arama.focus();
+      };
+
+      if (arama) {
+        arama.addEventListener('input', temizleGoster);
+        arama.addEventListener('keydown', function (o) {
+          if (o.key === 'Escape' && arama.value) { o.preventDefault(); aramayiTemizle(); }
+        });
+        temizleGoster();
+      }
+
+      if (temizle) temizle.addEventListener('click', aramayiTemizle);
+
+      /* Ctrl/⌘+F: ürün sekmesi açıkken tarayıcı aramasını değil ürün aramasını açar. */
+      document.addEventListener('keydown', function (o) {
+        var d = (typeof durum !== 'undefined' && durum) ? durum : null;
+        if (!d || d.aktifSekme !== 'urunler') return;
+        if ((o.ctrlKey || o.metaKey) && !o.altKey && String(o.key).toLowerCase() === 'f' && arama) {
+          o.preventDefault();
+          arama.focus();
+          arama.select();
+        }
+      }, true);
+    };
+    izgOlaylariBagla.hapSarildi = true;
+  }
+
+  /* Dışa açık: testler ve manuel tazeleme için. */
+  window.izgKategoriHaplariCiz = izgKategoriHaplariCiz;
+}());
