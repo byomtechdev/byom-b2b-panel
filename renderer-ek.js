@@ -1629,6 +1629,9 @@ const SIRA_GOSTERGE_SINIFLARI = ['border-t-4', 'border-b-4', 'border-marka-600']
 
 /** Bütün satırlardan bırakma göstergelerini siler. */
 function siraGostergeleriniTemizle() {
+  /* 2px mavi kılavuz çizgisi (renderer-izgara.js › BÖLÜM I) */
+  if (typeof izgBirakmaCizgisiGizle === 'function') izgBirakmaCizgisiGizle();
+
   const kap = $('#urunListesi');
   if (!kap) return;
 
@@ -2412,7 +2415,10 @@ function urunSiralamasiniBagla() {
     if (satir === sonGostergeSatiri && konum === sonGostergeKonumu) return;
 
     siraGostergeleriniTemizle();
-    satir.classList.add('border-marka-600', konum === 'once' ? 'border-t-4' : 'border-b-4');
+
+    /* Kalın kenarlık yerine kartlar arasında 2px canlı mavi kılavuz çizgisi. */
+    if (typeof izgBirakmaCizgisi === 'function') izgBirakmaCizgisi(kap, satir, konum);
+    else satir.classList.add('border-marka-600', konum === 'once' ? 'border-t-4' : 'border-b-4');
 
     sonGostergeSatiri = satir;
     sonGostergeKonumu = konum;

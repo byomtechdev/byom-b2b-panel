@@ -3477,7 +3477,8 @@ function urunleriCiz(arama) {
     return;
   }
 
-  kap.innerHTML = liste.map(function (u, sira) {
+  /* Kart HTML'i tek yerde; parçalı çizim (aşağıda) aynı üreticiyi kullanır. */
+  const kartHtml = function (u, sira) {
     const stokRengi = u.stok <= 0
       ? 'text-red-600 dark:text-red-400'
       : (u.stok < 20 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400');
@@ -3559,7 +3560,85 @@ function urunleriCiz(arama) {
         ikon('cop') + ' ÜRÜNÜ SİL' +
       '</button>' +
     '</div>';
-  }).join('');
+  };
+
+  urunKartlariniParcaliCiz(kap, liste, kartHtml);
+}
+
+/* --------------------------------------------------------------------------
+ *  KART GÖRÜNÜMÜ — PARÇALI ÇİZİM (60 FPS)
+ *  --------------------------------------------------------------------------
+ *  1.111 ürünün hepsini tek innerHTML ile basmak (her kart ~15 düğüm, iki
+ *  giriş kutusu, dört düğme) ilk çizimde saniyeler süren bir yerleşim
+ *  hesabı ve kaydırırken takılma üretiyordu. Şimdi ilk 40 kart hemen basılır;
+ *  gerisi, listenin sonundaki nöbetçi öğe görünür alana 600px yaklaşınca
+ *  40'ar 40'ar eklenir (IntersectionObserver). Sürükle-bırak, düzenleme ve
+ *  olay devri kap üzerinde olduğu için parçalı çizimden etkilenmez.
+ * ------------------------------------------------------------------------*/
+const URUN_KART_PARCASI = 40;
+
+function urunKartlariniParcaliCiz(kap, liste, kartHtml) {
+  /* Yeni çizim eskisinin gözlemcisini ve bekleyen parçalarını geçersiz kılar. */
+  const bilet = String(Number(kap.dataset.kartBileti || 0) + 1);
+  kap.dataset.kartBileti = bilet;
+
+  if (kap._kartGozlemci) {
+    try { kap._kartGozlemci.disconnect(); } catch (e) { /* yok sayılır */ }
+    kap._kartGozlemci = null;
+  }
+
+  const ilk = liste.slice(0, URUN_KART_PARCASI).map(kartHtml).join('');
+
+  if (liste.length <= URUN_KART_PARCASI) {
+    kap.innerHTML = ilk;
+    return;
+  }
+
+  const nobetciHtml = function (kalan) {
+    return '<div class="urun-devam" data-urun-devam="' + (liste.length - kalan) + '" aria-hidden="true">' +
+             '<span class="donuyor">' + ikon('donen') + '</span> ' + kalan + ' ürün daha · kaydırdıkça yüklenir' +
+           '</div>';
+  };
+
+  kap.innerHTML = ilk + nobetciHtml(liste.length - URUN_KART_PARCASI);
+
+  const devamEt = function () {
+    if (kap.dataset.kartBileti !== bilet) return false;
+
+    const nobetci = kap.querySelector('[data-urun-devam]');
+    if (!nobetci) return false;
+
+    const bas = Number(nobetci.getAttribute('data-urun-devam')) || 0;
+    const son = Math.min(liste.length, bas + URUN_KART_PARCASI);
+
+    nobetci.insertAdjacentHTML('beforebegin', liste.slice(bas, son).map(function (u, i) {
+      return kartHtml(u, bas + i);
+    }).join(''));
+
+    if (son >= liste.length) {
+      nobetci.remove();
+      if (kap._kartGozlemci) { kap._kartGozlemci.disconnect(); kap._kartGozlemci = null; }
+      return false;
+    }
+
+    nobetci.setAttribute('data-urun-devam', String(son));
+    nobetci.innerHTML = '<span class="donuyor">' + ikon('donen') + '</span> ' + (liste.length - son) + ' ürün daha · kaydırdıkça yüklenir';
+
+    /* Nöbetçi hâlâ görünürse (geniş ekran) gözlemi tazele ki bir parça daha gelsin. */
+    if (kap._kartGozlemci) { kap._kartGozlemci.unobserve(nobetci); kap._kartGozlemci.observe(nobetci); }
+    return true;
+  };
+
+  if (typeof IntersectionObserver !== 'function') {
+    while (devamEt()) { /* eski motor: hepsini bas */ }
+    return;
+  }
+
+  kap._kartGozlemci = new IntersectionObserver(function (girdiler) {
+    if (girdiler.some(function (g) { return g.isIntersecting; })) devamEt();
+  }, { root: $('#anaGovde') || null, rootMargin: '600px 0px' });
+
+  kap._kartGozlemci.observe(kap.querySelector('[data-urun-devam]'));
 }
 
 async function urunKaydet(id, buton) {

@@ -900,7 +900,7 @@
      satır zemininin boyamadığı koyu bir şerit kalıyordu. */
   .izg-satir {
     display: grid;
-    grid-template-columns: var(--izg-sablon, 44px 68px 150px minmax(0, 1fr) 150px 130px 90px 110px 104px);
+    grid-template-columns: var(--izg-sablon, 28px 44px 68px 150px minmax(0, 1fr) 150px 130px 90px 110px 104px);
     align-items: center;
     column-gap: 0;
     width: 100%;
@@ -970,8 +970,10 @@
   .izg-para { font-weight: 800; font-variant-numeric: tabular-nums; }
   /* ---- Akıcılık: 150ms ease-out geçişler, rakam hizası, yapışkan kategori hapları ---- */
   .izg-satir, .izg-kod, .izg-para, .izg-stok { font-variant-numeric: tabular-nums; }
-  .izg-veri { transition: background-color .15s ease-out, transform .15s ease-out, box-shadow .15s ease-out; will-change: transform; }
-  .izg-veri:hover { transform: translateX(2px); box-shadow: inset 3px 0 0 var(--aksiyon); }
+  /* 60 FPS: satırda yalnızca hafif arka plan geçişi; transform/box-shadow animasyonu YOK
+     (1.000+ satırlık listede her hover'da katman/boyama maliyeti üretiyordu). */
+  .izg-veri { transition: background-color .15s ease-out; }
+  .izg-veri:hover { box-shadow: inset 3px 0 0 var(--aksiyon); }
   .izg-h[data-duzenle] { transition: background-color .15s ease-out, box-shadow .15s ease-out; }
   .izg-rozet, .izg-islem { transition: background-color .15s ease-out, transform .12s ease-out, filter .15s ease-out; }
   .izg-haplar { position: sticky; top: 0; z-index: 6; display: flex; gap: 6px; padding: 8px 2px 10px; margin-bottom: 6px; overflow-x: auto; scrollbar-width: none; background: linear-gradient(var(--zemin) 82%, transparent); -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent); }
@@ -982,6 +984,28 @@
   .izg-hap.is-on { background: var(--aksiyon); border-color: var(--aksiyon); color: #fff; }
   .izg-hap__adet { padding: 1px 7px; border-radius: 999px; background: var(--panel-alt); color: var(--ikincil); font-size: 11px; font-variant-numeric: tabular-nums; }
   .izg-hap.is-on .izg-hap__adet { background: rgba(255,255,255,.22); color: #fff; }
+  /* ---- Sıralama: ⋮⋮ tutamak, 2px canlı mavi kılavuz çizgisi, hayalet, durum ---- */
+  .izg-tut { padding: 0; display: grid; place-items: center; cursor: grab; touch-action: none; user-select: none; color: #94a3b8; outline: none; }
+  .izg-tut .ik { width: 18px; height: 18px; }
+  .izg-tut:hover, .izg-tut:focus-visible { color: #2563eb; }
+  .izg-tut:active { cursor: grabbing; }
+  .izg-tasiniyor { opacity: .35; }
+  body.izg-surukleniyor { user-select: none; cursor: grabbing; }
+  body.izg-surukleniyor .izg-veri:hover { box-shadow: none; }
+  .byom-drop-marker { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: #2563eb; border-radius: 2px; box-shadow: 0 0 0 1px rgba(37,99,235,.25), 0 0 10px rgba(37,99,235,.55); pointer-events: none; z-index: 5; will-change: transform; }
+  .byom-drop-marker::before { content: ""; position: absolute; left: -3px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: #2563eb; }
+  .byom-drop-marker[hidden] { display: none; }
+  #urunListesi { position: relative; }
+  .izg-hayalet { position: fixed; left: 0; top: 0; z-index: 90; pointer-events: none; display: flex; align-items: center; gap: 10px; max-width: 380px; padding: 8px 12px; border-radius: 10px; background: #fff; border: 2px solid #2563eb; box-shadow: 0 14px 34px -12px rgba(2,6,23,.5); font-weight: 800; font-size: 14px; color: #0f172a; will-change: transform; }
+  .dark .izg-hayalet { background: #1e293b; color: #f1f5f9; }
+  .izg-hayalet img { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; background: #f1f5f9; flex: none; }
+  .izg-hayalet__ad { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .izg-hayalet__sira { margin-left: auto; flex: none; padding: 2px 8px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .dark .izg-hayalet__sira { background: #1e3a8a; color: #bfdbfe; }
+  .izg-sira-durum { font-weight: 700; }
+  .izg-sira-durum:empty { display: none; }
+  .izg-sira-durum.is-busy { color: #2563eb; } .izg-sira-durum.is-ok { color: #059669; } .izg-sira-durum.is-err { color: #dc2626; }
+  .urun-devam { padding: 16px; text-align: center; font-weight: 700; color: #64748b; }
   .izg-stok { font-weight: 900; font-variant-numeric: tabular-nums; }
 
   /* Düzenlenebilir hücrede imleç ve hafif bir çerçeve ipucu. */
@@ -3422,6 +3446,8 @@
 <!-- Ürün veri ızgarası (Excel tipi tablo), kategori ağacı ve toplu işlemler.
      renderer.js + renderer-ek.js icindeki genel yardimcilari kullandigi ve
      birkac fonksiyonlarini sardigi icin MUTLAKA onlardan SONRA gelir. -->
+<!-- Ürün sıralama motoru (DOM'suz; node:test altında da çalışır) — ızgaradan ÖNCE yüklenir. -->
+<script src="src/renderer/sira-motor.js"></script>
 <script src="renderer-izgara.js"></script>
 <!-- Excel dökümü ve sütun eşleştirmeli içe aktarma.
      renderer-izgara.js'teki izgOlaylariBagla'yı sardığı ve `izg()` durumunu

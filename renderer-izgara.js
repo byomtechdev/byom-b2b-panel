@@ -89,6 +89,8 @@ const IZGARA_TAMPON = 6;
  * ürün adları zaten `text-overflow: ellipsis` ile kısalıyor.
  */
 const IZGARA_SUTUNLARI = [
+  /* ⋮⋮ tutamak — sürükleyerek sıralama (bkz. BÖLÜM I). */
+  { kod: 'tut',       etiket: '',             genislik: '28px',  ortaGenislik: '26px',  darGenislik: '24px', hiza: 'center' },
   { kod: 'sec',       etiket: '',             genislik: '44px',  ortaGenislik: '40px',  darGenislik: '36px', hiza: 'center' },
   { kod: 'gorsel',    etiket: 'GÖRSEL',       genislik: '68px',  ortaGenislik: '56px',  darGenislik: '46px', hiza: 'center' },
   { kod: 'kod',       etiket: 'SKU / BARKOD', genislik: '150px', ortaGenislik: '120px', darGenislik: '96px', hiza: 'left',  duzenlenir: true },
@@ -116,8 +118,8 @@ const IZGARA_SUTUNLARI = [
  * genişler ve sütunlar kendiliğinden ferahlar.
  */
 const IZGARA_KADEMELERI = [
-  { alan: 'genislik',     enAz: 1066 },
-  { alan: 'ortaGenislik', enAz: 932 },
+  { alan: 'genislik',     enAz: 1094 },
+  { alan: 'ortaGenislik', enAz: 958 },
   { alan: 'darGenislik',  enAz: 0 }
 ];
 
@@ -412,7 +414,7 @@ function izgBosHtml() {
     '<div class="text-2xl font-black mb-2">Ürün bulunamadı</div>' +
     '<div class="text-lg text-slate-500 dark:text-slate-400">' +
       (suzgecVar
-        ? 'Seçili kategoride ürün yok. Soldaki ağaçtan “Tüm Ürünler”e dönebilirsiniz.'
+        ? 'Seçili kategoride ürün yok. Üstteki haplardan ya da soldaki ağaçtan “Tüm Ürünler”e dönebilirsiniz.'
         : 'Aramanıza uyan ürün yok ya da mağazanız henüz boş.') +
     '</div></div>';
 }
@@ -437,10 +439,18 @@ function izgSatirHtml(u) {
              ' style="text-align:' + (hiza || 'left') + '">' + icerik + '</div>';
   }
 
+  const tasiniyorMu = (typeof izgTasinanMi === 'function') && izgTasinanMi(u.id);
+
   return '' +
   '<div class="izg-satir izg-veri' + (seciliMi ? ' izg-secili' : '') +
-       (yayindaMi ? '' : ' izg-taslak') + '" data-izg-id="' + u.id + '" ' +
+       (yayindaMi ? '' : ' izg-taslak') + (tasiniyorMu ? ' izg-tasiniyor' : '') + '" data-izg-id="' + u.id + '" ' +
        'style="height:' + IZGARA_SATIR_YUKSEKLIGI + 'px">' +
+
+    /* ⋮⋮ tutamak: pointer ile sürükle (BÖLÜM I), Alt + ↑/↓ ile klavyeden taşı. */
+    '<div class="izg-h izg-tut" data-izg-tut="' + u.id + '" role="button" tabindex="0" ' +
+         'aria-label="Ürünü taşı" title="Sürükleyerek sıralayın · Alt + ↑ / Alt + ↓ ile de taşıyabilirsiniz">' +
+      ikon('tutamak') +
+    '</div>' +
 
     '<div class="izg-h" style="text-align:center">' +
       '<input type="checkbox" data-izg-sec="' + u.id + '" ' + (seciliMi ? 'checked ' : '') +
@@ -535,7 +545,9 @@ function izgAltbilgiCiz() {
   const magaza = Number(d.urunlerToplam) || toplam;
 
   const parcalar = [
-    '<span>' + ikon('liste') + ' <b>' + gosterilen + '</b> ürün listeleniyor</span>'
+    '<span>' + ikon('liste') + ' <b>' + gosterilen + '</b> ürün listeleniyor</span>',
+    /* Sıra eşitleme durumu (BÖLÜM I → izgSiraDurumCiz doldurur). */
+    '<span id="izgSiraDurum" class="izg-sira-durum"></span>'
   ];
 
   if (gosterilen !== toplam) {
@@ -2003,7 +2015,7 @@ function izgOlaylariBagla() {
                '<span>' + kacis(etiket) + '</span><span class="izg-hap__adet">' + adet + '</span></button>';
     };
 
-    var html = hap('Tümü', 0, urunler.length);
+    var html = hap('Tüm Ürünler', 0, urunler.length);
     if (kategorisiz) html += hap('Kategorisiz', -1, kategorisiz);
     html += liste.map(function (k) { return hap(k.ad, k.id, k.adet); }).join('');
 
@@ -2096,4 +2108,622 @@ function izgOlaylariBagla() {
 
   /* Dışa açık: testler ve manuel tazeleme için. */
   window.izgKategoriHaplariCiz = izgKategoriHaplariCiz;
+}());
+
+/* ==========================================================================
+ *  BÖLÜM I — KADEMELİ (DOMİNO) SIRALAMA MOTORU + 60 FPS SÜRÜKLE-BIRAK
+ *  --------------------------------------------------------------------------
+ *  Hesap src/renderer/sira-motor.js'te (DOM'suz, test edilir); burada
+ *  yalnızca DOM'a bağlanır:
+ *
+ *   - Taşıma: `durum.urunler` (= window.byomUrunler) dizisinde splice; aradaki
+ *     ürünler birer kayar; menu_order = indeks. TAM yeniden çizim YAPILMAZ:
+ *     tablo görünümünde satır düğümü, kart görünümünde kart düğümü
+ *     `insertBefore` ile hedef konuma taşınır (0 ms).
+ *   - Kategori süzgeci açıkken de çalışır; hedefin GLOBAL komşuluğu esas
+ *     alınır, öteki kategorilerin göreli sırası bozulmaz ("Tüm Ürünler" ana
+ *     kataloğu ile kategori görünümü aynı diziyi paylaşır).
+ *   - Kılavuz çizgisi: 2px canlı mavi `.byom-drop-marker`, kesme noktasında.
+ *   - Tablo: pointer olaylarıyla sürükleme (sanal listede DOM'a bakmadan
+ *     konum hesabı, kenara yaklaşınca otomatik kaydırma, rAF ile tek kare).
+ *     Kart: renderer-ek.js'in HTML5 sürüklemesi korunur; bırakma ve Alt+↑/↓
+ *     buradaki motora yönlendirilir (idempotent sarma).
+ *   - Eşitleme: 1500 ms debounce → `POST byom/v1/products/reorder {ids}`
+ *     (tek CASE UPDATE). Yedekler: eski `wc-b2b/v1 products/reorder`
+ *     (200'lük parçalar) → eklenti yoksa yalnızca değişen ürünlere WC PUT.
+ *     Arka planda, sessizce; başarısızlıkta liste siteden geri yüklenir.
+ * ========================================================================*/
+
+(function izgSiralama() {
+  var M = (typeof window !== 'undefined' && window.SiraMotor) ? window.SiraMotor : null;
+  if (!M) {
+    console.error('[Izgara] SiraMotor yüklenmedi (src/renderer/sira-motor.js).');
+    return;
+  }
+
+  var SIRA_BEKLEME = 1500;      // ms — art arda taşımalar tek istek
+  var KENAR_KAYDIRMA = 56;      // px — kenara bu kadar yaklaşınca otomatik kaydırma
+  var KAYDIRMA_HIZI = 22;       // px/kare — en hızlı kenar kaydırması
+  var SURUKLEME_ESIGI = 4;      // px — tıklama ile sürüklemeyi ayıran eşik
+
+  function d() { return (typeof durum !== 'undefined' && durum) ? durum : null; }
+  function cssId(id) { return String(id).replace(/["\\]/g, ''); }
+
+  /* Şartname adı: window.byomUrunler = asıl dizinin takma adı (kopya değil). */
+  try {
+    Object.defineProperty(window, 'byomUrunler', {
+      configurable: true,
+      get: function () { var x = d(); return x && Array.isArray(x.urunler) ? x.urunler : []; },
+      set: function (v) { var x = d(); if (x && Array.isArray(v)) x.urunler = v; }
+    });
+  } catch (e) { /* tanımlıysa dokunma */ }
+
+  /* --------------------------------------------------------------------------
+   *  Eşitleme durumu (alt bilgi şeridinde gösterilir)
+   * ------------------------------------------------------------------------*/
+
+  function sd() {
+    var x = d();
+    if (!x) return null;
+    if (!x.izgSira) x.izgSira = { durum: '', hata: '', kuyruk: null };
+    return x.izgSira;
+  }
+
+  function izgSiraDurumCiz() {
+    var s = sd();
+    var el = $('#izgSiraDurum');
+    if (!s || !el) return;
+
+    var m = {
+      bekliyor: ['Sıra değişti · siteye yazılacak…', 'is-busy'],
+      gonderiliyor: ['Sıra siteye yazılıyor…', 'is-busy'],
+      ok: ['Genel katalog sırası siteye kaydedildi ✓', 'is-ok'],
+      demo: ['Sıra kaydedildi (demo modu — sitede değişiklik yok)', 'is-ok'],
+      hata: ['Sıra kaydedilemedi: ' + String(s.hata || '').split('\n')[0], 'is-err']
+    }[s.durum];
+
+    el.textContent = m ? m[0] : '';
+    el.className = 'izg-sira-durum ' + (m ? m[1] : '');
+  }
+
+  /* --------------------------------------------------------------------------
+   *  Taşıma (tek giriş noktası)
+   * ------------------------------------------------------------------------*/
+
+  /** Sürüklenmekte olan ürün (satır yeniden çizilirken soluk kalsın). */
+  var sur = null;
+  function izgTasinanMi(id) { return !!(sur && sur.aktif && String(sur.id) === String(id)); }
+
+  /**
+   * kaynakId, hedefId'nin önüne/arkasına gelir; aradakiler kayar; DOM'da yalnızca
+   * ilgili düğüm taşınır; 1500 ms sonra siteye yazılır.
+   * @returns {boolean} bir şey değiştiyse true
+   */
+  function izgSiraTasiId(kaynakId, hedefId, oncesineMi) {
+    var x = d();
+    var g = izg();
+    if (!x || !g || !Array.isArray(x.urunler)) return false;
+
+    /* Sunucudaki bilinen değer ilk taşımada yedeklenir (eklentisiz yedek yol
+       yalnızca değişenleri PUT'lar). */
+    x.urunler.forEach(function (u) { if (u && u.menuSiraSite === undefined) u.menuSiraSite = Number(u.menuSira) || 0; });
+
+    var sonuc = M.tasiId(x.urunler, kaynakId, hedefId, !!oncesineMi);
+    if (!sonuc || !sonuc.degisti) return false;
+
+    M.konumlariYaz(x.urunler, 'menuSira');
+    x.siralamaDegisti = true;
+
+    g.liste = izgFiltreliListe();
+
+    if (g.gorunum === 'tablo') {
+      if (!izgSatiriDomdaTasi(kaynakId)) {
+        g.tazeleGerek = true;
+        izgPencereyiCiz();
+      }
+    } else if (!izgKartiDomdaTasi(kaynakId)) {
+      izgKartGorunumunuCiz();
+    }
+
+    izgSiraGonderPlanla();
+    return true;
+  }
+
+  /** Klavye: görünen listede bir üst/alt komşuyla yer değiştirir. */
+  function izgKomsuylaTasi(id, yon) {
+    var g = izg();
+    if (!g) return false;
+
+    if (typeof siralamaGuvenliMi === 'function' && !siralamaGuvenliMi()) return false;
+
+    g.liste = izgFiltreliListe();
+    var hedef = M.komsu(g.liste, id, yon);
+    if (!hedef) return false;
+
+    var oldu = izgSiraTasiId(id, hedef.id, yon < 0);
+    if (!oldu) return false;
+
+    /* Odak taşınan öğede kalsın (düğüm taşındıysa zaten kalır; yeniden
+       çizildiyse tutamak yeniden bulunur). */
+    var secici = g.gorunum === 'tablo'
+      ? '[data-izg-tut="' + cssId(id) + '"]'
+      : '[data-urun="' + cssId(id) + '"] [data-tut]';
+    var tut = document.querySelector(secici);
+    if (tut) {
+      try { tut.focus({ preventScroll: true }); } catch (e) { tut.focus(); }
+      if (tut.scrollIntoView) tut.scrollIntoView({ block: 'nearest' });
+    }
+    return true;
+  }
+
+  /* --------------------------------------------------------------------------
+   *  DOM'da tek düğüm taşıma (tam yeniden çizim yok)
+   * ------------------------------------------------------------------------*/
+
+  /** Tablo: satır düğümünü pencere içinde hedef konuma taşır. */
+  function izgSatiriDomdaTasi(id) {
+    var g = izg();
+    var govde = $('#izgGovde');
+    if (!g || !govde || govde.dataset.dolu !== '1') return false;
+
+    var ilk = g.ilkSatir;
+    var son = Math.min(g.sonSatir, g.liste.length);
+
+    var satir = govde.querySelector('[data-izg-id="' + cssId(id) + '"]');
+    if (!satir) return false;
+
+    var yeniIdx = M.indeks(g.liste, id);
+    if (yeniIdx < ilk || yeniIdx >= son) return false;
+
+    var sonraki = (yeniIdx + 1 < son) ? g.liste[yeniIdx + 1] : null;
+    if (sonraki) {
+      var sonrakiDugum = govde.querySelector('[data-izg-id="' + cssId(sonraki.id) + '"]');
+      if (!sonrakiDugum) return false;
+      govde.insertBefore(satir, sonrakiDugum);
+    } else {
+      govde.appendChild(satir);
+    }
+
+    /* Pencere ile DOM birebir mi? (taşıma pencere sınırını aştıysa değildir) */
+    var beklenen = g.liste.slice(ilk, son);
+    var dugumler = govde.children;
+    if (dugumler.length !== beklenen.length) return false;
+    for (var i = 0; i < beklenen.length; i++) {
+      if (String(dugumler[i].getAttribute('data-izg-id')) !== String(beklenen[i].id)) return false;
+    }
+    return true;
+  }
+
+  /** Kart: kart düğümünü hedef konuma taşır (parçalı çizimde eksik parça varsa false). */
+  function izgKartiDomdaTasi(id) {
+    var g = izg();
+    var kap = $('#urunListesi');
+    if (!g || !kap) return false;
+
+    var kart = kap.querySelector('[data-urun="' + cssId(id) + '"]');
+    if (!kart) return false;
+
+    var idx = M.indeks(g.liste, id);
+    if (idx === -1) return false;
+
+    var sonraki = g.liste[idx + 1];
+    if (!sonraki) {
+      if (kap.querySelector('[data-urun-devam]')) return false;   // henüz çizilmemiş kartlar var
+      kap.appendChild(kart);
+      return true;
+    }
+
+    var sonrakiKart = kap.querySelector('[data-urun="' + cssId(sonraki.id) + '"]');
+    if (!sonrakiKart) return false;
+
+    kap.insertBefore(kart, sonrakiKart);
+    return true;
+  }
+
+  /* --------------------------------------------------------------------------
+   *  2px canlı mavi kılavuz çizgisi
+   * ------------------------------------------------------------------------*/
+
+  function markerAl(kap) {
+    var m = null;
+    for (var i = 0; i < kap.children.length; i++) {
+      if (kap.children[i].classList && kap.children[i].classList.contains('byom-drop-marker')) { m = kap.children[i]; break; }
+    }
+    if (!m) {
+      m = document.createElement('div');
+      m.className = 'byom-drop-marker';
+      m.hidden = true;
+      m.setAttribute('aria-hidden', 'true');
+      kap.appendChild(m);
+    }
+    return m;
+  }
+
+  /** Tablo: kesme noktasına (içerik koordinatı) çizgi. */
+  function izgTabloCizgisi(kesme) {
+    var bosluk = $('#izgBosluk');
+    if (!bosluk) return;
+    var m = markerAl(bosluk);
+    m.style.transform = 'translateY(' + Math.max(0, kesme * IZGARA_SATIR_YUKSEKLIGI - 1) + 'px)';
+    m.hidden = false;
+  }
+
+  /** Kart (HTML5 DnD, renderer-ek.js çağırır): kartın üstüne/altına çizgi. */
+  function izgBirakmaCizgisi(kap, satir, konum) {
+    if (!kap || !satir) return;
+    var m = markerAl(kap);
+    var bosluk = 8;   // kartlar arası 16px boşluğun ortası
+    var top = (konum === 'once') ? satir.offsetTop - bosluk : satir.offsetTop + satir.offsetHeight + bosluk;
+    m.style.transform = 'translateY(' + Math.max(0, top - 1) + 'px)';
+    m.hidden = false;
+  }
+
+  function izgBirakmaCizgisiGizle() {
+    var hepsi = document.querySelectorAll('.byom-drop-marker');
+    for (var i = 0; i < hepsi.length; i++) hepsi[i].hidden = true;
+  }
+
+  /* --------------------------------------------------------------------------
+   *  Tablo görünümü: pointer tabanlı sürükleme (sanal liste)
+   * ------------------------------------------------------------------------*/
+
+  function tabloSuruklemeBagla() {
+    var kap = $('#urunIzgara');
+    if (!kap || kap.dataset.surukleBagli === '1') return;
+    kap.dataset.surukleBagli = '1';
+
+    kap.addEventListener('pointerdown', function (o) {
+      if (o.pointerType === 'mouse' && o.button !== 0) return;
+      var tut = o.target && o.target.closest ? o.target.closest('[data-izg-tut]') : null;
+      if (!tut) return;
+
+      var id = tut.getAttribute('data-izg-tut');
+      var u = izgUrunBul(id);
+      if (!u) return;
+
+      o.preventDefault();
+
+      sur = { id: id, u: u, x0: o.clientX, y0: o.clientY, x: o.clientX, y: o.clientY, aktif: false, kare: 0, hiz: 0, kaydirmaKare: 0, konum: null, hayalet: null };
+
+      window.addEventListener('pointermove', hareket, { passive: false });
+      window.addEventListener('pointerup', birak);
+      window.addEventListener('pointercancel', iptal);
+      window.addEventListener('keydown', escIptal, true);
+    });
+
+    /* Alt + ↑ / ↓ : tutamak odaklıyken klavyeyle taşıma */
+    kap.addEventListener('keydown', function (o) {
+      if (!o.altKey || (o.key !== 'ArrowUp' && o.key !== 'ArrowDown')) return;
+      var tut = o.target && o.target.closest ? o.target.closest('[data-izg-tut]') : null;
+      if (!tut) return;
+      o.preventDefault();
+      izgKomsuylaTasi(tut.getAttribute('data-izg-tut'), o.key === 'ArrowUp' ? -1 : 1);
+    });
+  }
+
+  function hareket(o) {
+    if (!sur) return;
+    sur.x = o.clientX;
+    sur.y = o.clientY;
+
+    if (!sur.aktif) {
+      if (Math.abs(sur.y - sur.y0) < SURUKLEME_ESIGI && Math.abs(sur.x - sur.x0) < SURUKLEME_ESIGI) return;
+      if (typeof siralamaGuvenliMi === 'function' && !siralamaGuvenliMi()) { iptal(); return; }
+      baslat();
+    }
+
+    o.preventDefault();
+    if (!sur.kare) sur.kare = requestAnimationFrame(kareCiz);
+  }
+
+  function baslat() {
+    sur.aktif = true;
+    document.body.classList.add('izg-surukleniyor');
+
+    var satir = document.querySelector('#izgGovde [data-izg-id="' + cssId(sur.id) + '"]');
+    if (satir) satir.classList.add('izg-tasiniyor');
+
+    var h = document.createElement('div');
+    h.className = 'izg-hayalet';
+    h.innerHTML =
+      '<img src="' + kacis(sur.u.gorsel || '') + '" alt="" onerror="this.style.visibility=\'hidden\'" />' +
+      '<span class="izg-hayalet__ad">' + kacis(sur.u.ad || '') + '</span>' +
+      '<span class="izg-hayalet__sira" data-izg-hayalet-sira></span>';
+    document.body.appendChild(h);
+    sur.hayalet = h;
+  }
+
+  /** Tek karede: hayalet konumu + kılavuz çizgisi + kenar kaydırma kararı. */
+  function kareCiz() {
+    if (!sur || !sur.aktif) return;
+    sur.kare = 0;
+
+    if (sur.hayalet) {
+      sur.hayalet.style.transform = 'translate3d(' + (sur.x + 14) + 'px,' + (sur.y - 18) + 'px,0)';
+    }
+
+    konumuGuncelle();
+
+    var kaydirma = $('#izgKaydirma');
+    if (!kaydirma) return;
+    var kutu = kaydirma.getBoundingClientRect();
+    var hiz = 0;
+    if (sur.y < kutu.top + KENAR_KAYDIRMA) {
+      hiz = -Math.ceil((1 - Math.max(0, sur.y - kutu.top) / KENAR_KAYDIRMA) * KAYDIRMA_HIZI);
+    } else if (sur.y > kutu.bottom - KENAR_KAYDIRMA) {
+      hiz = Math.ceil((1 - Math.max(0, kutu.bottom - sur.y) / KENAR_KAYDIRMA) * KAYDIRMA_HIZI);
+    }
+    sur.hiz = hiz;
+    if (hiz && !sur.kaydirmaKare) sur.kaydirmaKare = requestAnimationFrame(kaydirmaDongusu);
+  }
+
+  /** Kenar kaydırma döngüsü: kaydırma olayı pencereyi yeniden çizer, çizgi tazelenir. */
+  function kaydirmaDongusu() {
+    if (!sur || !sur.aktif || !sur.hiz) { if (sur) sur.kaydirmaKare = 0; return; }
+    var kaydirma = $('#izgKaydirma');
+    if (!kaydirma) { sur.kaydirmaKare = 0; return; }
+
+    /* Sınırlar burada uygulanır: uç noktada döngü durur (tarayıcı zaten 0'a
+       sıkıştırır; sanal DOM'da negatif değere kayabilirdi). */
+    var enFazla = Math.max(0, kaydirma.scrollHeight - kaydirma.clientHeight);
+    var onceki = kaydirma.scrollTop;
+    var hedef = Math.max(0, Math.min(enFazla, onceki + sur.hiz));
+    if (hedef === onceki) { sur.hiz = 0; sur.kaydirmaKare = 0; return; }
+    kaydirma.scrollTop = hedef;
+
+    konumuGuncelle();
+    sur.kaydirmaKare = requestAnimationFrame(kaydirmaDongusu);
+  }
+
+  function konumuGuncelle() {
+    var g = izg();
+    var kaydirma = $('#izgKaydirma');
+    if (!g || !kaydirma) return;
+
+    var kutu = kaydirma.getBoundingClientRect();
+    var icY = sur.y - kutu.top + kaydirma.scrollTop;
+    var konum = M.birakmaKonumu(icY, IZGARA_SATIR_YUKSEKLIGI, g.liste.length);
+    if (!konum) return;
+
+    sur.konum = konum;
+    izgTabloCizgisi(konum.kesme);
+
+    var rozet = sur.hayalet ? sur.hayalet.querySelector('[data-izg-hayalet-sira]') : null;
+    if (rozet) {
+      var kaynakIdx = M.indeks(g.liste, sur.id);
+      var hedefSira = konum.kesme - (kaynakIdx !== -1 && kaynakIdx < konum.kesme ? 1 : 0) + 1;
+      rozet.textContent = M.bosTasimaMi(g.liste, sur.id, konum.kesme) ? 'yerinde' : hedefSira + '. sıra';
+    }
+  }
+
+  function birak() {
+    if (!sur) return;
+    var s = sur;
+    temizle();
+
+    if (!s.aktif || !s.konum) return;
+
+    var g = izg();
+    if (!g) return;
+    g.liste = izgFiltreliListe();
+
+    if (M.bosTasimaMi(g.liste, s.id, s.konum.kesme)) return;
+
+    var hedef = g.liste[s.konum.indeks];
+    if (!hedef || String(hedef.id) === String(s.id)) return;
+
+    izgSiraTasiId(s.id, hedef.id, s.konum.oncesineMi);
+  }
+
+  function iptal() { temizle(); }
+  function escIptal(o) { if (o.key === 'Escape' && sur) { o.preventDefault(); temizle(); } }
+
+  function temizle() {
+    window.removeEventListener('pointermove', hareket);
+    window.removeEventListener('pointerup', birak);
+    window.removeEventListener('pointercancel', iptal);
+    window.removeEventListener('keydown', escIptal, true);
+
+    if (sur) {
+      if (sur.kare) cancelAnimationFrame(sur.kare);
+      if (sur.kaydirmaKare) cancelAnimationFrame(sur.kaydirmaKare);
+      if (sur.hayalet && sur.hayalet.parentNode) sur.hayalet.parentNode.removeChild(sur.hayalet);
+      var satir = document.querySelector('#izgGovde [data-izg-id="' + cssId(sur.id) + '"]');
+      if (satir) satir.classList.remove('izg-tasiniyor');
+    }
+
+    document.body.classList.remove('izg-surukleniyor');
+    izgBirakmaCizgisiGizle();
+    sur = null;
+  }
+
+  /* --------------------------------------------------------------------------
+   *  Eşitleme: 1500 ms debounce, arka planda, sessiz
+   * ------------------------------------------------------------------------*/
+
+  function izgSiraGonderPlanla() {
+    var s = sd();
+    if (!s) return;
+    if (!s.kuyruk) s.kuyruk = M.createKuyruk({ bekleme: SIRA_BEKLEME, gonder: izgSiraGonder });
+    s.durum = 'bekliyor';
+    izgSiraDurumCiz();
+    s.kuyruk.planla();
+  }
+
+  /** Bekleyen taşımaları hemen gönderir (ör. sekme kapanmadan). */
+  function izgSiraHemenGonder() {
+    var s = sd();
+    if (!s || !s.kuyruk || !s.kuyruk.bekliyorMu()) return Promise.resolve(false);
+    return s.kuyruk.hemen();
+  }
+
+  async function izgSiraGonder() {
+    var x = d();
+    var s = sd();
+    if (!x || !s || !Array.isArray(x.urunler) || !x.urunler.length) return false;
+
+    var ids = M.idListesi(x.urunler);
+    s.durum = 'gonderiliyor';
+    izgSiraDurumCiz();
+
+    try {
+      if (izgDemoMu()) {
+        await bekle(120);
+        demoSirasiniYaz(x.urunler);
+        x.urunler.forEach(function (u) { u.menuSiraSite = u.menuSira; });
+        x.siralamaDegisti = false;
+        s.durum = 'demo';
+        izgSiraDurumCiz();
+        return true;
+      }
+
+      var cevap = await izgSiraIstek(ids);
+
+      if (cevap && cevap.ok) {
+        x.urunler.forEach(function (u) { u.menuSiraSite = u.menuSira; });
+        x.siralamaDegisti = false;
+        s.durum = 'ok';
+        s.hata = '';
+        izgSiraDurumCiz();
+
+        var veri = cevap.veri || {};
+        var atlanan = (veri.skipped && veri.skipped.length) || (veri.failed && veri.failed.length) || 0;
+        if (atlanan) bildir(atlanan + ' ürünün sırası siteye yazılamadı (ürün silinmiş olabilir).', 'uyari');
+        return true;
+      }
+
+      s.durum = 'hata';
+      s.hata = (typeof ekHataMetni === 'function') ? ekHataMetni(cevap) : String((cevap && cevap.hata) || 'Bilinmeyen hata');
+      izgSiraDurumCiz();
+
+      bildir('Sıralama siteye kaydedilemedi:\n' + s.hata +
+             '\n\nEkrandaki sıra sitedeki gerçek sıraya geri alınıyor…', 'hata');
+      await urunleriYukle(typeof ekAramaMetni === 'function' ? ekAramaMetni() : '');
+      return false;
+    } catch (e) {
+      s.durum = 'hata';
+      s.hata = String((e && e.message) || e);
+      izgSiraDurumCiz();
+      return false;
+    }
+  }
+
+  /**
+   * 1) byom/v1 → wc-byom/v1 (tek CASE UPDATE, 5000'e kadar)
+   * 2) eski eklenti: wc-b2b/v1 products/reorder, 200'lük parçalar (siraTopluYaz)
+   * 3) eklenti yok: yalnızca değişen ürünlere WooCommerce PUT (siraWooIleGonder)
+   */
+  async function izgSiraIstek(ids) {
+    var x = d();
+    var alanlar = ['wc-byom/v1', 'byom/v1'];
+    var son = null;
+
+    for (var i = 0; i < alanlar.length; i++) {
+      var c = await api(alanlar[i], 'products/reorder', { metod: 'POST', govde: { ids: ids }, sureAsimi: 60000 });
+      if (c && c.ok) return c;
+      son = c;
+      var kod = String((c && c.kod) || '');
+      var http = Number(c && c.durum) || 0;
+      /* Uç yok / yetki yok → sıradaki yol; başka her hata gerçektir. */
+      if (!(kod === 'rest_no_route' || http === 404 || http === 401 || http === 403)) return c;
+    }
+
+    if (typeof ekEklentiVarMi === 'function' && ekEklentiVarMi() && typeof siraTopluYaz === 'function') {
+      var items = ids.map(function (id, i) { return { id: id, menu_order: i }; });
+      var basarisiz = await siraTopluYaz(items);
+      if (basarisiz === null) return son || { ok: false, hata: 'Sıralama ucu yanıt vermedi.' };
+      return { ok: true, veri: { failed: basarisiz } };
+    }
+
+    if (typeof siraWooIleGonder === 'function') {
+      var degisen = (x ? x.urunler : []).filter(function (u) { return Number(u.menuSiraSite) !== Number(u.menuSira); })
+        .map(function (u) { return { id: Number(u.id), menu_order: Number(u.menuSira) }; });
+      if (!degisen.length) return { ok: true, veri: { failed: [] } };
+      if (degisen.length > 25) bildir('B2B Core eklentisi yok; ' + degisen.length + ' ürünün sırası WooCommerce ucundan tek tek yazılıyor…', 'bilgi');
+      var kalan = await siraWooIleGonder(degisen);
+      if (kalan.length === degisen.length) {
+        return { ok: false, hata: 'WooCommerce ürün güncelleme ucu yanıt vermedi.\nAPI anahtarınızın "Okuma/Yazma" izni olduğundan emin olun.' };
+      }
+      return { ok: true, veri: { failed: kalan } };
+    }
+
+    return son || { ok: false, hata: 'Sıralama ucu bulunamadı.' };
+  }
+
+  /** Demo: kaynak listeye konumları yaz ve aynı sıraya diz. */
+  function demoSirasiniYaz(liste) {
+    if (typeof DEMO_URUNLER === 'undefined') return;
+    var konum = Object.create(null);
+    liste.forEach(function (u, i) { konum[String(u.id)] = i; });
+    DEMO_URUNLER.forEach(function (u) { if (konum[String(u.id)] !== undefined) u.menuSira = konum[String(u.id)]; });
+    DEMO_URUNLER.sort(function (a, b) { return (Number(a.menuSira) || 0) - (Number(b.menuSira) || 0); });
+  }
+
+  /* --------------------------------------------------------------------------
+   *  Mevcut akışlara bağlanma (idempotent sarma)
+   * ------------------------------------------------------------------------*/
+
+  /* Kart görünümünün bırakma ve klavye yolu → bu motor (renderer-ek.js). */
+  if (typeof urunTasimasiniUygula === 'function' && !urunTasimasiniUygula.izgSarildi) {
+    urunTasimasiniUygula = function (kaynakId, hedefId, oncesineMi) {
+      izgSiraTasiId(kaynakId, hedefId, !!oncesineMi);
+      return Promise.resolve();
+    };
+    urunTasimasiniUygula.izgSarildi = true;
+  }
+
+  if (typeof urunuKomsuylaTasi === 'function' && !urunuKomsuylaTasi.izgSarildi) {
+    urunuKomsuylaTasi = function (id, yon) {
+      izgKomsuylaTasi(id, yon);
+      return Promise.resolve();
+    };
+    urunuKomsuylaTasi.izgSarildi = true;
+  }
+
+  /* Eski seyrek kuyruk (siraBekleyen) artık kullanılmaz; çağrılırsa buraya düşer. */
+  if (typeof siralamayiGonder === 'function' && !siralamayiGonder.izgSarildi) {
+    siralamayiGonder = function () { izgSiraGonderPlanla(); return Promise.resolve(); };
+    siralamayiGonder.izgSarildi = true;
+  }
+
+  /* Olay bağlama: tablo sürüklemesi (kabuk yeniden kurulsa da kap aynı). */
+  if (typeof izgOlaylariBagla === 'function' && !izgOlaylariBagla.siraSarildi) {
+    var eskiBagla = izgOlaylariBagla;
+    izgOlaylariBagla = function () {
+      eskiBagla.apply(this, arguments);
+      tabloSuruklemeBagla();
+    };
+    izgOlaylariBagla.siraSarildi = true;
+  }
+
+  /* Alt bilgi şeridi çizilince eşitleme durumu da yazılır. */
+  if (typeof izgAltbilgiCiz === 'function' && !izgAltbilgiCiz.siraSarildi) {
+    var eskiAltbilgi = izgAltbilgiCiz;
+    izgAltbilgiCiz = function () {
+      eskiAltbilgi.apply(this, arguments);
+      izgSiraDurumCiz();
+    };
+    izgAltbilgiCiz.siraSarildi = true;
+  }
+
+  /* Sekme değişirken bekleyen sıra hemen gönderilir (1,5 sn beklemeden). */
+  if (typeof sekmeAc === 'function' && !sekmeAc.siraSarildi) {
+    var eskiSekmeAc = sekmeAc;
+    sekmeAc = function (ad) {
+      var x = d();
+      if (x && x.aktifSekme === 'urunler' && ad !== 'urunler') izgSiraHemenGonder();
+      return eskiSekmeAc.apply(this, arguments);
+    };
+    sekmeAc.siraSarildi = true;
+  }
+
+  /* Dışa açık (renderer-ek.js, testler ve el ile çağrılar için). */
+  window.izgSiraTasiId = izgSiraTasiId;
+  window.izgKomsuylaTasi = izgKomsuylaTasi;
+  window.izgBirakmaCizgisi = izgBirakmaCizgisi;
+  window.izgBirakmaCizgisiGizle = izgBirakmaCizgisiGizle;
+  window.izgTasinanMi = izgTasinanMi;
+  window.izgSiraGonderPlanla = izgSiraGonderPlanla;
+  window.izgSiraHemenGonder = izgSiraHemenGonder;
+  window.izgSiraDurumCiz = izgSiraDurumCiz;
 }());
