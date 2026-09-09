@@ -1170,6 +1170,13 @@ async function urunDuzenleAc(id) {
     const fiyatAlani = $('#duzenleFiyat');
     if (fiyatAlani) fiyatAlani.value = fiyatYazi(urun.fiyat);
 
+    /* KDV oranı: üründe yoksa mağaza varsayılanı (20) gösterilir. */
+    const kdvAlani = $('#duzenleKdv');
+    if (kdvAlani) {
+      const kdvDeger = (urun.kdv === undefined || urun.kdv === null || urun.kdv === '') ? 20 : Number(urun.kdv);
+      kdvAlani.value = String(Math.round(kdvDeger * 100) / 100).replace('.', ',');
+    }
+
     /* İndirimli fiyat: üründe indirim yoksa kutu BOŞ kalır — "0,00" yazılsaydı
        kullanıcı dokunmadan kaydettiğinde ürün bedavaya düşerdi. */
     const indirimliAlani = $('#duzenleIndirimliFiyat');
@@ -1362,6 +1369,11 @@ async function urunDuzenleKaydet() {
   const koliHam = sayiCoz(koliAlani ? koliAlani.value : '');
   const koli = isNaN(koliHam) ? 1 : Math.round(koliHam);
   const kod = kodAlani ? kodAlani.value.trim() : '';
+
+  /* KDV oranı (isteğe bağlı alan; boşsa ürünün oranına dokunulmaz). */
+  const kdvAlani = $('#duzenleKdv');
+  const kdvYazi = kdvAlani ? String(kdvAlani.value).replace('%', '').trim() : '';
+  const kdv = kdvYazi === '' ? null : sayiCoz(kdvYazi);
   const aciklama = aciklamaAlani ? aciklamaAlani.value.trim() : '';
   const yayinDurumu = (durumSec && durumSec.value === 'draft') ? 'draft' : 'publish';
   const kategoriId = kategoriSec ? String(kategoriSec.value || '') : '';
@@ -1402,6 +1414,11 @@ async function urunDuzenleKaydet() {
   if (isNaN(stok) || !isFinite(stok) || stok < 0) {
     duzenleUyar('Geçerli bir stok adedi yazın.\nÖrnek: 45');
     if (stokAlani) stokAlani.focus();
+    return;
+  }
+  if (kdv !== null && (isNaN(kdv) || !isFinite(kdv) || kdv < 0 || kdv > 100)) {
+    duzenleUyar('Geçerli bir KDV oranı yazın (0 ile 100 arasında).\nÖrnek: 20');
+    if (kdvAlani) { kdvAlani.focus(); if (kdvAlani.select) kdvAlani.select(); }
     return;
   }
   if (!isFinite(koli) || koli < 1) {
@@ -1472,6 +1489,7 @@ async function urunDuzenleKaydet() {
         kayit.indirimliFiyat = indirimliYazi ? indirimli : '';
         kayit.koliAdedi = koli;
         kayit.stok = stok;
+        if (kdv !== null) kayit.kdv = Math.round(kdv * 100) / 100;
         kayit.durum = yayinDurumu;
         kayit.gorsel = yeniGorsel;
         if (kod) { kayit.kod = kod; kayit.barkod = kod; }
@@ -1509,6 +1527,13 @@ async function urunDuzenleKaydet() {
       status: yayinDurumu,
       meta_data: koliMetaVerisi(koli)
     };
+
+    /* KDV oranı koli meta'sının yanına eklenir (WooCommerce meta_data listesi). */
+    if (kdv !== null) {
+      govde.meta_data = govde.meta_data.concat([
+        { key: '_byom_kdv_rate', value: String(Math.round(kdv * 100) / 100) }
+      ]);
+    }
 
     if (kodDegistiMi) govde.sku = kod;
     if (aciklamaDegistiMi) govde.description = aciklama;

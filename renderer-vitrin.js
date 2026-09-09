@@ -127,6 +127,24 @@
     return /^https?:\/\//i.test(u) ? u : '';
   }
 
+  /**
+   * Önizleme adresine ÖNBELLEK KIRICI damga ekler.
+   *
+   * Sunucu tarafı önbellekler (LiteSpeed, Rocket, Cloudflare) ve tarayıcının
+   * kendi belleği aynı adres için eski HTML'i verebiliyor; blok kaydedildiği
+   * hâlde çerçevede eski vitrin görünüyordu. Damga iki parçadır:
+   *   · eklentinin yazdığı cache_bust alanı (düzen kaydedilince değişir)
+   *   · yerel yükleme sayacı (aynı oturumda elle yenilemeler için)
+   */
+  function onizlemeAdresi() {
+    const taban = guvenliOnizlemeUrl(VE.preview && VE.preview.url);
+    if (!taban) return '';
+
+    const damga = [VE.cacheBust || '', String(VE.onizlemeSayaci || 0)].filter(Boolean).join('-');
+
+    return taban + (taban.indexOf('?') === -1 ? '?' : '&') + 'byom_ts=' + encodeURIComponent(damga || String(Date.now()));
+  }
+
   /** Sunucudan gelen sinir degerleri niteliklere ham basilmaz. */
   function sayi(v, varsayilan) {
     var n = parseInt(v, 10);
@@ -166,7 +184,12 @@
     /* Önizlemenin "içerik yok" dediği bloklar (BYOM_READY / BYOM_APPLIED refresh). */
     bosBloklar: {},
     /* Ürün seçici için ad/kod/görsel önbelleği: id → {ad, kod, gorsel}. */
-    urunAdlari: {}
+    urunAdlari: {},
+    /* Fiyat görünürlüğü: 'open' | 'closed' | '' (henüz okunmadı). */
+    fiyatGorunurluk: '',
+    fiyatMesgul: false,
+    /* Önizleme çerçevesine eklenen önbellek damgası (eklentiden gelir). */
+    cacheBust: ''
   };
 
   var UI = {};
@@ -1208,11 +1231,16 @@
 
     try { VE.preview.origin = new URL(VE.preview.url).origin; } catch (e) { VE.preview.origin = '*'; }
 
-    if (UI.iframe.getAttribute('src') !== VE.preview.url) {
-      UI.iframe.setAttribute('src', VE.preview.url);
-    } else {
-      try { UI.iframe.contentWindow.location.reload(); } catch (e) { UI.iframe.setAttribute('src', VE.preview.url); }
-    }
+    /*
+     * Her yüklemede damga artar: aynı adres yeniden atandığında tarayıcı
+     * önbellekten HTML veremez, sunucu önbelleği de yeni sorgu dizesini
+     * ayrı bir kayıt sayar (bkz. onizlemeAdresi).
+     */
+    VE.onizlemeSayaci = (VE.onizlemeSayaci || 0) + 1;
+
+    const adres = onizlemeAdresi();
+
+    if (adres) UI.iframe.setAttribute('src', adres);
   }
 
   function pingBaslat() {
@@ -1379,6 +1407,14 @@
     }
 
     if (veri.site) VE.site = veri.site;
+
+    /* Fiyat görünürlüğü ve önbellek damgası zarfın parçasıdır (eklenti 2.7.0+). */
+    if (veri.prices && veri.prices.visibility) {
+      VE.fiyatGorunurluk = veri.prices.visibility;
+      fiyatAnahtariCiz();
+    }
+
+    if (veri.cache_bust) VE.cacheBust = String(veri.cache_bust);
 
     VE.cache = {
       layout: layout,
@@ -2162,6 +2198,100 @@
   }
 
   /* ==========================================================================
+   *  13) FİYAT GÖRÜNÜRLÜĞÜ ANAHTARI
+   *  ---------------------------------------------------------------------------
+   *  Editörün üst şeridindeki AÇIK / KAPALI düğmesi. Karar EKLENTİDE durur
+   *  (byom_prices_visibility); panel yalnızca okur, onay alır ve yazar.
+   *  Yazma sonrası önizleme yenilenir: fiyatların gerçekten göründüğü /
+   *  gizlendiği aynı ekranda doğrulanır.
+   * ========================================================================*/
+
+  function fiyatAnahtariCiz() {
+    var dugme = secDeg('#veFiyatAnahtar');
+    var etiket = secDeg('#veFiyatDurum');
+    if (!dugme) return;
+
+    var acik = VE.fiyatGorunurluk === 'open';
+    var bilinmiyor = !VE.fiyatGorunurluk;
+
+    dugme.disabled = bilinmiyor || VE.fiyatMesgul || VE.demo;
+    dugme.setAttribute('aria-pressed', acik ? 'true' : 'false');
+    dugme.classList.toggle('is-on', acik);
+    dugme.classList.toggle('is-off', !acik && !bilinmiyor);
+
+    if (etiket) {
+      etiket.textContent = bilinmiyor ? '—' : (acik ? 'AÇIK' : 'KAPALI');
+      etiket.className = 've-fiyat__durum ' + (bilinmiyor ? '' : (acik ? 'is-ok' : 'is-warn'));
+    }
+
+    dugme.title = bilinmiyor
+      ? 'Fiyat görünürlüğü siteden okunamadı.'
+      : (acik
+        ? 'Fiyatlar şu anda TÜM ziyaretçilere açık. Kapatmak için tıklayın.'
+        : 'Fiyatlar şu anda yalnızca onaylı bayilere görünüyor. Açmak için tıklayın.');
+  }
+
+  function fiyatGorunurluguDegistir() {
+    if (VE.fiyatMesgul || !VE.fiyatGorunurluk) return;
+
+    if (VE.demo) {
+      uyar('DEMO MODU: fiyat görünürlüğü sitede değiştirilmez.', 'uyari');
+      return;
+    }
+
+    var hedef = VE.fiyatGorunurluk === 'open' ? 'closed' : 'open';
+
+    var mesaj = hedef === 'open'
+      ? 'Fiyatlar üye olmayan tüm ziyaretçilere açık olacaktır. Onaylıyor musunuz?'
+      : 'Fiyatlar gizlenecek, sadece onaylı bayilere gösterilecektir. Onaylıyor musunuz?';
+
+    sor(
+      hedef === 'open' ? 'Fiyatları Herkese Aç' : 'Fiyatları Gizle',
+      mesaj,
+      hedef === 'open' ? 'EVET, AÇ' : 'EVET, GİZLE',
+      hedef !== 'open'
+    ).then(function (evet) {
+      if (!evet) return;
+
+      VE.fiyatMesgul = true;
+      fiyatAnahtariCiz();
+
+      gorunurlukIstek({ metod: 'POST', govde: { visibility: hedef } }).then(function (cevap) {
+        VE.fiyatMesgul = false;
+
+        if (cevap && cevap.ok && cevap.veri && cevap.veri.visibility) {
+          VE.fiyatGorunurluk = cevap.veri.visibility;
+          fiyatAnahtariCiz();
+          uyar(VE.fiyatGorunurluk === 'open'
+            ? 'Fiyatlar artık tüm ziyaretçilere açık.'
+            : 'Fiyatlar gizlendi; yalnızca onaylı bayiler görebilir.', 'basari');
+          onizlemeYukle();
+          return;
+        }
+
+        fiyatAnahtariCiz();
+        uyar('Fiyat görünürlüğü değiştirilemedi:\n' + ((cevap && cevap.hata) || 'Bilinmeyen hata'), 'hata');
+      });
+    });
+  }
+
+  /** /prices-visibility isteği (storefrontIstek ile aynı ayna sırası). */
+  function gorunurlukIstek(secenek) {
+    return apiCagir('wc-byom/v1', 'prices-visibility', secenek).then(function (cevap) {
+      if (cevap && cevap.ok) return cevap;
+
+      var kod = String((cevap && cevap.kod) || '');
+      var d = Number(cevap && cevap.durum) || 0;
+
+      if (kod === 'rest_no_route' || d === 404 || d === 401 || d === 403) {
+        return apiCagir('byom/v1', 'prices-visibility', secenek);
+      }
+
+      return cevap;
+    });
+  }
+
+  /* ==========================================================================
    *  11) BAŞLAT
    * ========================================================================*/
 
@@ -2199,6 +2329,10 @@
     window.addEventListener('message', onizlemeMesaji);
     olcekDinleyiciBagla();
     markaOlaylariBagla();
+
+    var fiyatBtn = secDeg('#veFiyatAnahtar');
+    if (fiyatBtn) fiyatBtn.addEventListener('click', fiyatGorunurluguDegistir);
+    fiyatAnahtariCiz();
     listeOlaylariniBagla();
     paletOlaylari();
     tokenOlaylari();

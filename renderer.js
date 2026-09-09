@@ -1363,6 +1363,16 @@ function b2bSiparisNormalle(s) {
     araToplam: Number(s.subtotal || 0),
     kdv: Number(s.total_tax || 0),
     kargoTutar: Number(s.shipping_total || 0),
+    /* --- KDV / REVİZYON KÜNYESİ (depo fişi hiyerarşik özeti) ---
+       kdvToplam    : satır KDV tutarlarının toplamı (eklenti hesaplar)
+       kdvHaric     : sipariş KDV hariç tutara çevrildi mi?
+       revizeFarki  : temin edilemeyen adetlerin liste fiyatı karşılığı.
+                      Bayi iskontosu DEĞİLDİR; fişte ayrı satırdır. */
+    kdvToplam: Number(s.vat_total || 0),
+    kdvHaric: !!s.vat_excluded,
+    kdvDusulen: Number(s.vat_removed || 0),
+    revizeFarki: Number(s.revision_reduction || (s.revision && s.revision.reduction) || 0),
+    sevkiyatEtiketi: String(s.shipping_label || ''),
     /* Bayi iskontosu özeti (b2b-core > B2B_Order_Pricing). Eklenti eski
        sürümdeyse null gelir; fiş kalem toplamlarından kendi hesabını yapar. */
     fiyatOzeti: s.pricing || null,
@@ -1425,6 +1435,9 @@ function b2bSiparisNormalle(s) {
         listeAraToplam: Number(k.list_subtotal !== undefined && k.list_subtotal !== null
           ? k.list_subtotal
           : araToplam),
+        /* Satır KDV künyesi (fiş sütunları): oran ve tutar eklentiden gelir. */
+        kdvOrani: Number(k.vat_rate || 0),
+        kdvTutar: Number(k.vat_amount || 0),
         gorsel: k.image || YEDEK_GORSEL
       };
     })
@@ -1643,11 +1656,41 @@ function urunNormalle(u) {
     stokTakip: !!u.manage_stock,
     /* İndirimli fiyat: indirim yoksa '' kalır (0 ile karıştırılmasın). */
     indirimliFiyat: indirimliFiyatCoz(u.sale_price),
+    /* KDV oranı (%). b2b-core hazır alan olarak verir; WooCommerce yolunda
+       meta_data içindeki _byom_kdv_rate okunur, o da yoksa mağaza varsayılanı. */
+    kdv: kdvOraniCoz(u),
     koliAdedi: koliAdediCoz(u),
     kategoriler: (u.categories || []).map(function (k) {
       return { id: Number(k.id || 0), ad: String(k.name || '') };
     })
   };
+}
+
+/** Mağaza varsayılan KDV oranı (eklenti bildirmezse). */
+const VARSAYILAN_KDV = 20;
+
+/**
+ * Ürün yanıtından KDV oranını çözer.
+ *
+ * Üç kaynak sırayla denenir:
+ *   1) b2b-core'un hazır alanı  (vat_rate)
+ *   2) WooCommerce meta_data içindeki _byom_kdv_rate
+ *   3) mağaza varsayılanı (20)
+ */
+function kdvOraniCoz(u) {
+  if (u && u.vat_rate !== undefined && u.vat_rate !== null && u.vat_rate !== '' && isFinite(Number(u.vat_rate))) {
+    return Math.max(0, Math.min(100, Number(u.vat_rate)));
+  }
+
+  const meta = (u && u.meta_data) || [];
+
+  for (let i = 0; i < meta.length; i++) {
+    if (meta[i] && meta[i].key === '_byom_kdv_rate' && meta[i].value !== '' && isFinite(Number(meta[i].value))) {
+      return Math.max(0, Math.min(100, Number(meta[i].value)));
+    }
+  }
+
+  return VARSAYILAN_KDV;
 }
 
 /** b2b-core /dealers yanıtını iç yapıya çevirir. */
@@ -2757,24 +2800,68 @@ function revizeSatirlariOku() {
       adet: isNaN(adet) ? 0 : adet,
       eskiAdet: Number(satir.dataset.eskiAdet || 0),
       birim: Number(satir.dataset.birim || 0),
-      birimAra: Number(satir.dataset.birimAra || 0)
+      birimAra: Number(satir.dataset.birimAra || 0),
+      /* Ürünün kendi KDV oranı: "KDV dâhil edilmesin" seçilince ters işlem
+         bu oranla yapılır (birim / (1 + oran/100)). */
+      kdvOrani: Number(satir.dataset.kdvOrani || 0)
     };
   });
 }
 
 /** Pencerenin altındaki canlı toplamı tazeler. */
+/**
+ * Revize penceresindeki KDV seçimi.
+ *
+ * true  → fiyatlar olduğu gibi kalır (KDV dâhil sistem)
+ * false → her ürünün KENDİ oranıyla ters işlem yapılır ve sipariş
+ *         KDV hariç net toplama çekilir.
+ */
+function revizeKdvDahilMi() {
+  const anahtar = $('#revizeKdvDahil');
+  return anahtar ? anahtar.getAttribute('aria-checked') !== 'false' : true;
+}
+
+/** KDV anahtarını çizer (metin + görsel durum). */
+function revizeKdvAnahtariCiz() {
+  const anahtar = $('#revizeKdvDahil');
+  const etiket = $('#revizeKdvDurum');
+  if (!anahtar) return;
+
+  const dahil = revizeKdvDahilMi();
+
+  anahtar.classList.toggle('bg-emerald-600', dahil);
+  anahtar.classList.toggle('bg-slate-400', !dahil);
+
+  const topuz = anahtar.querySelector('[data-topuz]');
+  if (topuz) topuz.classList.toggle('translate-x-8', dahil);
+
+  if (etiket) {
+    etiket.textContent = dahil ? 'EVET' : 'HAYIR';
+    etiket.className = 'text-xl font-black ' +
+      (dahil ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400');
+  }
+}
+
 function revizeToplamiTazele() {
   const kutu = $('#revizeToplam');
   if (!kutu) return;
 
   const satirlar = revizeSatirlariOku();
+  const kdvDahil = revizeKdvDahilMi();
 
   let toplam = 0;
   let degisen = 0;
   let adetToplam = 0;
+  let kdvToplam = 0;
 
   satirlar.forEach(function (r) {
-    toplam += r.birim * r.adet;
+    const brut = r.birim * r.adet;
+
+    /* Ters işlem: net = brüt / (1 + oran/100). Oranı 0 olan ürün etkilenmez. */
+    const net = (!kdvDahil && r.kdvOrani > 0) ? (brut / (1 + r.kdvOrani / 100)) : brut;
+
+    toplam += net;
+    kdvToplam += (brut - net);
     adetToplam += r.adet;
     if (r.adet !== r.eskiAdet) degisen++;
   });
@@ -2793,6 +2880,8 @@ function revizeToplamiTazele() {
     satir.classList.toggle('opacity-50', r.adet === 0);
   });
 
+  revizeKdvAnahtariCiz();
+
   kutu.innerHTML =
     '<div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">' +
       '<span class="text-lg font-bold text-slate-500 dark:text-slate-400">' +
@@ -2802,12 +2891,19 @@ function revizeToplamiTazele() {
         'Değişen satır: <span class="' + (degisen ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100') +
         ' font-black">' + degisen + '</span>' +
       '</span>' +
+      (kdvDahil
+        ? ''
+        : '<span class="text-lg font-bold text-amber-600 dark:text-amber-400">' +
+            'Düşülen KDV: <span class="font-black">' + kacis(para(kdvToplam)) + '</span>' +
+          '</span>') +
       '<span class="ml-auto text-2xl font-black text-emerald-600 dark:text-emerald-400">' +
         kacis(para(toplam)) +
       '</span>' +
     '</div>' +
     '<div class="text-base text-slate-500 dark:text-slate-400 mt-1">' +
-      'KDV ve genel toplam onaydan sonra sitede yeniden hesaplanır (yukarıdaki tutar KDV hariç ara toplamdır).' +
+      (kdvDahil
+        ? 'Fiyatlar KDV dâhil kalır; genel toplam onaydan sonra sitede yeniden hesaplanır.'
+        : 'Her ürünün KENDİ KDV oranıyla ters işlem yapılacak; sipariş KDV hariç net toplama çekilir.') +
     '</div>';
 }
 
@@ -2868,6 +2964,7 @@ function revizeModaliAc(id) {
                 'data-eski-adet="' + k.adet + '" ' +
                 'data-birim="' + k.birim + '" ' +
                 'data-birim-ara="' + (k.adet > 0 ? (k.araToplam / k.adet) : k.birim) + '" ' +
+                'data-kdv-orani="' + (Number(k.kdvOrani) || 0) + '" ' +
                 'class="border-t-2 border-slate-200 dark:border-slate-700 transition">' +
 
               '<td class="p-3">' +
@@ -2913,6 +3010,12 @@ function revizeModaliAc(id) {
     '</div>';
 
   $('#revizeNot').value = '';
+
+  /* KDV anahtarı siparişin MEVCUT durumundan başlar: KDV hariç yapılmış bir
+     sipariş yeniden açıldığında "HAYIR" görünür, yanlışlıkla geri çevrilmez. */
+  const kdvAnahtar = $('#revizeKdvDahil');
+  if (kdvAnahtar) kdvAnahtar.setAttribute('aria-checked', s.kdvHaric ? 'false' : 'true');
+
   $('#revizeBildir').checked = durum.ayarlar.durumEpostasi !== false;
   $('#revizeHazirYap').checked = true;
   $('#revizeUyari').classList.add('hidden');
@@ -2939,9 +3042,14 @@ async function revizeyiOnayla(buton) {
   const not = $('#revizeNot').value.trim();
   const bildirilsinMi = !!$('#revizeBildir').checked;
 
-  if (!degisenler.length && !hazirYap) {
+  /* KDV modu: siparişin mevcut durumundan FARKLIYSA gönderilir; aynıysa
+     boş gider ve eklenti hiçbir şeye dokunmaz (idempotent). */
+  const kdvDahil = revizeKdvDahilMi();
+  const kdvModu = (kdvDahil === !s.kdvHaric) ? '' : (kdvDahil ? 'include' : 'exclude');
+
+  if (!degisenler.length && !hazirYap && !kdvModu) {
     const uyari = $('#revizeUyari');
-    uyari.textContent = 'Hiçbir adet değişmedi ve durum güncellemesi de kapalı. Yapılacak bir işlem yok.';
+    uyari.textContent = 'Hiçbir adet değişmedi, KDV seçimi aynı ve durum güncellemesi de kapalı. Yapılacak bir işlem yok.';
     uyari.classList.remove('hidden');
     return;
   }
@@ -2985,6 +3093,21 @@ async function revizeyiOnayla(buton) {
 
     [s, kaynak].forEach(function (hedef) {
       if (!hedef || !hedef.kalemler) return;
+
+      /* Demo modunda KDV dönüşümü de aynı formülle uygulanır. */
+      if (kdvModu) {
+        hedef.kalemler.forEach(function (k) {
+          const oran = Number(k.kdvOrani) || 0;
+          if (oran <= 0) return;
+          const carpan = 1 + (oran / 100);
+          k.tutar = (kdvModu === 'exclude') ? (k.tutar / carpan) : (k.tutar * carpan);
+          k.araToplam = (kdvModu === 'exclude') ? (k.araToplam / carpan) : (k.araToplam * carpan);
+          k.listeAraToplam = (kdvModu === 'exclude') ? (k.listeAraToplam / carpan) : (k.listeAraToplam * carpan);
+        });
+
+        hedef.kdvHaric = (kdvModu === 'exclude');
+      }
+
       hedef.tutar = hedef.kalemler.reduce(function (t, k) { return t + k.tutar; }, 0);
       if (degisenler.length) hedef.revize = true;
       if (hedefDurum) hedef.durum = hedefDurum;
@@ -3018,9 +3141,18 @@ async function revizeyiOnayla(buton) {
         }),
         status: hedefDurum,
         note: not,
-        notify: bildirilsinMi
+        notify: bildirilsinMi,
+        vat_mode: kdvModu
       }
     });
+  } else if (kdvModu) {
+    /* KDV dönüşümü ürün başına oran gerektirir; bunu yalnızca eklenti bilir. */
+    geriAl();
+    const uyari = $('#revizeUyari');
+    uyari.textContent = 'KDV dâhil/hariç dönüşümü için B2B Core eklentisi gerekir.\n' +
+                        'Eklenti bulunamadı; KDV seçimini "EVET" yapıp tekrar deneyin.';
+    uyari.classList.remove('hidden');
+    return;
   } else {
     /*
      * Yedek yol — WooCommerce çekirdeği.
@@ -3526,6 +3658,16 @@ function urunleriCiz(arama) {
                       'focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
       '</div>' +
 
+      /* KDV oranı fiyatın HEMEN yanında (tablo görünümüyle aynı sıra). */
+      '<div class="shrink-0">' +
+        '<label class="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">KDV (%)</label>' +
+        '<input type="text" inputmode="decimal" data-alan="kdv" value="' + kacis(String(u.kdv === undefined ? 20 : u.kdv).replace('.', ',')) + '" ' +
+               'title="KDV oranı — fiyatı değiştirmez, belge dökümünde kullanılır" ' +
+               'class="w-24 h-14 px-3 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900 ' +
+                      'border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600 ' +
+                      'focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
+      '</div>' +
+
       '<div class="shrink-0">' +
         '<label class="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">STOK ADEDİ</label>' +
         '<input type="text" inputmode="numeric" data-alan="stok" value="' + u.stok + '" ' +
@@ -3650,6 +3792,16 @@ async function urunKaydet(id, buton) {
   const stokHam = sayiCoz(satir.querySelector('[data-alan="stok"]').value);
   const stok = Math.round(stokHam);
 
+  /* KDV alanı isteğe bağlıdır (eski kartlarda yok); boşsa dokunulmaz. */
+  const kdvKutu = satir.querySelector('[data-alan="kdv"]');
+  const kdvHam = kdvKutu ? String(kdvKutu.value).replace('%', '').trim() : '';
+  const kdv = kdvHam === '' ? null : sayiCoz(kdvHam);
+
+  if (kdv !== null && (!isFinite(kdv) || isNaN(kdv) || kdv < 0 || kdv > 100)) {
+    bildir('Geçerli bir KDV oranı yazın (0 ile 100 arasında).\nÖrnek: 20', 'uyari');
+    return;
+  }
+
   if (!isFinite(fiyat) || isNaN(fiyat) || fiyat < 0) {
     bildir('Geçerli bir fiyat yazın.\nÖrnek: 1250,50', 'uyari');
     return;
@@ -3669,9 +3821,15 @@ async function urunKaydet(id, buton) {
 
   if (!durum.ayarlar.demoModu) {
     // Fiyat/stok güncellemesi WooCommerce çekirdek ucundan yapılır.
+    const govde = { regular_price: fiyat.toFixed(2), stock_quantity: stok, manage_stock: true };
+
+    if (kdv !== null) {
+      govde.meta_data = [{ key: '_byom_kdv_rate', value: String(Math.round(kdv * 100) / 100) }];
+    }
+
     const cevap = await woo('products/' + id, {
       metod: 'PUT',
-      govde: { regular_price: fiyat.toFixed(2), stock_quantity: stok, manage_stock: true }
+      govde: govde
     });
     basarili = cevap.ok;
     hataMesaji = cevap.hata || '';
@@ -5218,6 +5376,17 @@ function kalemFiyatKunyesi(k) {
 
   const indirim = Math.max(0, liste - net);
 
+  /* --- KDV: oran eklentiden gelir; tutar gelmediyse orandan türetilir ---
+     Sipariş KDV DÂHİL ise tutar satır toplamının İÇİNDEN ayrıştırılır,
+     KDV hariç moddaysa satır toplamının ÜSTÜNE eklenir. */
+  const kdvOrani = Number(k.kdvOrani) > 0 ? Number(k.kdvOrani) : 0;
+
+  let kdvTutar = Number(k.kdvTutar);
+
+  if (!isFinite(kdvTutar) || kdvTutar <= 0) {
+    kdvTutar = kdvOrani > 0 ? (net - (net / (1 + kdvOrani / 100))) : 0;
+  }
+
   return {
     adet: adet,
     birimListe: adet > 0 ? liste / adet : 0,
@@ -5225,7 +5394,9 @@ function kalemFiyatKunyesi(k) {
     listeToplam: liste,
     satirToplam: net,
     indirim: indirim,
-    oran: liste > 0 ? (indirim / liste) * 100 : 0
+    oran: liste > 0 ? (indirim / liste) * 100 : 0,
+    kdvOrani: kdvOrani,
+    kdvTutar: Math.max(0, kdvTutar)
   };
 }
 
@@ -5253,43 +5424,82 @@ function siparisFinansOzeti(s) {
     satirToplamlari += Number(k.tutar || f.satirToplam);
   });
 
+  /*
+   * BAYİ İSKONTOSU = liste toplamı − net toplam.
+   *
+   * Bu fark artık YALNIZCA bayiye tanımlı yüzde iskontodur: eklenti revizyonda
+   * "_b2b_list_subtotal" meta'sını da yeni adetle ölçekliyor (b2b-core 2.7.0),
+   * dolayısıyla temin edilemeyen adet bu farka KARIŞMAZ. Revizyon farkı ayrı
+   * bir alandan (revizeFarki) okunur ve fişte ayrı satırda gösterilir.
+   */
   const iskonto = Math.max(0, brutListe - netAra);
   const genelToplam = Number(s.tutar || 0);
   const kargo = Number(s.kargoTutar || 0);
+  const revizeFarki = Math.max(0, Number(s.revizeFarki || 0));
 
   /* Kupon / sipariş düzeyi ek indirim: satır ara toplamı ile satır tutarı
      ayrışıyorsa arada kupon vardır. Ayrı satır olarak gösterilir; sessizce
      iskontoya karıştırılsaydı bayi iskonto oranı yanlış görünürdü. */
   const ekIndirim = Math.max(0, netAra - satirToplamlari);
 
+  /*
+   * KDV — ÜÇ KAYNAK, SIRAYLA:
+   *   1) Satır KDV tutarları (eklenti ürün başına oranla hesaplar)  → en doğrusu
+   *   2) WooCommerce vergisi (total_tax) → vergi motoru açıksa
+   *   3) Varsayılan oranla genel toplamdan geri ayrıştırma → en son çare
+   */
   const kdvHam = Number(s.kdv || 0);
-  const kdvDahilMi = !(kdvHam > 0);
+  const kdvSatirlar = kalemler.reduce(function (t, k) { return t + kalemFiyatKunyesi(k).kdvTutar; }, 0);
+  const kdvHaricMi = !!s.kdvHaric;
 
-  let kdv = kdvHam;
+  let kdv;
+  let kdvKaynak;
 
-  if (kdvDahilMi) {
-    /* Fiyatlar KDV dâhil: net = toplam / (1 + oran), KDV = toplam - net. */
+  if (kdvSatirlar > 0.005) {
+    kdv = kdvSatirlar;
+    kdvKaynak = 'satir';
+  } else if (kdvHam > 0) {
+    kdv = kdvHam;
+    kdvKaynak = 'vergi';
+  } else {
     const carpan = 1 + (KDV_ORANI / 100);
-    const kdvsizToplam = genelToplam / carpan;
-    kdv = Math.max(0, genelToplam - kdvsizToplam);
+    kdv = Math.max(0, genelToplam - (genelToplam / carpan));
+    kdvKaynak = 'varsayilan';
   }
 
-  /* Etiketteki oran: vergi varsa gerçek orandan, yoksa varsayılandan. */
-  const kdvMatrahi = netAra - ekIndirim + kargo;
-  const kdvOrani = (!kdvDahilMi && kdvMatrahi > 0)
-    ? Math.round((kdv / kdvMatrahi) * 100)
-    : KDV_ORANI;
+  /* KDV hariç modda fiyatlar net; dâhil modda tutarın içindedir. */
+  const kdvDahilMi = !kdvHaricMi && !(kdvHam > 0);
 
+  /* Etiketteki oran: satır oranları tekse o, değilse ağırlıklı ortalama. */
+  const oranlar = kalemler.map(function (k) { return kalemFiyatKunyesi(k).kdvOrani; }).filter(function (o) { return o > 0; });
+  const tekOran = oranlar.length && oranlar.every(function (o) { return Math.abs(o - oranlar[0]) < 0.01; });
+
+  let kdvOrani;
+
+  if (tekOran) {
+    kdvOrani = oranlar[0];
+  } else if (oranlar.length) {
+    const matrah = Math.max(0.01, netAra - ekIndirim);
+    kdvOrani = (kdv / matrah) * 100;
+  } else {
+    kdvOrani = KDV_ORANI;
+  }
+
+  /* KDV hariç modda genel toplam = net + KDV (site zaten böyle hesapladı). */
   return {
     brutListe: brutListe,
+    revizeFarki: revizeFarki,
     iskonto: iskonto,
     iskontoOrani: brutListe > 0 ? (iskonto / brutListe) * 100 : 0,
     netAra: netAra,
     ekIndirim: ekIndirim,
     kargo: kargo,
     kdv: kdv,
-    kdvOrani: isFinite(kdvOrani) && kdvOrani > 0 ? kdvOrani : KDV_ORANI,
+    kdvOrani: isFinite(kdvOrani) && kdvOrani > 0 ? Math.round(kdvOrani * 10) / 10 : KDV_ORANI,
     kdvDahilMi: kdvDahilMi,
+    kdvHaricMi: kdvHaricMi,
+    kdvKaynak: kdvKaynak,
+    karisikOran: !tekOran && oranlar.length > 1,
     genelToplam: genelToplam
   };
 }
@@ -5318,7 +5528,7 @@ function depoFisiHtml(s) {
   /* Yoğunluk kademesi: kalem sayısı arttıkça görsel ve punto otomatik küçülür,
      böylece 30-35 satırlık siparişler de TEK A4 sayfasında kalır.
      Sütun sayısı 7'den 8'e çıktığı için eşikler bir tık aşağı çekildi. */
-  const yogunluk = cesit > 24 ? ' sik' : (cesit > 18 ? ' orta' : '');
+  const yogunluk = cesit > 22 ? ' sik' : (cesit > 16 ? ' orta' : '');
 
   const satirlar = s.kalemler.map(function (k) {
     const f = kalemFiyatKunyesi(k);
@@ -5340,6 +5550,9 @@ function depoFisiHtml(s) {
           kacis(paraSade(f.birimListe)) +
         '</td>' +
         '<td class="s-birim">' + kacis(paraSade(f.birimBayi)) + '</td>' +
+        /* Müşteri her kalemin KDV'sini görsün: oran + tutar. */
+        '<td class="s-kdvo">' + (f.kdvOrani > 0 ? fisOranYazi(f.kdvOrani) : '—') + '</td>' +
+        '<td class="s-kdvt">' + (f.kdvTutar > 0.004 ? kacis(paraSade(f.kdvTutar)) : '—') + '</td>' +
         '<td class="s-toplam">' + kacis(paraSade(f.satirToplam)) + '</td>' +
       '</tr>';
   }).join('');
@@ -5347,14 +5560,32 @@ function depoFisiHtml(s) {
   /* --- Finansal özet satırları --- */
   function ozetSatiri(etiket, deger, sinif) {
     return '<tr' + (sinif ? ' class="' + sinif + '"' : '') + '>' +
-             '<td colspan="6" class="etiket">' + etiket + '</td>' +
+             '<td colspan="8" class="etiket">' + etiket + '</td>' +
              '<td colspan="2" class="deger">' + deger + '</td>' +
            '</tr>';
   }
 
+  /*
+   * HİYERARŞİK ÖZET (BYOM-REGISTRY.md §5.10)
+   *
+   *   1. Revize Liste Fiyatı Ara Toplamı  — koliye giren adetlerin liste tutarı
+   *   2. Revizyon Farkı                    — temin edilemeyen adetlerin tutarı
+   *   3. Bayi İskonto Tutarı               — YALNIZCA tanımlı yüzde iskonto
+   *   4. KDV Tutarı                        — satır KDV'lerinin toplamı
+   *   5. Genel Ödenecek Tutar
+   *
+   * 2 ve 3 artık BİRBİRİNE KARIŞMAZ: eklenti revizyonda liste fiyatı
+   * meta'sını da yeni adetle ölçekliyor, düşen adet ayrı alanda tutuluyor.
+   */
   const ozetSatirlari = '' +
-    ozetSatiri('LİSTE FİYATI GENEL TOPLAMI <span class="ince">(iskontosuz brüt)</span>',
+    ozetSatiri((ozet.revizeFarki > 0.005 ? 'REVİZE ' : '') +
+                 'LİSTE FİYATI ARA TOPLAMI <span class="ince">(iskontosuz brüt)</span>',
                kacis(para(ozet.brutListe))) +
+
+    (ozet.revizeFarki > 0.005
+      ? ozetSatiri('REVİZYON FARKI <span class="ince">(temin edilemeyen / düşülen adet)</span>',
+                   '&minus;' + kacis(para(ozet.revizeFarki)), 'indirim')
+      : '') +
 
     (ozet.iskonto > 0.005
       ? ozetSatiri('BAYİ İSKONTO TUTARI <span class="ince">(oran: ' +
@@ -5370,15 +5601,17 @@ function depoFisiHtml(s) {
       : '') +
 
     (ozet.kargo > 0.005
-      ? ozetSatiri('KARGO / NAVLUN', kacis(para(ozet.kargo)))
+      ? ozetSatiri((s.sevkiyatEtiketi ? kacis(s.sevkiyatEtiketi.toLocaleUpperCase('tr-TR')) : 'KARGO / NAVLUN'),
+                   kacis(para(ozet.kargo)))
       : '') +
 
-    ozetSatiri('KDV TUTARI <span class="ince">(' + fisOranYazi(ozet.kdvOrani) +
-                 (ozet.kdvDahilMi ? ' &middot; fiyatlara dâhil' : '') + ')</span>',
+    ozetSatiri('KDV TUTARI <span class="ince">(' +
+                 (ozet.karisikOran ? 'karma oran · ort. ' : '') + fisOranYazi(ozet.kdvOrani) +
+                 (ozet.kdvHaricMi ? ' &middot; fiyatlara dâhil değil' : (ozet.kdvDahilMi ? ' &middot; fiyatlara dâhil' : '')) +
+                 ')</span>',
                kacis(para(ozet.kdv))) +
 
-    ozetSatiri('GENEL TOPLAM <span class="ince">(ödenecek net tutar)</span>',
-               kacis(para(ozet.genelToplam)), 'genel');
+    ozetSatiri('GENEL ÖDENECEK TUTAR', kacis(para(ozet.genelToplam)), 'genel');
 
   return '<!DOCTYPE html>\n' +
 '<html lang="tr"><head><meta charset="UTF-8">' +
@@ -5456,9 +5689,11 @@ function depoFisiHtml(s) {
 '  .s-tik    { width:7mm;  text-align:center; }' +
 '  .s-kod    { width:24mm; }' +
 '  .s-adet   { width:11mm; text-align:center; }' +
-'  .s-liste  { width:20mm; text-align:right; }' +
-'  .s-birim  { width:20mm; text-align:right; }' +
-'  .s-toplam { width:22mm; text-align:right; }' +
+'  .s-liste  { width:18mm; text-align:right; }' +
+'  .s-birim  { width:18mm; text-align:right; }' +
+'  .s-kdvo   { width:11mm; text-align:right; }' +
+'  .s-kdvt   { width:17mm; text-align:right; }' +
+'  .s-toplam { width:20mm; text-align:right; }' +
 
 '  /* Mikro ürün görseli — üst sınır 30x30px */' +
 '  .urun-gorsel { width:var(--gorsel); height:var(--gorsel); max-width:30px; max-height:30px;' +
@@ -5477,6 +5712,8 @@ function depoFisiHtml(s) {
 '  tbody .s-liste  { font-size:9.5px; font-weight:600; color:#64748b; }' +
 '  tbody .s-liste.cizili { text-decoration:line-through; }' +
 '  tbody .s-birim  { font-size:var(--yazi); font-weight:800; }' +
+'  tbody .s-kdvo   { font-size:9.5px; font-weight:700; color:#475569; }' +
+'  tbody .s-kdvt   { font-size:9.5px; font-weight:700; color:#475569; }' +
 '  tbody .s-toplam { font-size:var(--yazi); font-weight:800; }' +
 
 '  tfoot td { padding:3px 6px; font-size:var(--yazi); font-weight:800;' +
@@ -5578,6 +5815,8 @@ function depoFisiHtml(s) {
 '      <th class="s-adet">MİKTAR</th>' +
 '      <th class="s-liste">LİSTE BİRİM</th>' +
 '      <th class="s-birim">İSKONTOLU BİRİM</th>' +
+'      <th class="s-kdvo">KDV %</th>' +
+'      <th class="s-kdvt">KDV TUTARI</th>' +
 '      <th class="s-toplam">SATIR TOPLAMI</th>' +
 '    </tr></thead>' +
 '    <tbody>' + satirlar + '</tbody>' +
@@ -6435,6 +6674,14 @@ function olaylariBagla() {
   $('#revizeModalKapat').addEventListener('click', revizeModaliKapat);
   $('#revizeVazgec').addEventListener('click', revizeModaliKapat);
   $('#revizeOnay').addEventListener('click', function () { revizeyiOnayla($('#revizeOnay')); });
+
+  /* KDV DAHİL EDİLSİN Mİ? — anahtar değişince canlı toplam yeniden hesaplanır
+     (her ürünün kendi oranıyla ters işlem; bkz. revizeToplamiTazele). */
+  $('#revizeKdvDahil').addEventListener('click', function () {
+    const anahtar = $('#revizeKdvDahil');
+    anahtar.setAttribute('aria-checked', anahtar.getAttribute('aria-checked') === 'false' ? 'true' : 'false');
+    revizeToplamiTazele();
+  });
 
   $('#revizeModalKatman').addEventListener('mousedown', function (o) {
     if (o.target === $('#revizeModalKatman')) revizeModaliKapat();

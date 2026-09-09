@@ -97,6 +97,9 @@ const IZGARA_SUTUNLARI = [
   { kod: 'ad',        etiket: 'ÜRÜN ADI',     genislik: 'minmax(0, 1fr)', ortaGenislik: 'minmax(0, 1fr)', darGenislik: 'minmax(0, 1fr)', hiza: 'left', duzenlenir: true },
   { kod: 'kategori',  etiket: 'KATEGORİ',     genislik: '150px', ortaGenislik: '110px', darGenislik: '86px', hiza: 'left' },
   { kod: 'fiyat',     etiket: 'LİSTE FİYATI', genislik: '130px', ortaGenislik: '112px', darGenislik: '98px', hiza: 'right', duzenlenir: true },
+  /* KDV oranı fiyatın HEMEN yanında: fiyat girerken oranın da doğru olduğu
+     tek bakışta görülür (çift tıklayıp yerinde düzenlenir). */
+  { kod: 'kdv',       etiket: 'KDV %',        genislik: '78px',  ortaGenislik: '68px',  darGenislik: '58px', hiza: 'right', duzenlenir: true },
   { kod: 'stok',      etiket: 'STOK',         genislik: '90px',  ortaGenislik: '76px',  darGenislik: '62px', hiza: 'right', duzenlenir: true },
   { kod: 'durum',     etiket: 'DURUM',        genislik: '110px', ortaGenislik: '96px',  darGenislik: '84px', hiza: 'center' },
   { kod: 'islem',     etiket: 'İŞLEM',        genislik: '104px', ortaGenislik: '102px', darGenislik: '98px', hiza: 'center' }
@@ -118,8 +121,8 @@ const IZGARA_SUTUNLARI = [
  * genişler ve sütunlar kendiliğinden ferahlar.
  */
 const IZGARA_KADEMELERI = [
-  { alan: 'genislik',     enAz: 1094 },
-  { alan: 'ortaGenislik', enAz: 958 },
+  { alan: 'genislik',     enAz: 1172 },
+  { alan: 'ortaGenislik', enAz: 1026 },
   { alan: 'darGenislik',  enAz: 0 }
 ];
 
@@ -169,6 +172,18 @@ function izgUrunBul(id) {
   const d = (typeof durum !== 'undefined' && durum) ? durum : null;
   if (!d) return null;
   return d.urunler.filter(function (u) { return String(u.id) === String(id); })[0] || null;
+}
+
+/**
+ * KDV oranını yazıya çevirir: 20 → "%20", 10.5 → "%10,5".
+ *
+ * Değer hiç gelmediyse mağaza varsayılanı (20) gösterilir; ürün kendi
+ * oranını taşımıyorsa sitede zaten varsayılan geçerlidir.
+ */
+function izgKdvYazi(oran) {
+  const n = Number(oran);
+  const deger = isFinite(n) && n >= 0 ? n : 20;
+  return '%' + String(Math.round(deger * 100) / 100).replace('.', ',');
 }
 
 /** Ürünün ilk kategori adı (yoksa boş). */
@@ -469,6 +484,7 @@ function izgSatirHtml(u) {
           kategori ? kacis(kategori) : '<span class="izg-bos">—</span>',
           '', 'left', kategori) +
     hucre('izg-para', kacis(paraSade(u.fiyat)), 'fiyat', 'right') +
+    hucre('izg-kdv', kacis(izgKdvYazi(u.kdv)), 'kdv', 'right') +
     hucre('izg-stok ' + stokRengi, String(u.stok), 'stok', 'right') +
 
     '<div class="izg-h" style="text-align:center">' +
@@ -574,11 +590,14 @@ const IZGARA_ALANLARI = {
   kod:   { etiket: 'Stok kodu', tur: 'metin' },
   ad:    { etiket: 'Ürün adı',  tur: 'metin', zorunlu: true },
   fiyat: { etiket: 'Liste fiyatı', tur: 'para' },
+  /* KDV oranı: 0-100 arası yüzde. Boş bırakılırsa mağaza varsayılanına döner. */
+  kdv:   { etiket: 'KDV oranı',    tur: 'yuzde' },
   stok:  { etiket: 'Stok adedi',   tur: 'tamsayi' }
 };
 
 /** Hücrenin ham (düzenlenebilir) değeri. */
 function izgHamDeger(u, alan) {
+  if (alan === 'kdv') return izgKdvYazi(u.kdv);
   if (alan === 'fiyat') return fiyatYazi(u.fiyat);
   if (alan === 'stok') return String(u.stok);
   if (alan === 'kod') return u.kod === '-' ? '' : String(u.kod);
@@ -685,6 +704,14 @@ async function izgHucreKaydet(hucre, gecis) {
       izgSatiriTazele(id);
       return;
     }
+  } else if (tanim.tur === 'yuzde') {
+    const n = sayiCoz(ham.replace('%', ''));
+    if (!isFinite(n) || isNaN(n) || n < 0 || n > 100) {
+      bildir('Geçerli bir KDV oranı yazın (0 ile 100 arasında).\nÖrnek: 20', 'uyari');
+      izgSatiriTazele(id);
+      return;
+    }
+    deger = Math.round(n * 100) / 100;
   } else if (tanim.tur === 'tamsayi') {
     const n = sayiCoz(ham);
     if (!isFinite(n) || isNaN(n) || n < 0) {
@@ -782,6 +809,8 @@ async function izgAlanKaydet(u, alan, deger) {
   else if (alan === 'stok') { govde.stock_quantity = deger; govde.manage_stock = true; }
   else if (alan === 'ad') govde.name = deger;
   else if (alan === 'kod') govde.sku = deger;
+  /* KDV oranı WooCommerce'in vergi sınıfına DEĞİL, kendi meta alanımıza yazılır. */
+  else if (alan === 'kdv') govde.meta_data = [{ key: '_byom_kdv_rate', value: String(deger) }];
 
   const cevap = await woo('products/' + u.id, { metod: 'PUT', govde: govde, sureAsimi: 30000 });
 
@@ -807,7 +836,7 @@ async function izgAlanKaydet(u, alan, deger) {
   }
 
   bildir(u.ad + '\n' + IZGARA_ALANLARI[alan].etiket + ': ' +
-         (alan === 'fiyat' ? para(u.fiyat) : String(deger)) +
+         (alan === 'fiyat' ? para(u.fiyat) : (alan === 'kdv' ? izgKdvYazi(deger) : String(deger))) +
          '\nSitede güncellendi.', 'basari');
 
   return true;
@@ -956,6 +985,112 @@ async function izgTopluUygula(urunler, baslik, isle) {
 }
 
 /** TOPLU İSKONTO — seçili ürünlerin liste fiyatını yüzdeyle düşürür. */
+/* --------------------------------------------------------------------------
+ *  TOPLU KDV ATAMA
+ *  --------------------------------------------------------------------------
+ *  Seçili ürünlerin KDV oranı TEK istekte yazılır: eklentinin
+ *  `POST wc-b2b/v1/products/vat` ucu yalnızca meta günceller (ürün başına
+ *  wp_update_post çağrılmaz). Eklenti yoksa WooCommerce ucundan ürün ürün
+ *  yazılır — o yolda ilerleme çubuğu görünür.
+ * ------------------------------------------------------------------------*/
+async function izgTopluKdv() {
+  const urunler = izgSeciliUrunler();
+  if (!urunler.length) return;
+
+  const cevap = await metinSor(
+    'Toplu KDV Ata',
+    urunler.length + ' ürünün KDV oranı girdiğiniz değerle değiştirilecek.\n\n' +
+    'Örnek: 10 yazarsanız seçili ürünler %10 KDV ile işlem görür.\n' +
+    'KDV oranını yüzde olarak yazın (0-100):',
+    '20',
+    'ORANI UYGULA'
+  );
+
+  if (cevap === null) return;
+
+  const oran = sayiCoz(String(cevap).replace('%', ''));
+
+  if (!isFinite(oran) || isNaN(oran) || oran < 0 || oran > 100) {
+    bildir('Geçerli bir KDV oranı yazın (0 ile 100 arasında).\nÖrnek: 20', 'uyari');
+    return;
+  }
+
+  const yeni = Math.round(oran * 100) / 100;
+
+  const eminMi = await onayla(
+    'KDV Oranını Onayla',
+    urunler.length + ' ürünün KDV oranı ' + izgKdvYazi(yeni) + ' olarak ayarlanacak.\n\n' +
+    'Bu oran ürünün fiyatını DEĞİŞTİRMEZ; belge dökümünde (depo fişi, sipariş\n' +
+    'özeti) ve "KDV hariç sipariş" dönüşümünde kullanılır.' +
+    (izgDemoMu() ? '\n\n(Demo Modu: sitenizde değişiklik yapılmaz.)' : ''),
+    'EVET, UYGULA',
+    true
+  );
+
+  if (!eminMi) return;
+
+  /* ---------- DEMO ---------- */
+  if (izgDemoMu()) {
+    await bekle(200);
+    urunler.forEach(function (u) {
+      u.kdv = yeni;
+      const kaynak = (typeof DEMO_URUNLER !== 'undefined' ? DEMO_URUNLER : [])
+        .filter(function (x) { return String(x.id) === String(u.id); })[0];
+      if (kaynak) kaynak.kdv = yeni;
+    });
+    izgCiz(true);
+    bildir(urunler.length + ' ürünün KDV oranı ' + izgKdvYazi(yeni) + ' yapıldı.\n(Demo Modu)', 'basari');
+    return;
+  }
+
+  /* ---------- CANLI: tek toplu istek ----------
+     Eklenti kontrolü renderer-ek.js'in yardımcısıyla, o yüklenmediyse
+     doğrudan durum.b2bVar ile yapılır (dosya sırası değişse de çalışsın). */
+  const eklentiVar = (typeof ekEklentiVarMi === 'function')
+    ? ekEklentiVarMi()
+    : !!(typeof durum !== 'undefined' && durum && durum.b2bVar);
+
+  if (eklentiVar) {
+    const c = await b2b('products/vat', {
+      metod: 'POST',
+      govde: { ids: urunler.map(function (u) { return Number(u.id); }), rate: yeni },
+      sureAsimi: 60000
+    });
+
+    if (c && c.ok) {
+      const veri = c.veri || {};
+      urunler.forEach(function (u) { u.kdv = yeni; });
+      izgCiz(true);
+
+      const atlanan = (veri.skipped && veri.skipped.length) || 0;
+      bildir((veri.count || urunler.length) + ' ürünün KDV oranı ' + izgKdvYazi(yeni) + ' yapıldı.' +
+             (atlanan ? '\n' + atlanan + ' ürün atlandı (bulunamadı).' : ''), 'basari');
+      return;
+    }
+
+    /* Uç yoksa (eski eklenti) WooCommerce yoluna düşülür; başka hata gerçektir. */
+    const kod = String((c && c.kod) || '');
+    const http = Number(c && c.durum) || 0;
+
+    if (!(kod === 'rest_no_route' || http === 404)) {
+      bildir('KDV oranı yazılamadı:\n' + (typeof ekHataMetni === 'function' ? ekHataMetni(c) : ''), 'hata');
+      return;
+    }
+  }
+
+  /* ---------- YEDEK: WooCommerce ucundan ürün ürün ---------- */
+  await izgTopluUygula(urunler, 'KDV oranı yazılıyor', async function (u) {
+    const c = await woo('products/' + u.id, {
+      metod: 'PUT',
+      govde: { meta_data: [{ key: '_byom_kdv_rate', value: String(yeni) }] },
+      sureAsimi: 30000
+    });
+
+    if (c && c.ok) { u.kdv = yeni; return { ok: true }; }
+    return { ok: false, hata: (c && c.hata) || '' };
+  });
+}
+
 async function izgTopluIskonto() {
   const urunler = izgSeciliUrunler();
   if (!urunler.length) return;
@@ -1866,6 +2001,7 @@ function izgOlaylariBagla() {
     if (el) el.addEventListener('click', islev);
   };
 
+  bagla('#topluKdvBtn', izgTopluKdv);
   bagla('#topluIskontoBtn', izgTopluIskonto);
   bagla('#topluZamBtn', izgTopluZam);
   bagla('#topluKategoriBtn', izgTopluKategori);

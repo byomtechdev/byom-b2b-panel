@@ -900,7 +900,7 @@
      satır zemininin boyamadığı koyu bir şerit kalıyordu. */
   .izg-satir {
     display: grid;
-    grid-template-columns: var(--izg-sablon, 28px 44px 68px 150px minmax(0, 1fr) 150px 130px 90px 110px 104px);
+    grid-template-columns: var(--izg-sablon, 28px 44px 68px 150px minmax(0, 1fr) 150px 130px 78px 90px 110px 104px);
     align-items: center;
     column-gap: 0;
     width: 100%;
@@ -1007,6 +1007,9 @@
   .izg-sira-durum.is-busy { color: #2563eb; } .izg-sira-durum.is-ok { color: #059669; } .izg-sira-durum.is-err { color: #dc2626; }
   .urun-devam { padding: 16px; text-align: center; font-weight: 700; color: #64748b; }
   .izg-stok { font-weight: 900; font-variant-numeric: tabular-nums; }
+  /* KDV oranı: fiyatın yanında, soluk ama okunur; rakamlar hizalı. */
+  .izg-kdv { font-weight: 700; font-size: 13.5px; color: #64748b; font-variant-numeric: tabular-nums; }
+  .dark .izg-kdv { color: #94a3b8; }
 
   /* Düzenlenebilir hücrede imleç ve hafif bir çerçeve ipucu. */
   .izg-h[data-duzenle] { cursor: cell; }
@@ -1620,6 +1623,18 @@
             <span id="topluSayac">0 ürün seçildi</span>
           </span>
 
+          <!-- Seçili ürünlere tek istekte KDV oranı yazar (renderer-izgara.js › izgTopluKdv). -->
+          <div class="inline-flex items-center gap-2 h-12 px-3 rounded-xl bg-white/70 dark:bg-slate-800/70
+                      border-2 border-marka-600/40">
+            <span class="text-base font-extrabold text-slate-600 dark:text-slate-300">KDV</span>
+            <button id="topluKdvBtn" type="button"
+                    title="Seçili ürünlerin KDV oranını tek seferde ata (fiyatı değiştirmez)"
+                    class="h-9 px-4 rounded-lg bg-sky-600 hover:bg-sky-700 active:scale-95
+                           text-white text-base font-extrabold shadow transition">
+              <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> TOPLU KDV ATA
+            </button>
+          </div>
+
           <button id="topluIskontoBtn" type="button"
                   class="h-12 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95
                          text-white text-lg font-extrabold shadow transition">
@@ -1835,6 +1850,19 @@
           <span id="veDurum" class="inline-flex items-center gap-2 h-10 px-3 rounded-xl border-2 text-base font-bold bg-slate-50 text-slate-600 border-slate-200">
             <svg class="ik ik-nokta" aria-hidden="true"><use href="#ik-nokta"></use></svg> Bağlanıyor…
           </span>
+
+          <!-- FİYAT GÖRÜNÜRLÜĞÜ — kararı eklenti tutar (byom_prices_visibility);
+               tıklanınca onay penceresi açılır, kayıt sonrası önizleme yenilenir. -->
+          <div class="ve-fiyat">
+            <span class="ve-fiyat__etiket">
+              <svg class="ik" aria-hidden="true"><use href="#ik-etiket"></use></svg> Fiyat Görünürlüğü
+            </span>
+            <span id="veFiyatDurum" class="ve-fiyat__durum">—</span>
+            <button id="veFiyatAnahtar" type="button" role="switch" aria-pressed="false" disabled
+                    class="ve-fiyat__anahtar">
+              <span class="ve-fiyat__topuz"></span>
+            </button>
+          </div>
 
           <div class="ml-auto flex flex-wrap items-center gap-2">
             <button id="veYukleBtn" type="button"
@@ -2131,6 +2159,18 @@
           .ve-featured__body small { color: var(--ikincil); font-size: 11px; }
           .ve-showcase-durum { font-size: 11.5px; font-weight: 650; color: var(--ikincil); min-height: 1em; }
           .ve-showcase-durum.is-ok { color: #059669; } .ve-showcase-durum.is-warn { color: #b45309; } .ve-showcase-durum.is-err { color: #dc2626; } .ve-showcase-durum.is-busy { color: var(--aksiyon); }
+          /* ---- Fiyat görünürlüğü anahtarı (üst şerit) ---- */
+          .ve-fiyat { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border: 2px solid var(--kenar); border-radius: 12px; background: var(--panel); }
+          .ve-fiyat__etiket { font-size: 13px; font-weight: 700; color: var(--ikincil); white-space: nowrap; }
+          .ve-fiyat__durum { min-width: 52px; font-size: 13px; font-weight: 900; text-align: center; color: var(--soluk); }
+          .ve-fiyat__durum.is-ok { color: #059669; }
+          .ve-fiyat__durum.is-warn { color: #b45309; }
+          .ve-fiyat__anahtar { position: relative; width: 52px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: #94a3b8; cursor: pointer; transition: background-color .18s ease-out; }
+          .ve-fiyat__anahtar:disabled { opacity: .45; cursor: not-allowed; }
+          .ve-fiyat__anahtar.is-on { background: #059669; }
+          .ve-fiyat__anahtar.is-off { background: #94a3b8; }
+          .ve-fiyat__topuz { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(2,6,23,.35); transition: transform .18s ease-out; }
+          .ve-fiyat__anahtar.is-on .ve-fiyat__topuz { transform: translateX(24px); }
           .ve-badge-empty { color: #b45309; font-weight: 700; }
           html.dark .ve-badge-empty { color: #fcd34d; }
           @media (max-width: 1280px) { .ve-grid { grid-template-columns: 340px minmax(0,1fr); } }
@@ -2770,6 +2810,16 @@
       </div>
 
       <div>
+        <label for="duzenleKdv" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> KDV Oranı (%)</label>
+        <input id="duzenleKdv" type="text" inputmode="decimal" placeholder="20"
+               title="KDV oranı — fiyatı değiştirmez, belge dökümünde ve KDV hariç dönüşümünde kullanılır"
+               class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
+                      border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
+                      focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+        <p class="mt-1 text-sm text-slate-500">Boş bırakırsanız mağaza varsayılanı (%20) geçerli olur.</p>
+      </div>
+
+      <div>
         <label for="duzenleIndirimliFiyat" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-etiket"></use></svg> İndirimli Fiyat (₺)</label>
         <input id="duzenleIndirimliFiyat" type="text" inputmode="decimal" placeholder="İsteğe bağlı"
                class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
@@ -3057,6 +3107,33 @@
       <div id="revizeToplam"
            class="rounded-2xl border-2 border-slate-200 dark:border-slate-700
                   bg-slate-50 dark:bg-slate-900/50 p-4"></div>
+
+      <!-- KDV DAHİL EDİLSİN Mİ? — "Sipariş Notu"nun hemen üstünde.
+           HAYIR seçilirse her ürünün KENDİ oranıyla ters işlem yapılır:
+           Birim Fiyat = KDV Dâhil Fiyat / (1 + KDV Oranı / 100).
+           Dönüşümü eklenti uygular (b2b-core › B2B_Order_Revision::apply_vat_mode). -->
+      <div class="flex flex-wrap items-center gap-4 rounded-2xl border-2 border-slate-200 dark:border-slate-700
+                  bg-slate-50 dark:bg-slate-900/50 p-4">
+        <div class="min-w-0">
+          <div class="text-lg font-extrabold">
+            <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> KDV DAHİL EDİLSİN Mİ?
+          </div>
+          <div class="text-base text-slate-500 dark:text-slate-400">
+            <b>EVET</b>: fiyatlar aynen kalır. &nbsp;·&nbsp;
+            <b>HAYIR</b>: her üründen kendi KDV oranı düşülür, sipariş KDV hariç net toplama çekilir.
+          </div>
+        </div>
+
+        <div class="ml-auto flex items-center gap-3">
+          <span id="revizeKdvDurum" class="text-xl font-black text-emerald-600 dark:text-emerald-400">EVET</span>
+          <button id="revizeKdvDahil" type="button" role="switch" aria-checked="true"
+                  title="KDV dâhil / hariç"
+                  class="relative w-20 h-11 rounded-full bg-emerald-600 transition active:scale-95 shrink-0">
+            <span data-topuz
+                  class="absolute top-1 left-1 w-9 h-9 rounded-full bg-white shadow transition-transform translate-x-8"></span>
+          </button>
+        </div>
+      </div>
 
       <div>
         <label for="revizeNot" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-not"></use></svg> Sipariş Notu (isteğe bağlı)</label>
