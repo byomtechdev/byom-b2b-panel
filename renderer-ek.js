@@ -76,9 +76,16 @@ function iskontoYazi(deger) {
   return String(Math.round(n * 100) / 100).replace('.', ',');
 }
 
-/* Bu modülün `durum` nesnesine eklediği alanları hemen tanımla.
-   (Fonksiyon bildirimleri yukarı taşındığı için dosya sonundaki tanım geçerlidir.) */
-ekDurumBaslangici();
+/*
+ * Bu modülün `durum` nesnesine eklediği alanlar DOSYA SONUNDA tanımlanır.
+ *
+ * Eskiden çağrı buradaydı; başlangıç değerleri yalnızca nesne sabitlerinden
+ * oluştuğu için sorun çıkmıyordu. Artık matris yerel depodan okunuyor ve
+ * okuma `MATRIS_ROLLERI` / `ODEME_YONTEMLERI` sabitlerine bağlı — bunlar
+ * bu satırda henüz ilklenmemiş olurdu (temporal dead zone). Sonuç sessiz
+ * olurdu: okuma try/catch içinde olduğu için hata yutulur, kalıcılık hiç
+ * çalışmazdı. Bu yüzden çağrı, tüm bildirimlerden SONRAYA alındı.
+ */
 
 /** Bir öğenin durum.urunler içindeki sırası. */
 function ekUrunIndeksi(liste, id) {
@@ -246,6 +253,9 @@ function iskontoDurumYaz(tur, baslik, mesaj) {
  * olan bayiler içindir; son kullanıcıya vadeli açmak varsayılan olmamalıdır.
  */
 function varsayilanMatris() {
+  /* ORANLAR SIFIRDIR. Panele gömülü bir yüzde (eskiden %12 / %8), site
+     henüz hiçbir şey kaydetmemişken "bu oranlar geçerli" izlenimi verirdi;
+     eklentinin fabrika ayarı da sıfırdır, iki taraf artık aynı şeyi söyler. */
   return {
     individual: {
       cash: { enabled: true,  discount: 0 },
@@ -253,11 +263,128 @@ function varsayilanMatris() {
       term: { enabled: false, discount: 0 }
     },
     corporate: {
-      cash: { enabled: true,  discount: 12 },
-      card: { enabled: true,  discount: 8 },
+      cash: { enabled: true,  discount: 0 },
+      card: { enabled: true,  discount: 0 },
       term: { enabled: true,  discount: 0 }
     }
   };
+}
+
+/* ==========================================================================
+ *  MATRİS KALICILIĞI (yerel depo)
+ *  --------------------------------------------------------------------------
+ *  Matris bellekte `durum.odemeMatrisi` içinde yaşıyordu; uygulama kapanınca
+ *  yok oluyor, açılışta fabrika ayarı yükleniyordu. Kullanıcı sekme değiştirip
+ *  geri döndüğünde ya da programı yeniden başlattığında girdiği oranları
+ *  kaybediyordu.
+ *
+ *  Artık en son BİLİNEN matris yerel depoya yazılır ve açılışta oradan okunur.
+ *  Bu bir önbellektir, kaynak değildir: site erişilebilir olduğunda sunucudan
+ *  gelen değer üzerine yazar. Amaç, sunucu yanıtı gelene kadar ekranın boş ya
+ *  da yanlış görünmemesidir.
+ * ======================================================================== */
+
+const MATRIS_DEPO_ANAHTARI = 'byom_payment_matrix';
+
+/** Yerel depoyu güvenle döndürür (gizli pencerede erişim patlayabilir). */
+function matrisDeposu() {
+  try {
+    return window.localStorage || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Son bilinen matrisi yerel depodan okur. */
+function matrisiDepodanOku() {
+  const depo = matrisDeposu();
+  if (!depo) return null;
+
+  try {
+    const ham = depo.getItem(MATRIS_DEPO_ANAHTARI);
+    if (!ham) return null;
+
+    const cozulen = JSON.parse(ham);
+    return (cozulen && typeof cozulen === 'object') ? matrisNormalle(cozulen) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Matrisi yerel depoya yazar. */
+function matrisiDepoyaYaz(matris) {
+  const depo = matrisDeposu();
+  if (!depo || !matris) return;
+
+  try {
+    depo.setItem(MATRIS_DEPO_ANAHTARI, JSON.stringify(matris));
+  } catch (e) {
+    /* Kota dolu ya da depo kapalı: kalıcılık kaybolur ama akış sürer. */
+  }
+}
+
+/**
+ * Ödeme matrisi ucuna istek atar.
+ *
+ * Uç `byom/v1` altında yayınlanır ve `wc-byom/v1` aynasına da kaydedilir.
+ * Panelin genel `b2b()` kısayolu `wc-b2b/v1` alanına gider — yani BU UCA
+ * ULAŞMAZ. Vitrin Editörü'ndeki sıra burada da uygulanır: önce WooCommerce
+ * anahtar doğrulaması garantili ayna (wc-byom/v1), o yoksa asıl ad alanı.
+ *
+ * @param {object} secenek api() seçenekleri (metod, govde, sureAsimi).
+ * @returns {Promise<object>}
+ */
+async function matrisUcu(secenek) {
+  const cevap = await api('byomWc', 'payment-matrix', secenek);
+
+  if (cevap && cevap.ok) return cevap;
+
+  const kod = String((cevap && cevap.kod) || '');
+  const kd = Number((cevap && cevap.durum) || 0);
+
+  /* Yalnızca "uç yok / yetki" hatasında ikinci ad alanı denenir; ağ ve
+     doğrulama hataları olduğu gibi geri döner. */
+  if (kod === 'rest_no_route' || kd === 404 || kd === 401 || kd === 403) {
+    const yedek = await api('byom', 'payment-matrix', secenek);
+    if (yedek && yedek.ok) return yedek;
+    return (yedek && yedek.durum) ? yedek : cevap;
+  }
+
+  return cevap;
+}
+
+/** Yanıt "böyle bir uç yok" anlamına mı geliyor? */
+function matrisUcuYokMu(cevap) {
+  if (!cevap) return true;
+  if (cevap.ok) return false;
+
+  return String(cevap.kod || '') === 'rest_no_route' || Number(cevap.durum) === 404;
+}
+
+/**
+ * Matrisi sunucu şemasına çevirir.
+ *
+ * Panel içeride `{enabled, discount}` kullanır (mevcut tüm çizim ve okuma
+ * kodu buna bağlı); veritabanı şeması ise `{active, rate}`. Çeviri YALNIZCA
+ * ağ sınırında yapılır, böylece tek kaynak bozulmadan kalır.
+ */
+function matrisiSunucuyaCevir(matris) {
+  const cikti = {};
+
+  MATRIS_ROLLERI.forEach(function (rol) {
+    cikti[rol.kod] = {};
+
+    ODEME_YONTEMLERI.forEach(function (yon) {
+      const hucre = (matris && matris[rol.kod] && matris[rol.kod][yon.kod]) || { enabled: true, discount: 0 };
+
+      cikti[rol.kod][yon.kod] = {
+        active: !!hucre.enabled,
+        rate: Number(hucre.discount) || 0
+      };
+    });
+  });
+
+  return cikti;
 }
 
 /** Bir hücreyi okunur hâle getirir; alan adları sunucu sürümüne göre değişebilir. */
@@ -646,29 +773,52 @@ async function iskontoSekmesiYukle(zorla) {
       return;
     }
 
-    const cevap = await b2b('theme-config', { sureAsimi: 30000 });
+    /* TEK KAYNAK: /byom/v1/payment-matrix. Eski theme-config yolu yalnızca
+       eklenti güncel değilse (404) yedek olarak denenir. */
+    const cevap = await matrisUcu({ sureAsimi: 30000 });
 
-    if (!cevap || !cevap.ok) {
-      /* Form DEVRE DIŞI BIRAKILMAZ — kullanıcı yeniden deneyebilsin. */
+    if (cevap && cevap.ok && cevap.veri && cevap.veri.matrix) {
+      d.odemeMatrisi = matrisNormalle(cevap.veri.matrix);
+      d.iskontoYuklendi = true;
+      matrisiDepoyaYaz(d.odemeMatrisi);
+      matrisiCiz();
+      iskontoDurumYaz('basari', 'Sitedeki güncel matris yüklendi', matrisOzeti(d.odemeMatrisi));
+      return;
+    }
+
+    const ucYok = matrisUcuYokMu(cevap);
+
+    if (!ucYok) {
+      /* Form DEVRE DIŞI BIRAKILMAZ — kullanıcı yeniden deneyebilsin.
+         Ekrandaki değerler de sıfırlanmaz: son bilinen matris korunur. */
       d.odemeMatrisi = matrisNormalle(d.odemeMatrisi);
       matrisiCiz();
       iskontoDurumYaz(
         'hata',
         'Ödeme matrisi alınamadı',
-        ekHataMetni(cevap) + '\n\nDeğerleri düzenleyip KAYDET ile yeniden deneyebilirsiniz.'
+        ekHataMetni(cevap) + '\n\nEkrandaki değerler son bilinen ayarlarınızdır.\n' +
+        'Düzenleyip KAYDET ile yeniden deneyebilirsiniz.'
       );
       bildir('Ödeme matrisi alınamadı:\n' + ekHataMetni(cevap), 'hata');
       return;
     }
 
-    const yapilandirma = (cevap.veri && cevap.veri.config) || {};
+    /* --- Yedek yol: eklenti henüz /payment-matrix ucunu yayınlamıyor --- */
+    const eskiCevap = await b2b('theme-config', { sureAsimi: 30000 });
+    const yapilandirma = (eskiCevap && eskiCevap.veri && eskiCevap.veri.config) || {};
     const hamMatris = yapilandirma.payment_matrix || yapilandirma.paymentMatrix || null;
 
     if (hamMatris) {
       d.odemeMatrisi = matrisNormalle(hamMatris);
       d.iskontoYuklendi = true;
+      matrisiDepoyaYaz(d.odemeMatrisi);
       matrisiCiz();
-      iskontoDurumYaz('basari', 'Sitedeki güncel matris yüklendi', matrisOzeti(d.odemeMatrisi));
+      iskontoDurumYaz(
+        'uyari',
+        'Eski konumdan yüklendi',
+        'B2B Core eklentiniz ödeme matrisi ucunu yayınlamıyor (2.10.0 öncesi).\n' +
+        'KAYDET dediğinizde veri yeni konuma taşınacaktır.\n\n' + matrisOzeti(d.odemeMatrisi)
+      );
       return;
     }
 
@@ -748,6 +898,7 @@ async function iskontoKaydet() {
       await bekle(300);
       d.odemeMatrisi = matris;
       d.iskontoYuklendi = true;
+      matrisiDepoyaYaz(d.odemeMatrisi);
       matrisiCiz();
       iskontoDurumYaz('uyari', 'Demo Modu — kaydedildi (yalnızca bu pencerede)', ozet);
       bildir('Ödeme matrisi güncellendi.\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
@@ -760,12 +911,21 @@ async function iskontoKaydet() {
       return;
     }
 
-    /* ---------- CANLI: asıl kayıt (theme-config → payment_matrix) ---------- */
-    const cevap = await b2b('theme-config', {
+    /* ---------- CANLI: asıl kayıt (TEK KAYNAK: byom_payment_matrix) ------- */
+    let cevap = await matrisUcu({
       metod: 'POST',
       sureAsimi: 45000,
-      govde: { config: { payment_matrix: matris } }
+      govde: { matrix: matrisiSunucuyaCevir(matris) }
     });
+
+    /* Eklenti eski ise ucu bulamaz; eski konuma yazılır (veri kaybolmasın). */
+    if (matrisUcuYokMu(cevap)) {
+      cevap = await b2b('theme-config', {
+        metod: 'POST',
+        sureAsimi: 45000,
+        govde: { config: { payment_matrix: matrisiSunucuyaCevir(matris) } }
+      });
+    }
 
     if (!cevap || !cevap.ok) {
       iskontoDurumYaz('hata', 'Kaydedilemedi', ekHataMetni(cevap));
@@ -773,36 +933,32 @@ async function iskontoKaydet() {
       return;
     }
 
-    /* Sunucu düzeltilmiş matrisi geri döndürdüyse onu kullan. */
-    const donen = (cevap.veri && cevap.veri.config &&
-                   (cevap.veri.config.payment_matrix || cevap.veri.config.paymentMatrix)) || null;
+    /*
+     * YEREL STATE SUNUCU YANITIYLA KİLİTLENİR.
+     *
+     * Sunucu matrisi temizleyip geri döndürür (oran sınırları, bilinmeyen
+     * alanların atılması). Ekranı kendi gönderdiğimiz değerle değil, sunucunun
+     * KABUL ETTİĞİ değerle tazelemek gerekir; aksi halde panel ile site
+     * arasında sessiz bir fark oluşurdu.
+     */
+    const donen = (cevap.veri && (cevap.veri.matrix ||
+                   (cevap.veri.config && (cevap.veri.config.payment_matrix ||
+                                          cevap.veri.config.paymentMatrix)))) || null;
 
     d.odemeMatrisi = donen ? matrisNormalle(donen) : matris;
     d.iskontoYuklendi = true;
+    matrisiDepoyaYaz(d.odemeMatrisi);
     matrisiCiz();
 
-    /* ---------- CANLI: eski uca yansıma (geriye dönük uyum) ---------- */
-    const eskiCevap = await b2b('settings/discounts', {
-      metod: 'POST',
-      sureAsimi: 30000,
-      govde: {
-        cash: matris.corporate.cash.enabled ? matris.corporate.cash.discount : 0,
-        card: matris.corporate.card.enabled ? matris.corporate.card.discount : 0,
-        term: matris.corporate.term.enabled ? matris.corporate.term.discount : 0
-      }
-    });
-
+    /*
+     * ESKİ /settings/discounts UCUNA YANSIMA KALDIRILDI.
+     *
+     * O uç `b2b_discount_rates` seçeneğini yazıyordu; matris devredeyken
+     * eklenti oranı zaten matristen okuduğu için bu İKİNCİ BİR KAYNAK
+     * oluşturuyordu. İki yerde iki farklı oran durduğunda hangisinin geçerli
+     * olduğu yalnızca çağrı sırasına bağlı kalırdı. Tek kaynak: matris.
+     */
     const yeniOzet = matrisOzeti(d.odemeMatrisi);
-
-    if (!eskiCevap || !eskiCevap.ok) {
-      iskontoDurumYaz('uyari', 'Matris kaydedildi, eski oran ucu güncellenemedi',
-        yeniOzet + '\n\nEski uç hatası: ' + ekHataMetni(eskiCevap) +
-        '\nSitenizin teması matrisi okuyorsa sorun yoktur.');
-      bildir('Ödeme matrisi kaydedildi.\n' +
-             'Eski iskonto ucu güncellenemedi; teması eski uca bakan siteler\n' +
-             'değişikliği görmeyebilir.', 'uyari');
-      return;
-    }
 
     iskontoDurumYaz('basari', 'Ödeme matrisi sitenize kaydedildi', yeniOzet);
     bildir('Ödeme matrisi güncellendi.\nSitenizde anında geçerli.', 'basari');
@@ -3263,8 +3419,10 @@ function ekDurumBaslangici() {
   const d = ekDurum();
   if (!d) return;
 
-  /* A) Rol bazlı ödeme matrisi (bkz. BÖLÜM A) */
-  d.odemeMatrisi = varsayilanMatris();
+  /* A) Rol bazlı ödeme matrisi (bkz. BÖLÜM A)
+     Son bilinen değerler yerel depodan gelir: uygulama kapanıp açıldığında
+     ekran fabrika ayarına DÜŞMEZ. Site yanıt verince üzerine yazılır. */
+  d.odemeMatrisi = matrisiDepodanOku() || varsayilanMatris();
   d.iskontoYuklendi = false;
   d.iskontoYukleniyor = false;
 
@@ -3299,6 +3457,10 @@ function ekDurumBaslangici() {
      (renderer-vitrin.js → bölüm 12, theme-config > showcase). */
 }
 
+/* Bu modülün `durum` nesnesine eklediği alanları tanımla. Tüm sabitler
+   ilklendikten SONRA çalışır (bkz. dosya başındaki not). */
+ekDurumBaslangici();
+
 /* Sözleşme gereği tüm fonksiyonlar window üzerinden de erişilebilir olsun
    (renderer.js ve index.html içinden çağrılabilmeleri için). */
 window.ekDurum = ekDurum;
@@ -3323,6 +3485,13 @@ window.matrisFormunuOku = matrisFormunuOku;
 window.matrisAnahtariniDegistir = matrisAnahtariniDegistir;
 window.matrisOzeti = matrisOzeti;
 window.eskiOranlariMatriseCevir = eskiOranlariMatriseCevir;
+window.matrisiDepodanOku = matrisiDepodanOku;
+window.matrisiDepoyaYaz = matrisiDepoyaYaz;
+window.matrisiSunucuyaCevir = matrisiSunucuyaCevir;
+window.matrisUcu = matrisUcu;
+window.matrisUcuYokMu = matrisUcuYokMu;
+window.ekDurumBaslangici = ekDurumBaslangici;
+window.MATRIS_DEPO_ANAHTARI = MATRIS_DEPO_ANAHTARI;
 
 window.iskontoSekmesiYukle = iskontoSekmesiYukle;
 window.iskontoFormunuDoldur = iskontoFormunuDoldur;
