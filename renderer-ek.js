@@ -745,6 +745,9 @@ async function iskontoSekmesiYukle(zorla) {
     return;
   }
 
+  // Genel minimum tutar matristen bagimsiz okunur; biri patlarsa digeri calisir.
+  minTutarYukle();
+
   d.iskontoYukleniyor = true;
   iskontoDurumYaz('bilgi', 'Ödeme matrisi getiriliyor…', 'Lütfen bekleyin.');
 
@@ -970,6 +973,132 @@ async function iskontoKaydet() {
     geriAl();
   }
 }
+/* ==========================================================================
+ *  GENEL MİNİMUM SİPARİŞ TUTARI
+ *  --------------------------------------------------------------------------
+ *  Ödeme matrisiyle AYNI sekmede duruyor: ikisi de ticari karardır ve
+ *  kullanıcı ikisini de burada arıyor. "API & Sistem Ayarları" sekmesi
+ *  geliştirici kilidi altındadır; iş ayarları için doğru yer değildir.
+ *
+ *  Kaynak eklentideki `byom_general_min_order_amount` seçeneğidir; panel
+ *  `/settings` ucundan okur ve oraya yazar. Bayiye özel limit ise B2B Üye
+ *  Onayları sekmesindeki kartta durur ve doluysa bu değerin YERİNE geçer.
+ * ========================================================================*/
+
+/** Ekrandaki tutar kutusunu doldurur. */
+function minTutarYaz(deger) {
+  const girdi = $('#minTutarGirdi');
+  if (!girdi) return;
+
+  const sayi = Number(deger) || 0;
+  girdi.value = (typeof paraSade === 'function') ? paraSade(sayi) : String(sayi);
+}
+
+/** Durum satırı. */
+function minTutarDurumYaz(tur, metin) {
+  const kutu = $('#minTutarDurum');
+  if (!kutu) return;
+
+  const sinif = {
+    basari: 'text-emerald-700 dark:text-emerald-300',
+    hata: 'text-red-600 dark:text-red-400',
+    uyari: 'text-amber-700 dark:text-amber-300',
+    bilgi: 'text-slate-600 dark:text-slate-300'
+  };
+
+  kutu.className = 'w-full text-base font-bold ' + (sinif[tur] || sinif.bilgi);
+  kutu.textContent = metin || '';
+}
+
+/** Genel minimum tutarı siteden okur. */
+async function minTutarYukle() {
+  if (ekDemoMu()) {
+    minTutarYaz(0);
+    minTutarDurumYaz('uyari', 'Demo Modu — bu değer sitenize gönderilmez.');
+    return;
+  }
+
+  if (!ekEklentiVarMi()) {
+    minTutarDurumYaz('hata', EK_EKLENTI_YOK_MESAJI);
+    return;
+  }
+
+  const cevap = await b2b('settings', { sureAsimi: 30000 });
+
+  if (!cevap || !cevap.ok || !cevap.veri) {
+    minTutarDurumYaz('hata', 'Genel minimum tutar okunamadı: ' + ekHataMetni(cevap));
+    return;
+  }
+
+  const ham = (cevap.veri.byom_general_min_order_amount !== undefined)
+    ? cevap.veri.byom_general_min_order_amount
+    : cevap.veri.min_order_amount;
+
+  minTutarYaz(ham);
+  minTutarDurumYaz('bilgi', Number(ham) > 0
+    ? 'Şu an geçerli: ' + paraSade(Number(ham)) + ' ₺'
+    : 'Şu an sınır yok (0).');
+}
+
+/** Genel minimum tutarı kaydeder. */
+async function minTutarKaydet() {
+  const girdi = $('#minTutarGirdi');
+  if (!girdi) return;
+
+  const sayi = sayiCoz(girdi.value);
+
+  if (!isFinite(sayi) || sayi < 0) {
+    minTutarDurumYaz('hata', 'Geçersiz tutar. 0 veya üzeri bir sayı yazın (0 = sınır yok).');
+    girdi.focus();
+    if (girdi.select) girdi.select();
+    return;
+  }
+
+  const dugme = $('#minTutarKaydetBtn');
+  const geriAl = dugme ? butonuMesgulEt(dugme, 'KAYDEDİLİYOR…') : function () {};
+
+  try {
+    if (ekDemoMu()) {
+      await bekle(200);
+      minTutarYaz(sayi);
+      minTutarDurumYaz('uyari', 'Demo Modu — kaydedildi (yalnızca bu pencerede).');
+      return;
+    }
+
+    if (!ekEklentiVarMi()) {
+      minTutarDurumYaz('hata', EK_EKLENTI_YOK_MESAJI);
+      return;
+    }
+
+    const cevap = await b2b('settings', {
+      metod: 'POST',
+      sureAsimi: 30000,
+      govde: { byom_general_min_order_amount: sayi }
+    });
+
+    if (!cevap || !cevap.ok) {
+      minTutarDurumYaz('hata', 'Kaydedilemedi: ' + ekHataMetni(cevap));
+      bildir('Genel minimum tutar kaydedilemedi:\n' + ekHataMetni(cevap), 'hata');
+      return;
+    }
+
+    /* Sunucunun kabul ettiği değer esas alınır. */
+    const donen = (cevap.veri && cevap.veri.settings &&
+                   cevap.veri.settings.byom_general_min_order_amount !== undefined)
+      ? Number(cevap.veri.settings.byom_general_min_order_amount)
+      : sayi;
+
+    minTutarYaz(donen);
+    minTutarDurumYaz('basari', donen > 0
+      ? 'Kaydedildi. Sepeti ' + paraSade(donen) + ' ₺ altında kalan müşteri sipariş veremez.'
+      : 'Kaydedildi. Minimum tutar sınırı kapalı.');
+
+    bildir('Genel minimum sipariş tutarı güncellendi.', 'basari');
+  } finally {
+    geriAl();
+  }
+}
+
 /* ==========================================================================
  *  BÖLÜM B — SİPARİŞ KARTI ÖDEME ROZETİ
  * ========================================================================*/
@@ -3234,6 +3363,18 @@ function ekOlaylariBagla() {
   /* --------------------------------------------------------------
    *  A) ROL BAZLI ÖDEME MATRİSİ
    * ------------------------------------------------------------*/
+  const minTutarBtn = $('#minTutarKaydetBtn');
+  if (minTutarBtn) {
+    minTutarBtn.addEventListener('click', function () { minTutarKaydet(); });
+  }
+
+  const minTutarGirdi = $('#minTutarGirdi');
+  if (minTutarGirdi) {
+    minTutarGirdi.addEventListener('keydown', function (o) {
+      if (o.key === 'Enter') { o.preventDefault(); minTutarKaydet(); }
+    });
+  }
+
   const iskontoKaydetBtn = $('#iskontoKaydetBtn');
   if (iskontoKaydetBtn) {
     iskontoKaydetBtn.addEventListener('click', function () { iskontoKaydet(); });
@@ -3485,6 +3626,9 @@ window.matrisFormunuOku = matrisFormunuOku;
 window.matrisAnahtariniDegistir = matrisAnahtariniDegistir;
 window.matrisOzeti = matrisOzeti;
 window.eskiOranlariMatriseCevir = eskiOranlariMatriseCevir;
+window.minTutarYukle = minTutarYukle;
+window.minTutarKaydet = minTutarKaydet;
+window.minTutarYaz = minTutarYaz;
 window.matrisiDepodanOku = matrisiDepodanOku;
 window.matrisiDepoyaYaz = matrisiDepoyaYaz;
 window.matrisiSunucuyaCevir = matrisiSunucuyaCevir;

@@ -1059,7 +1059,130 @@ function bayiIskontoHtml(u) {
                    'text-white text-lg font-extrabold shadow-md transition shrink-0">' + ikon('kaydet') + ' KAYDET</button>' +
 
     '<div data-iskonto-durum="' + u.id + '" class="w-full text-base font-bold"></div>' +
+
+    /* --- Bayiye özel minimum sipariş tutarı --- */
+    bayiMinTutarHtml(u) +
   '</div>';
+}
+
+/**
+ * Bayi kartındaki "Özel Minimum Sipariş Tutarı" satırı.
+ *
+ * Alan BOŞ bırakılabilir; boş bırakmak "genel limit geçerli" demektir.
+ * Sıfır yazmak ise o bayiyi limitten MUAF tutar. İki durumu ayırmak şart:
+ * tek bir sayı alanı olsaydı bir bayiyi muaf tutmanın yolu kalmazdı.
+ */
+function bayiMinTutarHtml(u) {
+  const ozel = String(u.ozelMinTutar === undefined ? '' : u.ozelMinTutar);
+  const gecerli = Number(u.gecerliMinTutar || 0);
+
+  const aciklama = ozel === ''
+    ? 'Genel limit geçerli' + (gecerli > 0 ? ' — ' + paraSade(gecerli) + ' ₺' : ' — sınır yok')
+    : (Number(ozel) > 0
+        ? 'Bu bayiye özel: ' + paraSade(Number(ozel)) + ' ₺'
+        : 'Bu bayi minimum tutardan MUAF');
+
+  return '' +
+  '<div class="w-full pt-4 mt-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600 ' +
+       'flex flex-wrap items-center gap-4">' +
+
+    '<div class="min-w-0">' +
+      '<div class="text-lg font-extrabold">' + ikon('sepet') + ' Özel Minimum Tutar</div>' +
+      '<div class="text-base font-semibold text-slate-500 dark:text-slate-400">' +
+        kacis(aciklama) +
+      '</div>' +
+    '</div>' +
+
+    '<label class="ml-auto flex items-center gap-2 text-lg font-extrabold shrink-0">' +
+      '<span class="relative">' +
+        '<input data-min-tutar="' + u.id + '" type="text" inputmode="decimal" ' +
+               'placeholder="Genel" value="' + kacis(ozel) + '" ' +
+               'title="Boş = genel limit geçerli · 0 = bu bayi limitten muaf" ' +
+               'class="w-32 h-12 pl-4 pr-8 rounded-xl text-xl font-black text-right ' +
+                      'bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 ' +
+                      'focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
+        '<span class="absolute right-3 top-1/2 -translate-y-1/2 text-lg font-black text-slate-400 ' +
+              'pointer-events-none">₺</span>' +
+      '</span>' +
+    '</label>' +
+
+    '<button data-eylem="min-tutar-kaydet" data-id="' + u.id + '" ' +
+            'class="h-12 px-6 rounded-xl bg-slate-700 hover:bg-slate-800 active:scale-95 ' +
+                   'text-white text-lg font-extrabold shadow-md transition shrink-0">' +
+      ikon('kaydet') + ' KAYDET</button>' +
+  '</div>';
+}
+
+/**
+ * Bayiye özel minimum tutarı kaydeder.
+ *
+ * Boş gönderim bir SİLME emridir: eklenti meta satırını kaldırır ve bayi
+ * genel limite döner (bkz. B2B_Min_Order::set_custom).
+ */
+async function bayiMinTutarKaydet(id, dugme) {
+  const u = (durum.uyeler || []).filter(function (x) { return String(x.id) === String(id); })[0];
+  if (!u) return false;
+
+  const girdi = document.querySelector('[data-min-tutar="' + id + '"]');
+  const kutu = document.querySelector('[data-iskonto-durum="' + id + '"]');
+  const ham = girdi ? String(girdi.value).trim() : '';
+
+  if (ham !== '') {
+    const sayi = sayiCoz(ham);
+
+    if (!isFinite(sayi) || sayi < 0) {
+      if (kutu) {
+        kutu.textContent = 'Geçersiz tutar. Boş bırakın (genel limit) ya da 0 ve üzeri bir sayı yazın.';
+        kutu.className = 'w-full text-base font-bold text-red-600 dark:text-red-400';
+      }
+      if (girdi) { girdi.focus(); if (girdi.select) girdi.select(); }
+      return false;
+    }
+  }
+
+  const geriAl = dugme ? butonuMesgulEt(dugme, 'KAYDEDİLİYOR…') : function () {};
+
+  /* ---------- DEMO ---------- */
+  if (durum.ayarlar && durum.ayarlar.demoModu) {
+    await bekle(200);
+    u.ozelMinTutar = ham;
+    geriAl();
+    uyeleriCiz();
+    bildir((u.firma || u.ad) + '\nÖzel minimum tutar kaydedildi.\n(Demo Modu)', 'basari');
+    return true;
+  }
+
+  if (!durum.b2bVar) {
+    geriAl();
+    durumYaz('Bu özellik için sitenizde "B2B Core" eklentisi kurulu ve etkin olmalıdır.', 'hata');
+    return false;
+  }
+
+  const cevap = await b2b('dealers/' + id, {
+    metod: 'PUT',
+    govde: { custom_min_order: ham }
+  });
+
+  geriAl();
+
+  if (!cevap || !cevap.ok) {
+    durumYaz('Kaydedilemedi: ' + ((cevap && cevap.hata) || 'Bilinmeyen hata.'), 'hata');
+    return false;
+  }
+
+  /* Sunucunun döndürdüğü değer esas alınır (orada temizlenip yuvarlanır). */
+  if (cevap.veri) {
+    const taze = bayiNormalle(cevap.veri);
+    u.ozelMinTutar = taze.ozelMinTutar;
+    u.gecerliMinTutar = taze.gecerliMinTutar;
+  } else {
+    u.ozelMinTutar = ham;
+  }
+
+  uyeleriCiz();
+  bildir((u.firma || u.ad) + '\nÖzel minimum tutar kaydedildi.', 'basari');
+
+  return true;
 }
 
 /** Oranı Türkçe ondalık ayracıyla yazar (35 → "35", 12.5 → "12,5"). */
@@ -1654,6 +1777,12 @@ function urunNormalle(u) {
     barkod: String(u.barcode || u.sku || ''),
     aciklama: String(u.description || ''),
     stokTakip: !!u.manage_stock,
+    /*
+     * WooCommerce'in stok DURUMU (instock / outofstock / onbackorder).
+     * Adet ile karistirilmamali: adet sayimi kapali bir urun ("sinirsiz")
+     * adetsiz ama STOKTA olabilir. Toplu "Stokta Var" motoru bu alani yazar.
+     */
+    stokDurumu: String(u.stock_status || (Number(u.stock_quantity) > 0 ? 'instock' : 'instock')),
     /* İndirimli fiyat: indirim yoksa '' kalır (0 ile karıştırılmasın). */
     indirimliFiyat: indirimliFiyatCoz(u.sale_price),
     /* KDV oranı (%). b2b-core hazır alan olarak verir; WooCommerce yolunda
@@ -1759,7 +1888,14 @@ function bayiNormalle(b) {
         ? b.custom_discount_rate
         : (b.discount_rate || 0)
     ) || 0,
-    iskontoGecerli: Number(b.effective_discount_rate || 0) || 0
+    iskontoGecerli: Number(b.effective_discount_rate || 0) || 0,
+    /* --- Bayiye özel minimum sipariş tutarı ---
+       BOŞ ile SIFIR ayrı şeydir: boş "genel limit geçerli", 0 ise "bu bayi
+       limitten muaf" demektir. Bu yüzden değer Number()'a ZORLANMAZ. */
+    ozelMinTutar: (b.custom_min_order === undefined || b.custom_min_order === null || b.custom_min_order === '')
+      ? ''
+      : String(b.custom_min_order),
+    gecerliMinTutar: Number(b.effective_min_order || 0) || 0
   };
 }
 
@@ -3691,6 +3827,21 @@ function urunleriCiz(arama) {
          (gizliMi ? 'border-slate-300 dark:border-slate-600 opacity-80' : 'border-slate-200 dark:border-slate-700') +
          ' shadow-sm hover:shadow-md transition p-4" ' +
          'data-urun="' + u.id + '" data-sira="' + sira + '">' +
+
+      /*
+       * SECIM KUTUSU.
+       *
+       * Toplu islemler (stok durumu, KDV, yayin) eskiden yalnizca tablo
+       * gorunumunde secim yapilabildigi icin kart gorunumunde kullanilamiyordu.
+       * Kutu tabloyla AYNI `data-izg-sec` sozlesmesini kullanir; iki gorunum
+       * ayni secim havuzunu paylasir, arada gecis yapmak secimi bozmaz.
+       */
+      '<label class="urun-kart__sec shrink-0 self-start xl:self-center grid place-items-center w-10 h-16 cursor-pointer" ' +
+             'title="Toplu işlem için seç">' +
+        '<input type="checkbox" data-izg-sec="' + u.id + '" ' +
+               ((typeof izgSeciliMi === 'function' && izgSeciliMi(u.id)) ? 'checked ' : '') +
+               'class="w-6 h-6 accent-marka-700 cursor-pointer" />' +
+      '</label>' +
 
       /* Sürükle-bırak tutamağı — masaüstündeki sıra web sitesine birebir yansır */
       '<button type="button" data-tut="' + u.id + '" tabindex="0" ' +
@@ -6848,6 +6999,15 @@ function olaylariBagla() {
   });
 
   /* --- Ürün listesi --- */
+  /* Kart görünümündeki seçim kutuları — tabloyla aynı havuza yazar. */
+  $('#urunListesi').addEventListener('change', function (o) {
+    const kutu = o.target && o.target.closest ? o.target.closest('[data-izg-sec]') : null;
+
+    if (kutu && typeof izgSecimDegistir === 'function') {
+      izgSecimDegistir(kutu.getAttribute('data-izg-sec'), !!kutu.checked);
+    }
+  });
+
   $('#urunListesi').addEventListener('click', function (o) {
     const kaydetBtn = o.target.closest('[data-eylem="urun-kaydet"]');
     if (kaydetBtn) { urunKaydet(kaydetBtn.dataset.id, kaydetBtn); return; }
@@ -6969,8 +7129,11 @@ function olaylariBagla() {
     const iskontoKaydet = o.target.closest('[data-eylem="iskonto-kaydet"]');
     if (iskontoKaydet) { bayiIskontoKaydet(iskontoKaydet.dataset.id, iskontoKaydet, false); return; }
 
-    /* Oran kutusuna tıklamak bayi kartını açmasın. */
-    if (o.target.closest('[data-iskonto-kutu]')) return;
+    const minKaydet = o.target.closest('[data-eylem="min-tutar-kaydet"]');
+    if (minKaydet) { bayiMinTutarKaydet(minKaydet.dataset.id, minKaydet); return; }
+
+    /* Oran / minimum tutar kutusuna tıklamak bayi kartını açmasın. */
+    if (o.target.closest('[data-iskonto-kutu]') || o.target.closest('[data-min-tutar]')) return;
 
     /* Kartın boş bir yerine tıklandıysa bayi kartını aç */
     if (o.target.closest('button')) return;
@@ -6981,6 +7144,16 @@ function olaylariBagla() {
   /* Oran kutusunda Enter → kaydet (fare kullanmadan girip geçmek için). */
   $('#uyeListesi').addEventListener('keydown', function (o) {
     if (o.key !== 'Enter') return;
+
+    const minGirdi = o.target.closest('[data-min-tutar]');
+
+    if (minGirdi) {
+      o.preventDefault();
+
+      const minId = minGirdi.dataset.minTutar;
+      bayiMinTutarKaydet(minId, document.querySelector('[data-eylem="min-tutar-kaydet"][data-id="' + minId + '"]'));
+      return;
+    }
 
     const girdi = o.target.closest('[data-iskonto-oran]');
     if (!girdi) return;

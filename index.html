@@ -1745,6 +1745,22 @@
             </button>
           </div>
 
+          <!-- Toplu stok durumu: tek istekte /byom/v1/products/bulk-stock-status.
+               "Stokta Var" adet sayimini da kapatir (sinirsiz satis). -->
+          <button id="topluStoktaBtn" type="button"
+                  title="Seçili ürünleri STOKTA VAR yap ve adet sayımını kapat (sınırsız satış)"
+                  class="h-12 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
+                         text-white text-lg font-extrabold shadow transition">
+            <svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> STOKTA VAR
+          </button>
+
+          <button id="topluTukendiBtn" type="button"
+                  title="Seçili ürünleri TÜKENDİ yap (adet takibi ayarlarına dokunulmaz)"
+                  class="h-12 px-5 rounded-xl bg-slate-600 hover:bg-slate-700 active:scale-95
+                         text-white text-lg font-extrabold shadow transition">
+            <svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> TÜKENDİ
+          </button>
+
           <button id="topluIskontoBtn" type="button"
                   class="h-12 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95
                          text-white text-lg font-extrabold shadow transition">
@@ -1918,6 +1934,48 @@
           <div id="matrisBireysel"></div>
           <!-- Sağ: Kurumsal Bayiler tablosu -->
           <div id="matrisKurumsal"></div>
+        </div>
+
+        <!-- ============================================================
+             GENEL MİNİMUM SİPARİŞ TUTARI
+             Ödeme matrisiyle aynı ekranda duruyor: ikisi de ticari karar,
+             ikisi de aynı sekmede aranıyor. API & Sistem Ayarları sekmesi
+             geliştirici kilidi altındadır ve iş ayarları için doğru yer değil.
+             Bayi kartındaki "Özel Minimum" alanı bu değerin yerine geçer.
+             ============================================================ -->
+        <div class="mt-6 rounded-2xl border-2 border-slate-200 dark:border-slate-700
+                    bg-white dark:bg-slate-800 p-6 flex flex-wrap items-center gap-5">
+          <div class="min-w-0">
+            <div class="text-xl font-black">
+              <svg class="ik" aria-hidden="true"><use href="#ik-sepet"></use></svg>
+              Genel Minimum Sipariş Tutarı
+            </div>
+            <div class="text-base font-semibold text-slate-600 dark:text-slate-300 mt-1">
+              Sepeti bu tutarın altında kalan müşteri siparişi tamamlayamaz.
+              <b>0 = sınır yok.</b> Bir bayiye ayrı bir limit vermek için
+              <b>B2B Üye Onayları</b> sekmesindeki kartını kullanın.
+            </div>
+          </div>
+
+          <label class="ml-auto flex items-center gap-2 text-lg font-extrabold shrink-0">
+            <span class="sr-only">Genel minimum sipariş tutarı</span>
+            <span class="relative">
+              <input id="minTutarGirdi" type="text" inputmode="decimal" value="0"
+                     class="w-40 h-14 pl-4 pr-10 rounded-xl text-xl font-black text-right
+                            bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
+                            focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-lg font-black text-slate-400
+                           pointer-events-none">₺</span>
+            </span>
+          </label>
+
+          <button id="minTutarKaydetBtn" type="button"
+                  class="h-14 px-7 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95
+                         text-white text-lg font-extrabold shadow-md transition shrink-0">
+            <svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> KAYDET
+          </button>
+
+          <div id="minTutarDurum" class="w-full text-base font-bold"></div>
         </div>
 
         <div class="mt-6 flex flex-wrap items-center gap-4">

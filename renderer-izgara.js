@@ -965,6 +965,12 @@ function izgSeciliIdler() {
   return Object.keys(g.secili).filter(function (id) { return g.secili[id]; });
 }
 
+/** Bu ürün seçili mi? (kart görünümü de aynı havuzu okur) */
+function izgSeciliMi(id) {
+  const g = izg();
+  return !!(g && g.secili && g.secili[id]);
+}
+
 /** Seçili ürün nesneleri — listede olmayan (süzülmüş) kimlikler elenir. */
 function izgSeciliUrunler() {
   return izgSeciliIdler().map(izgUrunBul).filter(Boolean);
@@ -1508,6 +1514,121 @@ async function izgTopluKategori() {
 }
 
 /** TOPLU DURUM — seçili ürünleri yayına / taslağa alır. */
+/**
+ * Seçili ürünlerin STOK DURUMUNU tek istekte değiştirir.
+ *
+ * "Stokta Var" iki şey yapar: adet sayımını KAPATIR (_manage_stock = no) ve
+ * durumu instock yazar. Yalnızca durum yazılsaydı, adet sayımı açık kalan
+ * ürün bir sonraki siparişten sonra kendiliğinden "tükendi"ye dönerdi —
+ * sınırsız satılan ürünlerde tam olarak kaçınılmak istenen şey budur.
+ *
+ * "Tükendi" adet sayımına DOKUNMAZ: stok takibi yapan bir ürün geçici olarak
+ * tükendi diye takibini kaybetmemelidir.
+ *
+ * Tek istek: /byom/v1/products/bulk-stock-status. Ürün başına PUT atılsaydı
+ * 200 ürünlük bir seçim 200 istek demek olurdu.
+ *
+ * @param {string} hedef 'instock' | 'outofstock'
+ */
+async function izgTopluStokDurumu(hedef) {
+  const stoktaMi = hedef === 'instock';
+  const urunler = izgSeciliUrunler();
+
+  if (!urunler.length) {
+    bildir('Önce ürün seçin.', 'bilgi');
+    return;
+  }
+
+  const eminMi = await onayla(
+    stoktaMi ? 'Seçilenleri "Stokta Var" Yap' : 'Seçilenleri "Tükendi" Yap',
+    urunler.length + ' ürün ' +
+    (stoktaMi
+      ? 'STOKTA VAR olarak işaretlenecek.\nAdet sayımı kapatılacak: bu ürünler sitede\n"sınırsız / adetsiz" satılacak.'
+      : 'TÜKENDİ olarak işaretlenecek ve sitede sipariş edilemeyecek.\nAdet takibi ayarlarına dokunulmaz.') +
+    (izgDemoMu() ? '\n\n(Demo Modu: sitenizde değişiklik yapılmaz.)' : ''),
+    stoktaMi ? 'EVET, STOKTA VAR' : 'EVET, TÜKENDİ',
+    !stoktaMi
+  );
+
+  if (!eminMi) return;
+
+  const sayac = $('#topluSayac');
+  const yaz = function (metin) { if (sayac) sayac.textContent = metin; };
+
+  yaz((stoktaMi ? 'Stokta var' : 'Tükendi') + ' yazılıyor… (' + urunler.length + ')');
+
+  /* ---------- DEMO ---------- */
+  if (izgDemoMu()) {
+    await bekle(220);
+    izgStokDurumunuYansit(urunler, hedef);
+    bildir(urunler.length + ' ürün güncellendi.\n(Demo Modu)', 'basari');
+    return;
+  }
+
+  const ids = urunler.map(function (u) { return Number(u.id); });
+  const alanlar = ['wc-byom/v1', 'byom/v1'];
+  let cevap = null;
+
+  for (let i = 0; i < alanlar.length; i++) {
+    cevap = await api(alanlar[i], 'products/bulk-stock-status', {
+      metod: 'POST',
+      govde: { ids: ids, status: hedef },
+      sureAsimi: 90000
+    });
+
+    if (cevap && cevap.ok) break;
+
+    const kod = String((cevap && cevap.kod) || '');
+    const kd = Number((cevap && cevap.durum) || 0);
+
+    // Yalnızca "uç yok / yetki" hatasında ikinci ad alanı denenir.
+    if (kod !== 'rest_no_route' && kd !== 404 && kd !== 401 && kd !== 403) break;
+  }
+
+  if (!cevap || !cevap.ok) {
+    izgSecimCubuguTazele();
+    bildir('Stok durumu güncellenemedi:\n' + ekHataMetni(cevap) +
+           '\n\nB2B Core eklentiniz 2.11.0 veya üstü olmalıdır.', 'hata');
+    return;
+  }
+
+  /* Sunucu HANGİ ürünleri güncellediğini döndürür; ekran ona göre tazelenir. */
+  const yazilan = (cevap.veri && Array.isArray(cevap.veri.ids))
+    ? cevap.veri.ids.map(String)
+    : ids.map(String);
+
+  izgStokDurumunuYansit(
+    urunler.filter(function (u) { return yazilan.indexOf(String(u.id)) !== -1; }),
+    hedef
+  );
+
+  const atlanan = urunler.length - yazilan.length;
+
+  bildir(yazilan.length + ' ürün güncellendi.' +
+         (atlanan > 0 ? '\n' + atlanan + ' ürün bulunamadı ve atlandı.' : '') +
+         '\nSitede geçerli.', atlanan > 0 ? 'uyari' : 'basari');
+}
+
+/** Toplu stok sonucunu bellekteki listeye ve ekrana yansıtır. */
+function izgStokDurumunuYansit(urunler, hedef) {
+  const stoktaMi = hedef === 'instock';
+
+  urunler.forEach(function (u) {
+    u.stokDurumu = hedef;
+
+    if (stoktaMi) {
+      /* Adet sayımı kapandı: ekranda adet YERİNE "sınırsız" gösterilir. */
+      u.stokTakip = false;
+      u.stok = 0;
+    }
+
+    izgSatiriTazele(u.id);
+  });
+
+  izgSecimCubuguTazele();
+  izgCiz(true);
+}
+
 async function izgTopluDurum(hedefDurum) {
   const urunler = izgSeciliUrunler().filter(function (u) { return u.durum !== hedefDurum; });
 
@@ -1996,10 +2117,12 @@ function izgGorunumSec(gorunum) {
   if (tabloMu) izgCiz(false);
   else izgKartGorunumunuCiz();
 
-  /* Seçim yalnızca tablo görünümünde anlamlı. */
-  const cubuk = $('#topluCubuk');
-  if (cubuk && !tabloMu) { cubuk.classList.add('hidden'); cubuk.classList.remove('flex'); }
-  else izgSecimCubuguTazele();
+  /*
+   * Toplu çubuk artık KART görünümünde de çalışır: kartlara seçim kutusu
+   * eklendi ve iki görünüm aynı seçim havuzunu paylaşıyor. Görünüm
+   * değiştirmek seçimi bozmaz.
+   */
+  izgSecimCubuguTazele();
 
   /* Tercih kalıcı olsun. */
   if (typeof ipcRenderer !== 'undefined' && durum && durum.ayarlar &&
@@ -2098,6 +2221,8 @@ function izgOlaylariBagla() {
   bagla('#topluIskontoBtn', izgTopluIskonto);
   bagla('#topluZamBtn', izgTopluZam);
   bagla('#topluKategoriBtn', izgTopluKategori);
+  bagla('#topluStoktaBtn', function () { izgTopluStokDurumu('instock'); });
+  bagla('#topluTukendiBtn', function () { izgTopluStokDurumu('outofstock'); });
   bagla('#topluYayinlaBtn', function () { izgTopluDurum('publish'); });
   bagla('#topluTaslakBtn', function () { izgTopluDurum('draft'); });
   bagla('#topluTemizleBtn', izgSecimiTemizle);
