@@ -900,7 +900,7 @@
      satır zemininin boyamadığı koyu bir şerit kalıyordu. */
   .izg-satir {
     display: grid;
-    grid-template-columns: var(--izg-sablon, 28px 44px 68px 150px minmax(0, 1fr) 150px 130px 78px 90px 110px 104px);
+    grid-template-columns: var(--izg-sablon, 28px 44px 68px 150px minmax(0, 1fr) 150px 130px 78px 96px 90px 110px 104px);
     align-items: center;
     column-gap: 0;
     width: 100%;
@@ -984,6 +984,106 @@
   .izg-hap.is-on { background: var(--aksiyon); border-color: var(--aksiyon); color: #fff; }
   .izg-hap__adet { padding: 1px 7px; border-radius: 999px; background: var(--panel-alt); color: var(--ikincil); font-size: 11px; font-variant-numeric: tabular-nums; }
   .izg-hap.is-on .izg-hap__adet { background: rgba(255,255,255,.22); color: #fff; }
+
+  /* ======================================================================
+     ÜRÜN KART GÖRÜNÜMÜ — TEK SATIR YERLEŞİM
+     ----------------------------------------------------------------------
+     SORUN: ürün adı sınırsız genişleyen bir kutudaydı (flex-1) ve sarma
+     kapalı olmadığı için uzun isimler 10 satıra yayılıp kartı ikiye
+     bölüyordu; fiyat/stok/butonlar her kartta farklı hizaya düşüyordu.
+
+     ÇÖZÜM: ad kutusuna SABİT genişlik (220-280px) + tek satır + üç nokta.
+     Uzun isim fareyle üzerine gelindiğinde kutunun İÇİNDE kayar; taşma
+     kadarı translateX ile götürülür, kısa isimlerde min() sayesinde
+     hareket sıfır kalır (yanıp sönme olmaz).
+     ====================================================================== */
+  .urun-kart {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .urun-kart__ad {
+    min-width: 220px;
+    max-width: 280px;
+    flex: 0 0 auto;
+    --urun-ad-en: 248px;
+  }
+
+  .urun-kart__baslik {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .urun-kart__baslik > span { display: inline-block; will-change: transform; }
+
+  .urun-kart__ad:hover .urun-kart__baslik { text-overflow: clip; }
+  .urun-kart__ad:hover .urun-kart__baslik > span { animation: urunAdKaydir 7s ease-in-out infinite; }
+
+  /* min(0px, …): metin kutuya sığıyorsa hareket YOK; taşıyorsa taşma kadar. */
+  @keyframes urunAdKaydir {
+    0%, 12%   { transform: translateX(0); }
+    50%, 62%  { transform: translateX(min(0px, calc(var(--urun-ad-en) - 100%))); }
+    100%      { transform: translateX(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .urun-kart__ad:hover .urun-kart__baslik > span { animation: none; }
+  }
+
+  .urun-kart__alt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .dark .urun-kart__alt { color: #94a3b8; }
+
+  .urun-kart__alt .ik { width: 14px; height: 14px; flex: none; }
+  .urun-kart__kod { font-family: Consolas, "Courier New", monospace; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+  .urun-kart__gizli { flex: none; padding: 1px 6px; border-radius: 999px; background: #e2e8f0; color: #475569; font-size: 11px; font-weight: 800; }
+  .dark .urun-kart__gizli { background: #334155; color: #cbd5e1; }
+
+  /* 📦 Koli rozeti (kart ve kart altı) */
+  .urun-koli { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: #0f172a; color: #fff; font-size: 11px; font-weight: 800; white-space: nowrap; }
+  .dark .urun-koli { background: #e2e8f0; color: #0f172a; }
+  .urun-koli--mini { font-size: 10.5px; padding: 1px 6px; }
+  .urun-koli .ik { width: 12px; height: 12px; }
+
+  .urun-kart__stok { flex: 0 0 auto; width: 86px; text-align: center; line-height: 1.1; }
+  .urun-kart__stok-adet { display: block; font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .urun-kart__stok-etiket { display: block; font-size: 11px; font-weight: 700; color: #94a3b8; }
+
+  .urun-kart__alan { flex: 0 0 auto; }
+  .urun-kart__etiket { display: block; margin-bottom: 3px; font-size: 11.5px; font-weight: 800; letter-spacing: .3px; color: #64748b; white-space: nowrap; }
+  .dark .urun-kart__etiket { color: #94a3b8; }
+
+  .urun-kart__koli { display: flex; align-items: center; gap: 6px; }
+  .urun-kart__kolisec { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700; color: #64748b; cursor: pointer; user-select: none; white-space: nowrap; }
+  .dark .urun-kart__kolisec { color: #94a3b8; }
+  .urun-kart__kolisec input { width: 18px; height: 18px; accent-color: #1d4ed8; cursor: pointer; }
+
+  .urun-kart__btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+  .urun-kart__btn--ikon { padding: 0; }
+  .urun-kart__yayin { align-self: flex-end; }
+
+  /* Butonlar sağa yaslanır: bütün kartlarda aynı hizada dururlar. */
+  .urun-kart [data-eylem="urun-kaydet"] { margin-left: auto; }
+
+  @media (max-width: 900px) {
+    .urun-kart__ad { min-width: 100%; max-width: 100%; --urun-ad-en: 100%; }
+    .urun-kart [data-eylem="urun-kaydet"] { margin-left: 0; }
+  }
   /* ---- Sıralama: ⋮⋮ tutamak, 2px canlı mavi kılavuz çizgisi, hayalet, durum ---- */
   .izg-tut { padding: 0; display: grid; place-items: center; cursor: grab; touch-action: none; user-select: none; color: #94a3b8; outline: none; }
   .izg-tut .ik { width: 18px; height: 18px; }
@@ -1010,6 +1110,16 @@
   /* KDV oranı: fiyatın yanında, soluk ama okunur; rakamlar hizalı. */
   .izg-kdv { font-weight: 700; font-size: 13.5px; color: #64748b; font-variant-numeric: tabular-nums; }
   .dark .izg-kdv { color: #94a3b8; }
+
+  /* KOLİ hücresi: 📦 anahtarı + düzenlenebilir adet. */
+  .izg-koli { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 8px 10px; overflow: visible; }
+  .izg-koli-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex: none; padding: 0; border: 1px solid var(--kenar); border-radius: 7px; background: var(--panel); color: #94a3b8; cursor: pointer; transition: background-color .15s ease-out, color .15s ease-out, border-color .15s ease-out; }
+  .izg-koli-btn .ik { width: 15px; height: 15px; }
+  .izg-koli-btn:hover { border-color: var(--aksiyon); color: var(--aksiyon); }
+  .izg-koli-btn.is-on { background: #0f172a; border-color: #0f172a; color: #fff; }
+  .dark .izg-koli-btn.is-on { background: #e2e8f0; border-color: #e2e8f0; color: #0f172a; }
+  .izg-koli-adet { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; cursor: cell; padding: 2px 4px; border-radius: 5px; }
+  .izg-koli-adet:hover { box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .35); }
 
   /* Düzenlenebilir hücrede imleç ve hafif bir çerçeve ipucu. */
   .izg-h[data-duzenle] { cursor: cell; }
@@ -2843,6 +2953,18 @@
                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                       focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
         <p class="mt-1 text-sm text-slate-500">Bir kolide kaç adet ürün var? Varsayılan: 1</p>
+
+        <!-- "Sadece koli" kuralı: eklenti sepeti bu bayrağa göre kilitler
+             (b2b-core › B2B_Box_Sales). Koli içi adet en az 2 olmalıdır. -->
+        <label class="mt-3 flex items-start gap-3 cursor-pointer select-none">
+          <input id="duzenleSadeceKoli" type="checkbox" class="w-6 h-6 mt-0.5 accent-marka-600 shrink-0" />
+          <span class="text-base leading-relaxed">
+            <b>Sadece koli olarak satılır</b>
+            <span class="block text-sm text-slate-500 dark:text-slate-400">
+              Sitede adet seçici koli katlarında ilerler; ara adetler otomatik koliye tamamlanır.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div>

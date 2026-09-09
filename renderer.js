@@ -1659,6 +1659,8 @@ function urunNormalle(u) {
     /* KDV oranı (%). b2b-core hazır alan olarak verir; WooCommerce yolunda
        meta_data içindeki _byom_kdv_rate okunur, o da yoksa mağaza varsayılanı. */
     kdv: kdvOraniCoz(u),
+    /* "Sadece koli olarak satılır" — kural eklentide, rozet burada. */
+    sadeceKoli: sadeceKoliCoz(u),
     koliAdedi: koliAdediCoz(u),
     kategoriler: (u.categories || []).map(function (k) {
       return { id: Number(k.id || 0), ad: String(k.name || '') };
@@ -1691,6 +1693,41 @@ function kdvOraniCoz(u) {
   }
 
   return VARSAYILAN_KDV;
+}
+
+/**
+ * Ürün yanıtından "sadece koli" bayrağını çözer.
+ *
+ * b2b-core hazır `only_box` alanı verir; WooCommerce yolunda meta_data
+ * içindeki `_byom_only_box` okunur.
+ */
+function sadeceKoliCoz(u) {
+  if (u && u.only_box !== undefined && u.only_box !== null && u.only_box !== '') {
+    return u.only_box === true || u.only_box === 'yes' || u.only_box === 1 || u.only_box === '1';
+  }
+
+  const meta = (u && u.meta_data) || [];
+
+  for (let i = 0; i < meta.length; i++) {
+    if (meta[i] && meta[i].key === '_byom_only_box') {
+      const v = String(meta[i].value);
+      return v === 'yes' || v === '1' || v === 'true';
+    }
+  }
+
+  return false;
+}
+
+/** Koli rozeti: "📦 Koli: 20 Adet" (koli tanımlı değilse boş). */
+function koliRozetiHtml(u, kompakt) {
+  const adet = Number(u && u.koliAdedi) || 0;
+
+  if (!u || !u.sadeceKoli || adet < 2) return '';
+
+  return '<span class="urun-koli' + (kompakt ? ' urun-koli--mini' : '') + '" ' +
+              'title="Bu ürün yalnızca koli katları hâlinde sipariş edilebilir">' +
+           ikon('paket', 'ik-sm') + ' Koli: ' + adet + ' Adet' +
+         '</span>';
 }
 
 /** b2b-core /dealers yanıtını iç yapıya çevirir. */
@@ -2868,8 +2905,24 @@ function revizeToplamiTazele() {
 
   /* Her satırın kendi tutarını da tazele */
   satirlar.forEach(function (r) {
+    const brut = r.birim * r.adet;
+    const net = (!kdvDahil && r.kdvOrani > 0) ? (brut / (1 + r.kdvOrani / 100)) : brut;
+
     const hucre = document.querySelector('[data-revize-satir="' + r.kalemId + '"] [data-revize-tutar]');
-    if (hucre) hucre.textContent = para(r.birim * r.adet);
+    if (hucre) hucre.textContent = para(brut);
+
+    /* KDV hariç modda: yeni BİRİM fiyat ve KDV'siz SATIR toplamı. */
+    const netKutu = document.querySelector('[data-revize-satir="' + r.kalemId + '"] [data-revize-net]');
+
+    if (netKutu) {
+      const goster = !kdvDahil && r.kdvOrani > 0 && r.adet > 0;
+
+      netKutu.classList.toggle('hidden', !goster);
+
+      if (goster) {
+        netKutu.textContent = 'KDV hariç: ' + para(net / r.adet) + ' × ' + r.adet + ' = ' + para(net);
+      }
+    }
 
     const satir = document.querySelector('[data-revize-satir="' + r.kalemId + '"]');
     if (!satir) return;
@@ -2952,6 +3005,7 @@ function revizeModaliAc(id) {
           '<tr class="text-left">' +
             '<th class="p-3 font-black">ÜRÜN</th>' +
             '<th class="p-3 font-black whitespace-nowrap">STOK KODU</th>' +
+            '<th class="p-3 font-black text-right whitespace-nowrap">KDV %</th>' +
             '<th class="p-3 font-black text-center whitespace-nowrap">İSTENEN</th>' +
             '<th class="p-3 font-black text-center whitespace-nowrap">KOLİYE KONULAN</th>' +
             '<th class="p-3 font-black text-right whitespace-nowrap">TUTAR</th>' +
@@ -2979,6 +3033,15 @@ function revizeModaliAc(id) {
               '<td class="p-3 font-mono text-base text-slate-500 dark:text-slate-400 whitespace-nowrap">' +
                 kacis(k.kod) + '</td>' +
 
+              /* Ürünün tanımlı KDV oranı — "KDV hariç" seçilince ters işlem
+                 bu oranla yapılır; firma sahibi hangi kalemin hangi oranda
+                 olduğunu tabloda görür. */
+              '<td class="p-3 text-right font-bold whitespace-nowrap">' +
+                (Number(k.kdvOrani) > 0
+                  ? '%' + String(Math.round(Number(k.kdvOrani) * 100) / 100).replace('.', ',')
+                  : '<span class="text-slate-400">—</span>') +
+              '</td>' +
+
               '<td class="p-3 text-center whitespace-nowrap">' +
                 '<span class="text-xl font-black">' + k.adet + '</span>' +
                 '<span class="text-base text-slate-500 dark:text-slate-400"> adet</span>' +
@@ -3000,8 +3063,11 @@ function revizeModaliAc(id) {
                 '</div>' +
               '</td>' +
 
-              '<td class="p-3 text-right font-black whitespace-nowrap" data-revize-tutar>' +
-                kacis(para(k.tutar)) + '</td>' +
+              '<td class="p-3 text-right whitespace-nowrap">' +
+                '<div class="text-xl font-black" data-revize-tutar>' + kacis(para(k.tutar)) + '</div>' +
+                /* KDV hariç seçildiğinde: yeni birim fiyat ve KDV'siz satır toplamı. */
+                '<div class="hidden mt-1 text-base font-bold text-amber-600 dark:text-amber-400" data-revize-net></div>' +
+              '</td>' +
 
             '</tr>';
           }).join('') +
@@ -3550,17 +3616,17 @@ function gorunurlukAnahtariHtml(u) {
   return '' +
   '<button data-eylem="urun-gorunurluk" data-id="' + u.id + '" ' +
           'title="' + (yayinda ? 'Ürünü gizle (taslak yap)' : 'Ürünü yayına al') + '" ' +
-          'class="shrink-0 flex items-center gap-3 h-14 px-4 rounded-2xl border-2 font-extrabold text-lg transition ' +
+          'class="urun-kart__yayin shrink-0 flex items-center gap-2 h-12 px-3 rounded-xl border-2 font-extrabold text-base transition ' +
                  'active:scale-95 ' +
           (yayinda
             ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 ' +
               'dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
             : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200 ' +
               'dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600') + '">' +
-    '<span class="relative w-14 h-8 rounded-full transition-colors shrink-0 ' +
+    '<span class="relative w-11 h-6 rounded-full transition-colors shrink-0 ' +
           (yayinda ? 'bg-emerald-500' : 'bg-slate-400') + '">' +
-      '<span class="absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ' +
-            (yayinda ? 'translate-x-6' : '') + '"></span>' +
+      '<span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform ' +
+            (yayinda ? 'translate-x-5' : '') + '"></span>' +
     '</span>' +
     (yayinda ? 'YAYINDA' : 'GİZLİ') +
   '</button>';
@@ -3618,9 +3684,12 @@ function urunleriCiz(arama) {
     const gizliMi = u.durum !== 'publish';
 
     return '' +
-    '<div class="bg-white dark:bg-slate-800 rounded-2xl border-2 ' +
+    /* Kart TEK SATIR: sütunlar sabit genişlikte, dikeyde ortalı. Ürün adı
+       kendi kutusunda kalır (bkz. .urun-kart__ad — nowrap + ellipsis +
+       hover kaydırma); eskiden uzun isim 10 satıra yayılıp kartı bozuyordu. */
+    '<div class="urun-kart bg-white dark:bg-slate-800 rounded-2xl border-2 ' +
          (gizliMi ? 'border-slate-300 dark:border-slate-600 opacity-80' : 'border-slate-200 dark:border-slate-700') +
-         ' shadow-sm hover:shadow-md transition p-5 flex flex-col xl:flex-row xl:items-center gap-5" ' +
+         ' shadow-sm hover:shadow-md transition p-4" ' +
          'data-urun="' + u.id + '" data-sira="' + sira + '">' +
 
       /* Sürükle-bırak tutamağı — masaüstündeki sıra web sitesine birebir yansır */
@@ -3638,55 +3707,76 @@ function urunleriCiz(arama) {
            'onerror="this.onerror=null;this.src=\'' + YEDEK_GORSEL + '\'" ' +
            'class="w-20 h-20 rounded-xl object-cover bg-slate-100 dark:bg-slate-700 shrink-0" />' +
 
-      '<div class="flex-1 min-w-0">' +
-        '<div class="text-xl font-extrabold leading-snug">' + kacis(u.ad) +
-          (gizliMi ? ' <span class="text-base font-bold text-slate-500">(sitede görünmüyor)</span>' : '') +
+      /* ÜRÜN ADI — sabit kutu, tek satır, uzun isimde hover'da kayar. */
+      '<div class="urun-kart__ad">' +
+        '<div class="urun-kart__baslik" title="' + kacis(u.ad) + '"><span>' + kacis(u.ad) + '</span></div>' +
+        '<div class="urun-kart__alt">' +
+          ikon('barkod', 'ik-sm') + ' <span class="urun-kart__kod">' + kacis(u.kod) + '</span>' +
+          (gizliMi ? ' <span class="urun-kart__gizli">gizli</span>' : '') +
+          koliRozetiHtml(u, true) +
         '</div>' +
-        '<div class="text-base font-semibold text-slate-500 dark:text-slate-400 mt-1">' +
-          ikon('barkod') + ' Stok Kodu: ' + kacis(u.kod) +
-          '  ·  <span class="' + stokRengi + '">Mevcut: ' + u.stok + ' adet</span>' +
-        '</div>' +
+      '</div>' +
+
+      '<div class="urun-kart__stok ' + stokRengi + '">' +
+        '<span class="urun-kart__stok-adet">' + u.stok + '</span>' +
+        '<span class="urun-kart__stok-etiket">adet stok</span>' +
       '</div>' +
 
       gorunurlukAnahtariHtml(u) +
 
-      '<div class="shrink-0">' +
-        '<label class="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">FİYAT (₺)</label>' +
+      '<div class="urun-kart__alan">' +
+        '<label class="urun-kart__etiket">FİYAT (₺)</label>' +
         '<input type="text" inputmode="decimal" data-alan="fiyat" value="' + kacis(fiyatYazi(u.fiyat)) + '" ' +
-               'class="w-40 h-14 px-3 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900 ' +
+               'class="w-32 h-12 px-3 rounded-xl text-lg font-bold text-right bg-slate-50 dark:bg-slate-900 ' +
                       'border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600 ' +
                       'focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
       '</div>' +
 
       /* KDV oranı fiyatın HEMEN yanında (tablo görünümüyle aynı sıra). */
-      '<div class="shrink-0">' +
-        '<label class="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">KDV (%)</label>' +
+      '<div class="urun-kart__alan">' +
+        '<label class="urun-kart__etiket">KDV (%)</label>' +
         '<input type="text" inputmode="decimal" data-alan="kdv" value="' + kacis(String(u.kdv === undefined ? 20 : u.kdv).replace('.', ',')) + '" ' +
                'title="KDV oranı — fiyatı değiştirmez, belge dökümünde kullanılır" ' +
-               'class="w-24 h-14 px-3 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900 ' +
+               'class="w-20 h-12 px-3 rounded-xl text-lg font-bold text-right bg-slate-50 dark:bg-slate-900 ' +
                       'border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600 ' +
                       'focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
       '</div>' +
 
-      '<div class="shrink-0">' +
-        '<label class="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">STOK ADEDİ</label>' +
+      /* KOLİ: içi adet + "sadece koli" kutucuğu (tablo görünümüyle aynı kural). */
+      '<div class="urun-kart__alan urun-kart__alan--koli">' +
+        '<label class="urun-kart__etiket">KOLİ</label>' +
+        '<div class="urun-kart__koli">' +
+          '<input type="text" inputmode="numeric" data-alan="koli" value="' + (Number(u.koliAdedi) || 1) + '" ' +
+                 'title="Koli içi adet" ' +
+                 'class="w-16 h-12 px-2 rounded-xl text-lg font-bold text-right bg-slate-50 dark:bg-slate-900 ' +
+                        'border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600 ' +
+                        'focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
+          '<label class="urun-kart__kolisec" title="Yalnızca koli katları hâlinde satılsın">' +
+            '<input type="checkbox" data-alan="sadeceKoli"' + (u.sadeceKoli ? ' checked' : '') + ' />' +
+            '<span>sadece</span>' +
+          '</label>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="urun-kart__alan">' +
+        '<label class="urun-kart__etiket">STOK</label>' +
         '<input type="text" inputmode="numeric" data-alan="stok" value="' + u.stok + '" ' +
-               'class="w-32 h-14 px-3 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900 ' +
+               'class="w-24 h-12 px-3 rounded-xl text-lg font-bold text-right bg-slate-50 dark:bg-slate-900 ' +
                       'border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600 ' +
                       'focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
       '</div>' +
 
-      '<button data-eylem="urun-kaydet" data-id="' + u.id + '" ' +
-              'class="shrink-0 w-full xl:w-auto h-14 px-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 ' +
-                     'active:scale-95 text-white text-xl font-extrabold shadow-lg transition">' +
+      '<button data-eylem="urun-kaydet" data-id="' + u.id + '" title="Fiyat, KDV ve stoğu kaydet" ' +
+              'class="urun-kart__btn h-12 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 ' +
+                     'active:scale-95 text-white text-base font-extrabold shadow transition">' +
         ikon('kaydet') + ' KAYDET' +
       '</button>' +
 
       /* Tüm alanları (görsel, ad, barkod, kategori...) düzenleme paneli */
       '<button data-eylem="urun-duzenle" data-id="' + u.id + '" ' +
-              'title="Görsel, ad, barkod ve kategoriyi düzenle" ' +
-              'class="shrink-0 w-full xl:w-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 ' +
-                     'active:scale-95 text-white text-xl font-extrabold shadow-lg transition">' +
+              'title="Görsel, ad, barkod, koli ve kategoriyi düzenle" ' +
+              'class="urun-kart__btn h-12 px-5 rounded-xl bg-marka-700 hover:bg-marka-800 ' +
+                     'active:scale-95 text-white text-base font-extrabold shadow transition">' +
         ikon('kalem') + ' DÜZENLE' +
       '</button>' +
 
@@ -3695,11 +3785,10 @@ function urunleriCiz(arama) {
       '<button data-eylem="urun-sil" data-id="' + u.id + '" ' +
               'title="Ürünü sitenizden ve bu listeden tamamen sil" ' +
               'aria-label="Ürünü sil" ' +
-              'class="shrink-0 w-full xl:w-auto h-14 px-6 rounded-2xl border-2 border-red-300 ' +
+              'class="urun-kart__btn urun-kart__btn--ikon h-12 w-12 rounded-xl border-2 border-red-300 ' +
                      'dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 ' +
-                     'hover:bg-red-100 dark:hover:bg-red-500/20 active:scale-95 ' +
-                     'text-xl font-extrabold shadow-sm transition">' +
-        ikon('cop') + ' ÜRÜNÜ SİL' +
+                     'hover:bg-red-100 dark:hover:bg-red-500/20 active:scale-95 transition">' +
+        ikon('cop') +
       '</button>' +
     '</div>';
   };
@@ -3797,6 +3886,23 @@ async function urunKaydet(id, buton) {
   const kdvHam = kdvKutu ? String(kdvKutu.value).replace('%', '').trim() : '';
   const kdv = kdvHam === '' ? null : sayiCoz(kdvHam);
 
+  /* Koli içi adet ve "sadece koli" kuralı (ikisi de isteğe bağlı alan). */
+  const koliKutu = satir.querySelector('[data-alan="koli"]');
+  const koliHam = koliKutu ? String(koliKutu.value).trim() : '';
+  const koli = koliHam === '' ? null : Math.round(sayiCoz(koliHam));
+  const sadeceKoliKutu = satir.querySelector('[data-alan="sadeceKoli"]');
+  const sadeceKoli = sadeceKoliKutu ? !!sadeceKoliKutu.checked : null;
+
+  if (koli !== null && (!isFinite(koli) || isNaN(koli) || koli < 1)) {
+    bildir('Koli içi adet en az 1 olmalıdır.\nTek tek satılan üründe 1 yazın.', 'uyari');
+    return;
+  }
+
+  if (sadeceKoli && (koli === null ? (Number(urun.koliAdedi) || 1) : koli) < 2) {
+    bildir('"Sadece koli" için koli içi adet en az 2 olmalıdır.', 'uyari');
+    return;
+  }
+
   if (kdv !== null && (!isFinite(kdv) || isNaN(kdv) || kdv < 0 || kdv > 100)) {
     bildir('Geçerli bir KDV oranı yazın (0 ile 100 arasında).\nÖrnek: 20', 'uyari');
     return;
@@ -3823,9 +3929,23 @@ async function urunKaydet(id, buton) {
     // Fiyat/stok güncellemesi WooCommerce çekirdek ucundan yapılır.
     const govde = { regular_price: fiyat.toFixed(2), stock_quantity: stok, manage_stock: true };
 
+    const metalar = [];
+
     if (kdv !== null) {
-      govde.meta_data = [{ key: '_byom_kdv_rate', value: String(Math.round(kdv * 100) / 100) }];
+      metalar.push({ key: '_byom_kdv_rate', value: String(Math.round(kdv * 100) / 100) });
     }
+
+    if (koli !== null) {
+      govde.box_quantity = koli;
+      metalar.push({ key: '_b2b_koli_adeti', value: String(koli) });
+      metalar.push({ key: '_byom_box_qty', value: String(koli) });
+    }
+
+    if (sadeceKoli !== null) {
+      metalar.push({ key: '_byom_only_box', value: sadeceKoli ? 'yes' : 'no' });
+    }
+
+    if (metalar.length) govde.meta_data = metalar;
 
     const cevap = await woo('products/' + id, {
       metod: 'PUT',

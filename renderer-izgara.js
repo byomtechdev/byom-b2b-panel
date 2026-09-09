@@ -100,6 +100,9 @@ const IZGARA_SUTUNLARI = [
   /* KDV oranı fiyatın HEMEN yanında: fiyat girerken oranın da doğru olduğu
      tek bakışta görülür (çift tıklayıp yerinde düzenlenir). */
   { kod: 'kdv',       etiket: 'KDV %',        genislik: '78px',  ortaGenislik: '68px',  darGenislik: '58px', hiza: 'right', duzenlenir: true },
+  /* Koli: sayı çift tıklayınca düzenlenir, 📦 rozetine tıklamak "yalnızca
+     koli satılır" kuralını açıp kapatır. */
+  { kod: 'koli',      etiket: 'KOLİ',         genislik: '96px',  ortaGenislik: '86px',  darGenislik: '74px', hiza: 'right', duzenlenir: true },
   { kod: 'stok',      etiket: 'STOK',         genislik: '90px',  ortaGenislik: '76px',  darGenislik: '62px', hiza: 'right', duzenlenir: true },
   { kod: 'durum',     etiket: 'DURUM',        genislik: '110px', ortaGenislik: '96px',  darGenislik: '84px', hiza: 'center' },
   { kod: 'islem',     etiket: 'İŞLEM',        genislik: '104px', ortaGenislik: '102px', darGenislik: '98px', hiza: 'center' }
@@ -121,8 +124,8 @@ const IZGARA_SUTUNLARI = [
  * genişler ve sütunlar kendiliğinden ferahlar.
  */
 const IZGARA_KADEMELERI = [
-  { alan: 'genislik',     enAz: 1172 },
-  { alan: 'ortaGenislik', enAz: 1026 },
+  { alan: 'genislik',     enAz: 1268 },
+  { alan: 'ortaGenislik', enAz: 1112 },
   { alan: 'darGenislik',  enAz: 0 }
 ];
 
@@ -180,6 +183,31 @@ function izgUrunBul(id) {
  * Değer hiç gelmediyse mağaza varsayılanı (20) gösterilir; ürün kendi
  * oranını taşımıyorsa sitede zaten varsayılan geçerlidir.
  */
+/**
+ * KOLİ hücresi: adet + "sadece koli" anahtarı.
+ *
+ * Sayı çift tıklanınca yerinde düzenlenir (IZGARA_ALANLARI.koli); 📦 rozetine
+ * tıklamak ürünün YALNIZCA koli katlarında satılma kuralını açıp kapatır.
+ * Kural eklentide uygulanır (B2B_Box_Sales); burası yalnızca anahtardır.
+ */
+function izgKoliHucresi(u) {
+  const adet = Number(u.koliAdedi) || 1;
+  const sadece = !!u.sadeceKoli;
+
+  return '<div class="izg-h izg-koli" style="text-align:right">' +
+           '<button type="button" data-izg-koli="' + u.id + '" ' +
+                   'class="izg-koli-btn' + (sadece ? ' is-on' : '') + '" ' +
+                   'title="' + (sadece
+                     ? 'Yalnızca koli katları hâlinde satılıyor — kapatmak için tıklayın'
+                     : 'Sadece koli satışını açmak için tıklayın') + '">' +
+             ikon('paket') +
+           '</button>' +
+           '<span class="izg-koli-adet" data-duzenle="koli" title="Koli içi adet — düzenlemek için çift tıklayın">' +
+             (adet > 1 ? adet : '—') +
+           '</span>' +
+         '</div>';
+}
+
 function izgKdvYazi(oran) {
   const n = Number(oran);
   const deger = isFinite(n) && n >= 0 ? n : 20;
@@ -485,6 +513,7 @@ function izgSatirHtml(u) {
           '', 'left', kategori) +
     hucre('izg-para', kacis(paraSade(u.fiyat)), 'fiyat', 'right') +
     hucre('izg-kdv', kacis(izgKdvYazi(u.kdv)), 'kdv', 'right') +
+    izgKoliHucresi(u) +
     hucre('izg-stok ' + stokRengi, String(u.stok), 'stok', 'right') +
 
     '<div class="izg-h" style="text-align:center">' +
@@ -549,6 +578,55 @@ function izgUrunSil(id, dugme) {
   urunSil(id, dugme);
 }
 
+/**
+ * "Sadece koli satılır" kuralını açar / kapatır.
+ *
+ * Koli içi adet 2'den küçükken kural anlamsızdır: kullanıcı önce koli adedini
+ * girsin diye uyarı verilir ve istek atılmaz.
+ */
+async function izgSadeceKoliDegistir(id) {
+  const u = izgUrunBul(id);
+  if (!u) return;
+
+  const adet = Number(u.koliAdedi) || 1;
+  const yeni = !u.sadeceKoli;
+
+  if (yeni && adet < 2) {
+    bildir('Önce koli içi adedi girin.\nKOLİ sütunundaki sayıya çift tıklayıp örneğin 20 yazın.', 'uyari');
+    return;
+  }
+
+  const onceki = u.sadeceKoli;
+  u.sadeceKoli = yeni;
+  izgSatiriTazele(id);
+
+  if (izgDemoMu()) {
+    await bekle(80);
+    const kaynak = (typeof DEMO_URUNLER !== 'undefined' ? DEMO_URUNLER : [])
+      .filter(function (x) { return String(x.id) === String(u.id); })[0];
+    if (kaynak) kaynak.sadeceKoli = yeni;
+    bildir(u.ad + '\n' + (yeni ? 'Yalnızca koli satışı açıldı.' : 'Koli kuralı kaldırıldı.') + '\n(Demo Modu)', 'basari');
+    return;
+  }
+
+  const cevap = await woo('products/' + u.id, {
+    metod: 'PUT',
+    govde: { meta_data: [{ key: '_byom_only_box', value: yeni ? 'yes' : 'no' }] },
+    sureAsimi: 30000
+  });
+
+  if (!cevap || !cevap.ok) {
+    u.sadeceKoli = onceki;
+    izgSatiriTazele(id);
+    bildir('Koli kuralı güncellenemedi:\n' + ((cevap && cevap.hata) || 'Bilinmeyen hata'), 'hata');
+    return;
+  }
+
+  bildir(u.ad + '\n' + (yeni
+    ? 'Artık yalnızca koli katları hâlinde satılıyor (1 koli = ' + adet + ' adet).'
+    : 'Koli kuralı kaldırıldı; tek tek satılabilir.'), 'basari');
+}
+
 /** Alt bilgi çubuğu: kaç ürün gösteriliyor, kaç tanesi süzüldü. */
 function izgAltbilgiCiz() {
   const d = (typeof durum !== 'undefined' && durum) ? durum : null;
@@ -592,11 +670,14 @@ const IZGARA_ALANLARI = {
   fiyat: { etiket: 'Liste fiyatı', tur: 'para' },
   /* KDV oranı: 0-100 arası yüzde. Boş bırakılırsa mağaza varsayılanına döner. */
   kdv:   { etiket: 'KDV oranı',    tur: 'yuzde' },
+  /* Koli içi adet: 1 = koli yok. "Sadece koli" kuralı ayrı bir anahtardır. */
+  koli:  { etiket: 'Koli içi adet', tur: 'tamsayi' },
   stok:  { etiket: 'Stok adedi',   tur: 'tamsayi' }
 };
 
 /** Hücrenin ham (düzenlenebilir) değeri. */
 function izgHamDeger(u, alan) {
+  if (alan === 'koli') return String(Number(u.koliAdedi) || 1);
   if (alan === 'kdv') return izgKdvYazi(u.kdv);
   if (alan === 'fiyat') return fiyatYazi(u.fiyat);
   if (alan === 'stok') return String(u.stok);
@@ -730,7 +811,7 @@ async function izgHucreKaydet(hucre, gecis) {
   }
 
   /* Değer değişmediyse istek atma. */
-  const eski = alan === 'kod' ? (u.kod === '-' ? '' : u.kod) : u[alan];
+  const eski = alan === 'kod' ? (u.kod === '-' ? '' : u.kod) : (alan === 'koli' ? (Number(u.koliAdedi) || 1) : u[alan]);
   if (String(eski) === String(deger)) {
     izgSatiriTazele(id);
     if (gecis) izgKomsuHucreyeGec(id, alan, gecis);
@@ -783,8 +864,10 @@ async function izgAlanKaydet(u, alan, deger) {
      aşağıda eski değere geri dönülür. */
   const oncekiDeger = u[alan];
   const oncekiKod = u.kod;
+  const oncekiKoli = u.koliAdedi;
 
   if (alan === 'kod') { u.kod = deger || '-'; u.barkod = deger; }
+  else if (alan === 'koli') u.koliAdedi = deger;
   else u[alan] = deger;
 
   izgSatiriTazele(u.id);
@@ -811,12 +894,22 @@ async function izgAlanKaydet(u, alan, deger) {
   else if (alan === 'kod') govde.sku = deger;
   /* KDV oranı WooCommerce'in vergi sınıfına DEĞİL, kendi meta alanımıza yazılır. */
   else if (alan === 'kdv') govde.meta_data = [{ key: '_byom_kdv_rate', value: String(deger) }];
+  /* Koli içi adet: kanonik ad + aynalar eklentide yazılır, burada duz alan
+     ve iki yaygın anahtar gönderilir (eklentisiz kurulumda da çalışsın). */
+  else if (alan === 'koli') {
+    govde.box_quantity = deger;
+    govde.meta_data = [
+      { key: '_b2b_koli_adeti', value: String(deger) },
+      { key: '_byom_box_qty', value: String(deger) }
+    ];
+  }
 
   const cevap = await woo('products/' + u.id, { metod: 'PUT', govde: govde, sureAsimi: 30000 });
 
   if (!cevap || !cevap.ok) {
     /* Geri al — ekrandaki değer siteyle uyuşmalı. */
     if (alan === 'kod') { u.kod = oncekiKod; u.barkod = oncekiKod === '-' ? '' : oncekiKod; }
+    else if (alan === 'koli') u.koliAdedi = oncekiKoli;
     else u[alan] = oncekiDeger;
 
     izgSatiriTazele(u.id);
@@ -2025,6 +2118,10 @@ function izgOlaylariBagla() {
       /* YAYINDA / GİZLİ rozeti */
       const rozet = yakin('[data-izg-durum]');
       if (rozet) { izgDurumDegistir(rozet.getAttribute('data-izg-durum')); return; }
+
+      /* 📦 "sadece koli" anahtarı */
+      const koli = yakin('[data-izg-koli]');
+      if (koli) { izgSadeceKoliDegistir(koli.getAttribute('data-izg-koli')); return; }
 
       /* Satır sonu: KALEM (düzenle) ve ÇÖP KUTUSU (sil).
          Bu devir ızgaranın KENDİ kabında kurulur; kart görünümünün

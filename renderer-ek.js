@@ -1170,6 +1170,10 @@ async function urunDuzenleAc(id) {
     const fiyatAlani = $('#duzenleFiyat');
     if (fiyatAlani) fiyatAlani.value = fiyatYazi(urun.fiyat);
 
+    /* "Sadece koli satışı" kuralı. */
+    const sadeceKoliKutu = $('#duzenleSadeceKoli');
+    if (sadeceKoliKutu) sadeceKoliKutu.checked = !!urun.sadeceKoli;
+
     /* KDV oranı: üründe yoksa mağaza varsayılanı (20) gösterilir. */
     const kdvAlani = $('#duzenleKdv');
     if (kdvAlani) {
@@ -1370,6 +1374,10 @@ async function urunDuzenleKaydet() {
   const koli = isNaN(koliHam) ? 1 : Math.round(koliHam);
   const kod = kodAlani ? kodAlani.value.trim() : '';
 
+  /* "Sadece koli satışı" kuralı (kutucuk yoksa dokunulmaz). */
+  const sadeceKoliKutu = $('#duzenleSadeceKoli');
+  const sadeceKoli = sadeceKoliKutu ? !!sadeceKoliKutu.checked : null;
+
   /* KDV oranı (isteğe bağlı alan; boşsa ürünün oranına dokunulmaz). */
   const kdvAlani = $('#duzenleKdv');
   const kdvYazi = kdvAlani ? String(kdvAlani.value).replace('%', '').trim() : '';
@@ -1424,6 +1432,12 @@ async function urunDuzenleKaydet() {
   if (!isFinite(koli) || koli < 1) {
     duzenleUyar('Koli içi adet en az 1 olmalıdır.\nTek tek satılan ürünlerde 1 yazın.');
     if (koliAlani) koliAlani.focus();
+    return;
+  }
+  if (sadeceKoli && koli < 2) {
+    duzenleUyar('"Sadece koli olarak satılır" için koli içi adet en az 2 olmalıdır.\n' +
+                'Örnek: 1 koli = 20 adet ise 20 yazın.');
+    if (koliAlani) { koliAlani.focus(); if (koliAlani.select) koliAlani.select(); }
     return;
   }
   if (!yeniGorseller.length && gorselUrl && !/^https?:\/\//i.test(gorselUrl)) {
@@ -1489,6 +1503,7 @@ async function urunDuzenleKaydet() {
         kayit.indirimliFiyat = indirimliYazi ? indirimli : '';
         kayit.koliAdedi = koli;
         kayit.stok = stok;
+        if (sadeceKoli !== null) kayit.sadeceKoli = sadeceKoli;
         if (kdv !== null) kayit.kdv = Math.round(kdv * 100) / 100;
         kayit.durum = yayinDurumu;
         kayit.gorsel = yeniGorsel;
@@ -1532,6 +1547,13 @@ async function urunDuzenleKaydet() {
     if (kdv !== null) {
       govde.meta_data = govde.meta_data.concat([
         { key: '_byom_kdv_rate', value: String(Math.round(kdv * 100) / 100) }
+      ]);
+    }
+
+    /* "Sadece koli" kuralı: eklenti bu meta'yı okuyup sepeti kilitler. */
+    if (sadeceKoli !== null) {
+      govde.meta_data = govde.meta_data.concat([
+        { key: '_byom_only_box', value: sadeceKoli ? 'yes' : 'no' }
       ]);
     }
 
