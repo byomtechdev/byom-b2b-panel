@@ -1502,6 +1502,21 @@ function b2bSiparisNormalle(s) {
     /* Bayi iskontosu özeti (b2b-core > B2B_Order_Pricing). Eklenti eski
        sürümdeyse null gelir; fiş kalem toplamlarından kendi hesabını yapar. */
     fiyatOzeti: s.pricing || null,
+    /*
+     * SİPARİŞE DAMGALANMIŞ BAYİ İSKONTO ORANI.
+     *
+     * Kaynak sırası: pricing.order_rate → sipariş meta'sı → (fiş kendisi
+     * tutarlardan türetir). Kodda SABİT bir yüzde YOKTUR; oran her siparişin
+     * kendi kaydından okunur. Meta iki adla da aranır: kanonik anahtar
+     * "_b2b_discount_rate", şartnamede anılan ad "_byom_dealer_discount_rate".
+     */
+    bayiIskontoOrani: Number(
+      (s.pricing && s.pricing.order_rate) ||
+      b2bMeta._byom_dealer_discount_rate ||
+      b2bMeta._b2b_discount_rate ||
+      b2bMeta.b2b_discount_rate ||
+      0
+    ),
     tarih: s.date_created || '',
     durum: s.status || 'b2b-received',
     durumEtiketi: s.status_label || '',
@@ -1561,6 +1576,18 @@ function b2bSiparisNormalle(s) {
         listeAraToplam: Number(k.list_subtotal !== undefined && k.list_subtotal !== null
           ? k.list_subtotal
           : araToplam),
+        /*
+         * BIRIM liste fiyati AYRI tasinir.
+         *
+         * Fisin 1. satiri "birim liste fiyati x GUNCEL adet" formuluyle
+         * hesaplanir; satir toplami meta'sina (list_subtotal) guvenmek,
+         * revizyonda o meta olceklenmemisse dusen adedi iskonto gibi
+         * gosterirdi. Birim fiyat adetten BAGIMSIZDIR, bu yuzden daha
+         * guvenli kaynaktir.
+         */
+        listeBirim: Number(k.list_unit_price !== undefined && k.list_unit_price !== null
+          ? k.list_unit_price
+          : (adet > 0 ? (Number(k.list_subtotal || araToplam) / adet) : 0)),
         /* Satır KDV künyesi (fiş sütunları): oran ve tutar eklentiden gelir. */
         kdvOrani: Number(k.vat_rate || 0),
         kdvTutar: Number(k.vat_amount || 0),
@@ -1670,6 +1697,7 @@ function siparisNormalle(s) {
         /* wc/v3 çekirdek ucunda liste fiyatı meta'sı OKUNMAZ (b2b-core'a özgü
            alandır). Eklentisiz yolda iskonto sütunu boş kalır. */
         listeAraToplam: araToplam,
+        listeBirim: adet > 0 ? (araToplam / adet) : 0,
         gorsel: (k.image && k.image.src) ? k.image.src : YEDEK_GORSEL
       };
     })
@@ -5641,11 +5669,29 @@ function kalemFiyatKunyesi(k) {
 
   /* Satır toplamları KAYNAK; birim fiyatlar bunlardan türetilir. */
   const satirToplam = Number(k.araToplam);
-  const listeToplam = Number(k.listeAraToplam);
 
   const net = isFinite(satirToplam) ? satirToplam : Number(k.tutar || 0);
-  /* Liste bilgisi yoksa (eski sipariş / eklentisiz yol) iskonto YOK sayılır;
-     olmayan bir indirimi uydurmak fişi yanlış yapardı. */
+
+  /*
+   * LİSTE TOPLAMI = BİRİM LİSTE FİYATI × GÜNCEL ADET.
+   *
+   * REGRESYON KORUMASI (asla geri alınmayacak): sipariş revize edilip adet
+   * düşürüldüğünde aradaki fark bayi iskontosu SAYILMAZ. Satır toplamı
+   * meta'sı (list_subtotal) sipariş oluşturulduğu andaki adede göre yazılır;
+   * eklenti bunu revizyonda yeniden ölçekler ama o ölçekleme herhangi bir
+   * sebeple yapılmadıysa (eski sürüm, elle düzenlenmiş sipariş) düşen adet
+   * "iskonto" gibi görünürdü.
+   *
+   * Birim fiyat adetten BAĞIMSIZDIR: güncel adetle çarpmak bu hatayı
+   * yapısal olarak imkânsız kılar. Birim fiyat gelmiyorsa satır toplamına
+   * düşülür; o da yoksa iskonto YOK sayılır - olmayan bir indirimi
+   * uydurmak fişi yanlış yapardı.
+   */
+  const birimListeHam = Number(k.listeBirim);
+  const listeToplam = (isFinite(birimListeHam) && birimListeHam > 0)
+    ? birimListeHam * adet
+    : Number(k.listeAraToplam);
+
   const liste = (isFinite(listeToplam) && listeToplam >= net) ? listeToplam : net;
 
   const indirim = Math.max(0, liste - net);
@@ -5701,10 +5747,14 @@ function siparisFinansOzeti(s) {
   /*
    * BAYİ İSKONTOSU = liste toplamı − net toplam.
    *
-   * Bu fark artık YALNIZCA bayiye tanımlı yüzde iskontodur: eklenti revizyonda
-   * "_b2b_list_subtotal" meta'sını da yeni adetle ölçekliyor (b2b-core 2.7.0),
-   * dolayısıyla temin edilemeyen adet bu farka KARIŞMAZ. Revizyon farkı ayrı
-   * bir alandan (revizeFarki) okunur ve fişte ayrı satırda gösterilir.
+   * Bu fark artık YALNIZCA bayiye tanımlı yüzde iskontodur. Güvence artık
+   * meta'nın ölçeklenmesine BAĞLI DEĞİLDİR: liste toplamı birim liste fiyatı
+   * ile GÜNCEL adedin çarpımıdır (bkz. kalemFiyatKunyesi), dolayısıyla temin
+   * edilemeyen adet bu farka yapısal olarak karışamaz.
+   *
+   * revizeFarki alanı hesaplanmaya devam eder (sipariş detayında kullanılır)
+   * ama depo fişinin dört satırlık dökümünde YER ALMAZ: döküm yalnızca
+   * ödenecek tutarı üreten kalemleri gösterir.
    */
   const iskonto = Math.max(0, brutListe - netAra);
   const genelToplam = Number(s.tutar || 0);
@@ -5759,8 +5809,70 @@ function siparisFinansOzeti(s) {
     kdvOrani = KDV_ORANI;
   }
 
+  /*
+   * BAYİ İSKONTO ORANI — SİPARİŞTEN DİNAMİK OKUNUR.
+   *
+   * REGRESYON KORUMASI: koda sabit bir yüzde (eskiden %10) YAZILMAZ. Kaynak
+   * sırası:
+   *   1) pricing.order_rate  -> siparişe damgalanmış oran (_b2b_discount_rate)
+   *   2) meta_data           -> _byom_dealer_discount_rate / _b2b_discount_rate
+   *   3) tutarlardan türetilen gerçek oran (liste - net) / liste
+   *
+   * Oran 0 ve tutar da 0 ise satır fişte HİÇ basılmaz.
+   */
+  const fiyat = s.fiyatOzeti || {};
+  const metaOran = Number(
+    s.bayiIskontoOrani !== undefined && s.bayiIskontoOrani !== null ? s.bayiIskontoOrani : NaN
+  );
+
+  const turetilmisOran = brutListe > 0 ? (iskonto / brutListe) * 100 : 0;
+
+  let bayiOrani = Number(fiyat.order_rate);
+
+  if (!isFinite(bayiOrani) || bayiOrani <= 0) bayiOrani = metaOran;
+  if (!isFinite(bayiOrani) || bayiOrani <= 0) bayiOrani = turetilmisOran;
+  if (!isFinite(bayiOrani) || bayiOrani < 0) bayiOrani = 0;
+
+  /*
+   * ÖDEME YÖNTEMİ İSKONTOSU — SİPARİŞTEN DİNAMİK OKUNUR.
+   *
+   * REGRESYON KORUMASI: koda sabit %8 / %12 YAZILMAZ. Tutar ve oran
+   * siparişin ücret (fee) satırından gelir; eklenti bunları
+   * payment_discount_amount / payment_discount_rate olarak yayınlar.
+   * İndirim yoksa satır fişte HİÇ basılmaz.
+   */
+  const odemeIndirim = Math.max(0, Number(s.odemeIskontoTutar || 0));
+  const odemeOraniHam = Number(s.odemeIskonto || 0);
+  const odemeOrani = odemeOraniHam > 0
+    ? odemeOraniHam
+    : (netAra > 0 ? (odemeIndirim / netAra) * 100 : 0);
+
+  const odemeAdi = String(s.odemeTipiEtiket || s.odeme || '').trim();
+
+  /*
+   * DÖKÜMÜN KAPANMASI.
+   *
+   * Fiş dört satırla biter ve rakamlar kuruşu kuruşuna birbirini
+   * doğrulamalıdır:
+   *
+   *     liste - bayi iskontosu - ödeme iskontosu = genel ödenecek tutar
+   *
+   * Kargo, kupon gibi kalemler VARSA aradaki satırlara girer; yoksa hiç
+   * basılmaz ve döküm tam olarak dört satır kalır. "fark" ise hiçbir
+   * kaleme oturmayan artıktır (ör. WooCommerce vergi motoru açıkken KDV
+   * satır fiyatlarının dışındadır): sıfır değilse GÖSTERİLİR, çünkü
+   * kapanmayan bir çıkarma listesi basmak fişi yalancı yapar.
+   */
+  const hedef = brutListe - iskonto - odemeIndirim - ekIndirim + kargo;
+  const fark = Math.round((genelToplam - hedef) * 100) / 100;
+
   /* KDV hariç modda genel toplam = net + KDV (site zaten böyle hesapladı). */
   return {
+    bayiOrani: bayiOrani,
+    odemeIndirim: odemeIndirim,
+    odemeOrani: isFinite(odemeOrani) && odemeOrani > 0 ? odemeOrani : 0,
+    odemeAdi: odemeAdi,
+    fark: fark,
     brutListe: brutListe,
     revizeFarki: revizeFarki,
     iskonto: iskonto,
@@ -5840,35 +5952,68 @@ function depoFisiHtml(s) {
   }
 
   /*
-   * HİYERARŞİK ÖZET (BYOM-REGISTRY.md §5.10)
+   * DÖRT SATIRLIK MUHASEBE DÖKÜMÜ
+   * ---------------------------------------------------------------------
+   * Satırlar BİRBİRİNİ ÇIKARIR ve kuruşu kuruşuna kapanır:
    *
-   *   1. Revize Liste Fiyatı Ara Toplamı  — koliye giren adetlerin liste tutarı
-   *   2. Revizyon Farkı                    — temin edilemeyen adetlerin tutarı
-   *   3. Bayi İskonto Tutarı               — YALNIZCA tanımlı yüzde iskonto
-   *   4. KDV Tutarı                        — satır KDV'lerinin toplamı
-   *   5. Genel Ödenecek Tutar
+   *   1. LİSTE FİYATI ARA TOPLAMI     birim liste fiyatı × GÜNCEL adet
+   *   2. (varsa) BAYİ İSKONTO TUTARI  oran siparişten okunur
+   *   3. (varsa) {YÖNTEM} İSKONTOSU   tutar ve oran ücret satırından okunur
+   *   4. GENEL ÖDENECEK TUTAR         1 − 2 − 3
    *
-   * 2 ve 3 artık BİRBİRİNE KARIŞMAZ: eklenti revizyonda liste fiyatı
-   * meta'sını da yeni adetle ölçekliyor, düşen adet ayrı alanda tutuluyor.
+   * ÜÇ REGRESYON KORUMASI (asla geri alınmayacak):
+   *
+   *   · Adet değişimi iskonto DEĞİLDİR. 1. satır güncel adetle çarpılarak
+   *     hesaplanır; düşen adet farkı iskonto satırına karışamaz. Bu yüzden
+   *     ayrı bir "revizyon farkı" satırına da gerek kalmadı - liste tutarı
+   *     zaten revize adetleri yansıtıyor.
+   *   · Bayi oranı SABİT DEĞİLDİR. Siparişin kendi kaydından gelir
+   *     (pricing.order_rate / _byom_dealer_discount_rate). Oran ve tutar
+   *     sıfırsa satır HİÇ basılmaz.
+   *   · Ödeme oranı SABİT DEĞİLDİR. Siparişin ücret satırından gelir.
+   *     İndirim yoksa satır HİÇ basılmaz.
+   *
+   * KDV çıkarma işleminin İÇİNDE DEĞİLDİR; toplamın altında tek satırlık
+   * gri künyede yazar. Kargo, kupon ve kapanmayan artık yalnızca SIFIR
+   * DEĞİLSE araya girer - kapanmayan bir çıkarma listesi basmak fişi
+   * yalancı yapardı.
    */
+
+  /*
+   * KDV KÜNYESİ — toplam kutusunun hemen altında tek satır.
+   *
+   * KDV yukarıdaki çıkarma işleminin DIŞINDADIR: "tahsil edilecek tutar" ile
+   * "o tutarın içindeki vergi" ayrı sorulardır. İkisini aynı sütunda çıkarma
+   * kalemi gibi göstermek hem depocuyu hem muhasebeciyi yanıltıyordu.
+   */
+  const kdvKunyesi = ozet.kdvHaricMi
+    ? '(KDV dâhil edilmemiştir &middot; KDV: ' + kacis(para(0)) + ')'
+    : '(Tahsil edilecek tutara dâhil KDV: ' + kacis(para(ozet.kdv)) +
+      (ozet.karisikOran ? ' &middot; karma oran' : ' &middot; ' + fisOranYazi(ozet.kdvOrani)) + ')';
+
+  const kdvKunyeSatiri =
+    '<tr class="kdv-kunye"><td colspan="10">' + kdvKunyesi + '</td></tr>';
+
   const ozetSatirlari = '' +
-    ozetSatiri((ozet.revizeFarki > 0.005 ? 'REVİZE ' : '') +
-                 'LİSTE FİYATI ARA TOPLAMI <span class="ince">(iskontosuz brüt)</span>',
+    ozetSatiri('LİSTE FİYATI ARA TOPLAMI <span class="ince">(iskontosuz brüt · güncel adetler)</span>',
                kacis(para(ozet.brutListe))) +
 
-    (ozet.revizeFarki > 0.005
-      ? ozetSatiri('REVİZYON FARKI <span class="ince">(temin edilemeyen / düşülen adet)</span>',
-                   '&minus;' + kacis(para(ozet.revizeFarki)), 'indirim')
+    (ozet.iskonto > 0.005 && ozet.bayiOrani > 0
+      ? ozetSatiri('BAYİ İSKONTO TUTARI <span class="ince">(oran: ' +
+                     fisOranYazi(ozet.bayiOrani) + ')</span>',
+                   '&minus;' + kacis(para(ozet.iskonto)), 'indirim')
       : '') +
 
-    (ozet.iskonto > 0.005
-      ? ozetSatiri('BAYİ İSKONTO TUTARI <span class="ince">(oran: ' +
-                     fisOranYazi(ozet.iskontoOrani) + ')</span>',
-                   '&minus;' + kacis(para(ozet.iskonto)), 'indirim')
-      : ozetSatiri('BAYİ İSKONTOSU', '<span class="ince">uygulanmadı</span>')) +
+    (ozet.odemeIndirim > 0.005
+      ? ozetSatiri(kacis((ozet.odemeAdi || 'ÖDEME YÖNTEMİ').toLocaleUpperCase('tr-TR')) +
+                     ' İSKONTOSU' +
+                     (ozet.odemeOrani > 0
+                       ? ' <span class="ince">(oran: ' + fisOranYazi(ozet.odemeOrani) + ')</span>'
+                       : ''),
+                   '&minus;' + kacis(para(ozet.odemeIndirim)), 'indirim')
+      : '') +
 
-    ozetSatiri('İSKONTOLU NET ARA TOPLAM', kacis(para(ozet.netAra))) +
-
+    /* --- Yalnızca sıfır değilse: kupon, kargo ve kapanmayan artık --- */
     (ozet.ekIndirim > 0.005
       ? ozetSatiri('EK İNDİRİM <span class="ince">(kupon / sipariş indirimi)</span>',
                    '&minus;' + kacis(para(ozet.ekIndirim)), 'indirim')
@@ -5879,13 +6024,14 @@ function depoFisiHtml(s) {
                    kacis(para(ozet.kargo)))
       : '') +
 
-    ozetSatiri('KDV TUTARI <span class="ince">(' +
-                 (ozet.karisikOran ? 'karma oran · ort. ' : '') + fisOranYazi(ozet.kdvOrani) +
-                 (ozet.kdvHaricMi ? ' &middot; fiyatlara dâhil değil' : (ozet.kdvDahilMi ? ' &middot; fiyatlara dâhil' : '')) +
-                 ')</span>',
-               kacis(para(ozet.kdv))) +
+    (Math.abs(ozet.fark) > 0.005
+      ? ozetSatiri('KDV <span class="ince">(fiyatlara dâhil değil · toplama eklenir)</span>',
+                   (ozet.fark < 0 ? '&minus;' : '') + kacis(para(Math.abs(ozet.fark))))
+      : '') +
 
-    ozetSatiri('GENEL ÖDENECEK TUTAR', kacis(para(ozet.genelToplam)), 'genel');
+    ozetSatiri('GENEL ÖDENECEK TUTAR', kacis(para(ozet.genelToplam)), 'genel') +
+
+    kdvKunyeSatiri;
 
   return '<!DOCTYPE html>\n' +
 '<html lang="tr"><head><meta charset="UTF-8">' +
@@ -6000,6 +6146,13 @@ function depoFisiHtml(s) {
 '  tfoot .genel td { font-size:12px; font-weight:900; background:#eef2f7;' +
 '                    border-top:2px solid #94a3b8; }' +
 
+'  /* ---- KDV künyesi: toplamın HEMEN ALTINDA tek satır, küçük ve gri ---- */' +
+'  /* Çıkarma listesinin bir kalemi DEĞİLDİR: kenarlığı ve zemini yok,' +
+'     sağa yaslı ve ince yazılır ki gözle de bir dipnot olduğu anlaşılsın. */' +
+'  tfoot .kdv-kunye td { padding:2px 6px 0; border:0; background:transparent;' +
+'                        text-align:right; font-size:9px; font-weight:600;' +
+'                        color:#64748b; letter-spacing:0.1px; }' +
+
 '  /* ---- Alt bant: sipariş notu ve imzalar YAN YANA (dikeyde yer kazanır) ---- */' +
 '  .alt { display:flex; gap:4px; margin-top:4px; align-items:stretch; }' +
 '  .not { flex:2; min-width:0; border:1px solid #e2e8f0; border-radius:3px;' +
@@ -6022,6 +6175,13 @@ function depoFisiHtml(s) {
 '    tfoot { display:table-footer-group; }' +
 '    tr { page-break-inside:avoid; }' +
 '    .alt { page-break-inside:avoid; }' +
+'    /* Dört satırlık döküm ve altındaki KDV künyesi A4"te BÖLÜNMEZ:' +
+'       çıkarma listesinin yarısı bir sayfada, toplamı ötekinde kalırsa' +
+'       fiş okunamaz hale gelir. */' +
+'    tfoot tr { page-break-inside:avoid; }' +
+'    tfoot .genel, tfoot .kdv-kunye { page-break-before:avoid; }' +
+'    tfoot .kdv-kunye td { color:#475569 !important; -webkit-print-color-adjust:exact;' +
+'                          print-color-adjust:exact; }' +
 '  }' +
 '</style></head><body>' +
 
