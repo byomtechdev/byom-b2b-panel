@@ -5779,7 +5779,18 @@ function siparisFinansOzeti(s) {
   let kdv;
   let kdvKaynak;
 
-  if (kdvSatirlar > 0.005) {
+  if (kdvHaricMi) {
+    /*
+     * KDV HARIC MODDA KDV SIFIRDIR.
+     *
+     * "KDV dahil edilmesin" ile revize edilen siparisin toplaminda vergi
+     * YOKTUR. Asagidaki son care (genel toplamdan varsayilan oranla geri
+     * ayristirma) bu modda hayali bir vergi uretirdi; fis kunyesi zaten
+     * 0,00 basiyordu ama ozet nesnesini okuyan baska bir yer yanilirdi.
+     */
+    kdv = 0;
+    kdvKaynak = 'haric';
+  } else if (kdvSatirlar > 0.005) {
     kdv = kdvSatirlar;
     kdvKaynak = 'satir';
   } else if (kdvHam > 0) {
@@ -5866,8 +5877,25 @@ function siparisFinansOzeti(s) {
   const hedef = brutListe - iskonto - odemeIndirim - ekIndirim + kargo;
   const fark = Math.round((genelToplam - hedef) * 100) / 100;
 
+  /*
+   * İSKONTOLU ARA TOPLAM — ÖDEME İSKONTOSUNUN MATRAHI.
+   *
+   * Ödeme yöntemi indirimi bayi indirimli tutar ÜZERİNDEN hesaplanır
+   * (eklenti tarafında B2B_Payment_Types::apply_discount_fee tabanı sepet
+   * satır ara toplamlarından kurar; o satırlar zaten bayi fiyatlıdır).
+   * Fişte bu ara matrah basılmayınca iki indirim arka arkaya geliyor ve
+   * ikincisinin neyin üzerinden alındığı dışarıdan görünmüyordu.
+   *
+   * Değer tanım gereği net ara toplama eşittir; yine de "liste − bayi
+   * indirimi" olarak yazılır, çünkü fişi okuyan kişinin gözüyle çıkarma
+   * işleminin devamıdır.
+   */
+  const iskontoluAra = Math.round((brutListe - iskonto) * 100) / 100;
+
   /* KDV hariç modda genel toplam = net + KDV (site zaten böyle hesapladı). */
   return {
+    iskontoluAra: iskontoluAra,
+    ciftIskonto: (iskonto > 0.005 && odemeIndirim > 0.005),
     bayiOrani: bayiOrani,
     odemeIndirim: odemeIndirim,
     odemeOrani: isFinite(odemeOrani) && odemeOrani > 0 ? odemeOrani : 0,
@@ -5952,14 +5980,25 @@ function depoFisiHtml(s) {
   }
 
   /*
-   * DÖRT SATIRLIK MUHASEBE DÖKÜMÜ
+   * MUHASEBE DÖKÜMÜ
    * ---------------------------------------------------------------------
    * Satırlar BİRBİRİNİ ÇIKARIR ve kuruşu kuruşuna kapanır:
    *
    *   1. LİSTE FİYATI ARA TOPLAMI     birim liste fiyatı × GÜNCEL adet
    *   2. (varsa) BAYİ İSKONTO TUTARI  oran siparişten okunur
-   *   3. (varsa) {YÖNTEM} İSKONTOSU   tutar ve oran ücret satırından okunur
-   *   4. GENEL ÖDENECEK TUTAR         1 − 2 − 3
+   *   3. (KÖPRÜ) İSKONTOLU ARA TOPLAM yalnızca İKİ indirim de varken
+   *   4. (varsa) {YÖNTEM} İSKONTOSU   tutar ve oran ücret satırından okunur
+   *   5. GENEL ÖDENECEK TUTAR
+   *
+   * KÖPRÜ SATIRI NEDEN KOŞULLU
+   * --------------------------
+   * Ödeme indirimi, bayi indirimli tutar üzerinden alınır. İki indirim arka
+   * arkaya basıldığında ikincisinin hangi matrahtan hesaplandığı dışarıdan
+   * görünmüyor, hesap kopuk algılanıyordu. Köprü satırı o matrahı gösterir.
+   *
+   * Tek indirim varken ya da hiç indirim yokken satır GİZLENİR: göstermek,
+   * bir üstteki (ya da liste) satırının aynısını ikinci kez yazmak olurdu -
+   * eklenen bilgi sıfır, okunan satır sayısı iki katı.
    *
    * ÜÇ REGRESYON KORUMASI (asla geri alınmayacak):
    *
@@ -6002,6 +6041,15 @@ function depoFisiHtml(s) {
       ? ozetSatiri('BAYİ İSKONTO TUTARI <span class="ince">(oran: ' +
                      fisOranYazi(ozet.bayiOrani) + ')</span>',
                    '&minus;' + kacis(para(ozet.iskonto)), 'indirim')
+      : '') +
+
+    /*
+     * KÖPRÜ: yalnızca İKİ indirim de varken. Tek indirimde bu satır bir
+     * üstteki sonucun tekrarı olurdu; hiç indirim yokken de liste satırının.
+     */
+    (ozet.ciftIskonto
+      ? ozetSatiri('İSKONTOLU ARA TOPLAM <span class="ince">(ödeme iskontosu bu tutar üzerinden)</span>',
+                   kacis(para(ozet.iskontoluAra)), 'ara')
       : '') +
 
     (ozet.odemeIndirim > 0.005
@@ -6143,6 +6191,12 @@ function depoFisiHtml(s) {
 '  tfoot .ince { font-weight:600; color:#64748b; }' +
 '  tfoot .indirim td { color:#b91c1c; }' +
 '  tfoot .indirim .ince { color:#b91c1c; }' +
+
+'  /* ---- Köprü satırı: bir ARA TOPLAMDIR, indirim değil ---- */' +
+'  /* Kırmızı eksi gösterimden ayrılsın diye koyu lacivert ve üstten ince' +
+'     bir çizgi; gözle de "burada bir ara sonuç var" denmiş olur. */' +
+'  tfoot .ara td { color:#0f172a; background:#f1f5f9; border-top:1px solid #cbd5e1; }' +
+'  tfoot .ara .ince { color:#64748b; font-weight:600; }' +
 '  tfoot .genel td { font-size:12px; font-weight:900; background:#eef2f7;' +
 '                    border-top:2px solid #94a3b8; }' +
 
@@ -6179,7 +6233,11 @@ function depoFisiHtml(s) {
 '       çıkarma listesinin yarısı bir sayfada, toplamı ötekinde kalırsa' +
 '       fiş okunamaz hale gelir. */' +
 '    tfoot tr { page-break-inside:avoid; }' +
-'    tfoot .genel, tfoot .kdv-kunye { page-break-before:avoid; }' +
+'    tfoot .genel, tfoot .kdv-kunye, tfoot .ara { page-break-before:avoid; }' +
+'    /* Köprü satırının zemini baskıda da görünsün: beyaz kâğıtta ara' +
+'       toplamı indirim satırlarından ayıran tek işaret odur. */' +
+'    tfoot .ara td { background:#f1f5f9 !important; -webkit-print-color-adjust:exact;' +
+'                    print-color-adjust:exact; }' +
 '    tfoot .kdv-kunye td { color:#475569 !important; -webkit-print-color-adjust:exact;' +
 '                          print-color-adjust:exact; }' +
 '  }' +
