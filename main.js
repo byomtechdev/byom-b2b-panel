@@ -158,6 +158,21 @@ process.emitWarning = function (uyari) {
   return _asilUyariYaz.apply(null, arguments);
 };
 
+/**
+ * Gelistirme gunlugu.
+ *
+ * Uretimde (paketlenmis surumde) SESSIZDIR. Bu satirlar kullaniciya hicbir
+ * sey anlatmaz; yalnizca gelistirme sirasinda akisi izlemeye yarar. Hata ve
+ * uyarilar bu suzgecten GECMEZ - onlar console.error / console.warn ile
+ * dogrudan yazilir, cunku destek isteyen kullanicidan gunluk istenebilir.
+ *
+ * @param {...*} parcalar Yazilacaklar.
+ */
+function gunluk() {
+  if (app.isPackaged) return;
+  console.log.apply(console, arguments);
+}
+
 // --- Chromium tarafı (pencereler, görseller, net.fetch) ---
 // Bu anahtarlar app hazır olmadan ÖNCE eklenmek zorunda; dosyanın en başında.
 app.commandLine.appendSwitch('ignore-certificate-errors');
@@ -809,7 +824,7 @@ function bekleyenGuncellemeBildiriminiGonder() {
 
 autoUpdater.on('update-available', function (bilgi) {
   const surum = (bilgi && bilgi.version) || '?';
-  console.log('[Güncelleme] Yeni sürüm bulundu: ' + surum + ' — indiriliyor…');
+  gunluk('[Güncelleme] Yeni sürüm bulundu: ' + surum + ' — indiriliyor…');
   guncellemeDurumunuBildir(
     'bulundu',
     'Yeni güncelleme bulundu (' + surum + ').\nArka planda indiriliyor, çalışmaya devam edebilirsiniz.',
@@ -818,7 +833,7 @@ autoUpdater.on('update-available', function (bilgi) {
 });
 
 autoUpdater.on('update-not-available', function () {
-  console.log('[Güncelleme] Uygulama güncel.');
+  gunluk('[Güncelleme] Uygulama güncel.');
 });
 
 /** İndirme tamamlanınca kullanıcıya sorar; onaylarsa uygulamayı kapatıp kurulumu başlatır. */
@@ -881,7 +896,7 @@ function guncellemeyiKontrolEt() {
  */
 function otomatikGuncellemeyiBaslat() {
   if (!app.isPackaged) {
-    console.log('[Güncelleme] Geliştirme ortamında atlandı (yalnızca paketlenmiş sürümde çalışır).');
+    gunluk('[Güncelleme] Geliştirme ortamında atlandı (yalnızca paketlenmiş sürümde çalışır).');
     return;
   }
   if (guncellemeZamanlayicisi) return; // zaten kurulu
@@ -1079,7 +1094,7 @@ const tekKopyaKilidi = app.requestSingleInstanceLock();
 if (!tekKopyaKilidi) {
   // Not: Görev Yöneticisi'nde takılı kalmış eski bir kopya varsa yeni açılış
   // burada durur. Bu satır sebebi konsolda görünür kılar.
-  console.log('Uygulama zaten çalışıyor; bu kopya kapatılıyor.');
+  gunluk('Uygulama zaten çalışıyor; bu kopya kapatılıyor.');
   app.quit();
 } else {
   app.on('second-instance', function () {

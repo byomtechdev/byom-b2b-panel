@@ -2353,6 +2353,41 @@
         <h1 class="text-3xl font-black mb-6"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kilit"></use></svg> API &amp; Sistem Ayarları</h1>
 
         <!-- ============================================================
+             SIFIR KURULUM (0 KM) KARŞILAMA BANDI
+             Bağlantı hiç kurulmamışken görünür; kurulduğunda renderer.js
+             (kurulumBandiniTazele) gizler. Amaç, ilk açılışta kullanıcıyı boş
+             bir sipariş listesiyle değil YAPILACAK İŞLE karşılamaktır.
+             ============================================================ -->
+        <div id="kurulumBandi"
+             class="hidden rounded-3xl border-2 border-marka-300 dark:border-marka-500/40
+                    bg-marka-50 dark:bg-marka-500/10 p-8 mb-6 flex flex-col gap-4">
+          <div class="flex items-center gap-3">
+            <svg class="ik ik-lg text-marka-700 dark:text-marka-300" aria-hidden="true"><use href="#ik-priz"></use></svg>
+            <div class="text-2xl font-black text-marka-900 dark:text-marka-100">
+              Hoş geldiniz — önce siteye bağlanalım
+            </div>
+          </div>
+
+          <p class="text-lg leading-relaxed text-slate-700 dark:text-slate-200">
+            Bu bilgisayarda henüz bir mağaza bağlantısı tanımlı değil. Aşağıdaki üç alanı
+            doldurup <b>KAYDET</b> dediğinizde panel sitenize bağlanır ve siparişler,
+            bayiler, ürünler kendiliğinden gelir.
+          </p>
+
+          <ol class="list-decimal ml-6 space-y-2 text-lg text-slate-700 dark:text-slate-200">
+            <li><b>Site Adresi</b> — mağazanızın adresi (örn. <code>https://magazaniz.com</code>).</li>
+            <li><b>Tüketici Anahtarı / Gizli Anahtar</b> — WooCommerce &rsaquo; Ayarlar &rsaquo;
+                Gelişmiş &rsaquo; REST API bölümünden <b>Okuma/Yazma</b> izniyle oluşturulur.</li>
+            <li>Sitenizde <b>B2B Core</b> eklentisinin kurulu ve etkin olduğundan emin olun.</li>
+          </ol>
+
+          <p class="text-base font-semibold text-slate-600 dark:text-slate-300">
+            Önce denemek isterseniz aşağıdaki <b>Demo Modu</b> anahtarını açabilirsiniz;
+            demo modunda sitenizde hiçbir değişiklik yapılmaz.
+          </p>
+        </div>
+
+        <!-- ============================================================
              GELİŞTİRİCİ KİLİDİ PERDESİ
              Şifre doğrulanana kadar GÖRÜNEN tek şey budur; asıl içerik
              (#ayarlarIcerik) DOM'da hidden durur ve renderer.js'teki

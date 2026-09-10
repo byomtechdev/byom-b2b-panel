@@ -487,55 +487,55 @@ const DEMO_UYELER = [
      kaynak:'pending-users' → gerçek kurulumda bu kayıtlar /pending-users
      ucundan gelir ve onayları "approve-user" ucuna gider (bkz. uyeKarar).
      il / ilce alanları başvuru künyesindeki "İl / İlçe" satırını besler. */
-  { id: 501, durum: 'pending', kaynak: 'pending-users', ad: 'Serkan Öztürk', firma: 'Öztürk Yapı Market San. Tic. Ltd. Şti.', vergiNo: '6540218793',
+  { id: 501, durum: 'pending', kaynak: 'pending-users', ad: 'Serkan Öztürk', firma: 'Öztürk Yapı Market San. Tic. Ltd. Şti.', vergiNo: '6540218792',
     vergiDairesi: 'Kadıköy', telefon: '0532 884 12 07', eposta: 'serkan@ozturkyapi.com.tr',
     il: 'İSTANBUL', ilce: 'Kadıköy',
     adres: 'Bostancı Mah. Ankara Cad. No:112, Kadıköy / İSTANBUL', tarih: '2026-08-05T08:20:00' },
-  { id: 502, durum: 'pending', kaynak: 'pending-users', ad: 'Ayşe Korkmaz', firma: 'Korkmaz Nalburiye', vergiNo: '3320984561',
-    vergiDairesi: 'Çankaya', telefon: '0555 210 76 33', eposta: 'ayse.korkmaz@gmail.com',
+  { id: 502, durum: 'pending', kaynak: 'pending-users', ad: 'Ayşe Korkmaz', firma: 'Korkmaz Nalburiye', vergiNo: '3320984569',
+    vergiDairesi: 'Çankaya', telefon: '0555 210 76 33', eposta: 'ayse@korkmaznalburiye.com',
     il: 'ANKARA', ilce: 'Çankaya',
     adres: 'Kızılay Mah. 12. Sok. No:8, Çankaya / ANKARA', tarih: '2026-08-04T19:05:00' },
-  { id: 503, durum: 'pending', kaynak: 'pending-users', ad: 'Bülent Yıldırım', firma: 'Yıldırım Elektrik Malzemeleri', vergiNo: '8871203954',
+  { id: 503, durum: 'pending', kaynak: 'pending-users', ad: 'Bülent Yıldırım', firma: 'Yıldırım Elektrik Malzemeleri', vergiNo: '8871203958',
     vergiDairesi: 'Konak', telefon: '0542 619 08 24', eposta: 'info@yildirimelektrik.com',
     il: 'İZMİR', ilce: 'Konak',
     adres: 'Alsancak Mah. 1476 Sok. No:5, Konak / İZMİR', tarih: '2026-08-04T12:44:00' },
   { id: 504, durum: 'pending', kaynak: 'pending-users', ad: 'Hatice Polat', firma: 'Polat İnşaat Hırdavat', vergiNo: '1129873460',
-    vergiDairesi: 'Osmangazi', telefon: '0537 452 91 66', eposta: 'polat.hirdavat@hotmail.com',
+    vergiDairesi: 'Osmangazi', telefon: '0537 452 91 66', eposta: 'info@polathirdavat.com',
     il: 'BURSA', ilce: 'Osmangazi',
     adres: 'Demirtaş OSB 4. Cad. No:19, Osmangazi / BURSA', tarih: '2026-08-03T15:31:00' },
-  { id: 505, durum: 'pending', kaynak: 'pending-users', ad: 'Murat Şen', firma: 'Şen Kardeşler Toptan Hırdavat', vergiNo: '4408125577',
+  { id: 505, durum: 'pending', kaynak: 'pending-users', ad: 'Murat Şen', firma: 'Şen Kardeşler Toptan Hırdavat', vergiNo: '4408125579',
     vergiDairesi: 'Seyhan', telefon: '0544 703 28 90', eposta: 'muratsen@senkardesler.com.tr',
     il: 'ADANA', ilce: 'Seyhan',
     adres: 'Yeni Sanayi Sitesi 7. Blok No:34, Seyhan / ADANA', tarih: '2026-08-02T10:09:00' },
 
   /* --- Onaylı bayiler (sipariş geçmişi ekranını denemek için) --- */
-  { id: 506, durum: 'approved', ad: 'Ahmet Yılmaz', firma: 'Yılmaz Hırdavat Ltd. Şti.', vergiNo: '5510432198',
+  { id: 506, durum: 'approved', ad: 'Ahmet Yılmaz', firma: 'Yılmaz Hırdavat Ltd. Şti.', vergiNo: '5510432199',
     vergiDairesi: 'Beyoğlu', telefon: '0532 415 22 78', eposta: 'ahmet@yilmazhirdavat.com',
     adres: 'Karaköy Mah. Tersane Cad. No:14/A, Beyoğlu / İSTANBUL',
     tarih: '2025-11-14T09:00:00', onayTarihi: '2025-11-15T10:12:00' },
-  { id: 507, durum: 'approved', ad: 'Fatma Demir', firma: 'Demir Yapı Market', vergiNo: '2298110043',
+  { id: 507, durum: 'approved', ad: 'Fatma Demir', firma: 'Demir Yapı Market', vergiNo: '2298110049',
     vergiDairesi: 'Bornova', telefon: '0555 908 61 30', eposta: 'fatma@demiryapi.com',
     adres: 'Cumhuriyet Mah. 1512 Sok. No:3, Bornova / İZMİR',
     tarih: '2025-12-02T14:20:00', onayTarihi: '2025-12-02T16:40:00' },
-  { id: 508, durum: 'approved', ad: 'Mustafa Kaya', firma: 'Kaya İnşaat Malzemeleri', vergiNo: '7734009812',
+  { id: 508, durum: 'approved', ad: 'Mustafa Kaya', firma: 'Kaya İnşaat Malzemeleri', vergiNo: '7734009816',
     vergiDairesi: 'Yenimahalle', telefon: '0542 771 04 96', eposta: 'mustafa@kayainsaat.com.tr',
     adres: 'Ostim OSB 1234. Cad. No:57, Yenimahalle / ANKARA',
     tarih: '2026-01-19T11:05:00', onayTarihi: '2026-01-19T13:30:00' },
-  { id: 509, durum: 'approved', ad: 'Hüseyin Şahin', firma: 'Şahin Nalburiye', vergiNo: '6612094433',
+  { id: 509, durum: 'approved', ad: 'Hüseyin Şahin', firma: 'Şahin Nalburiye', vergiNo: '6612094438',
     vergiDairesi: 'Şehitkamil', telefon: '0533 220 18 45', eposta: 'huseyin@sahinnalburiye.com',
     adres: 'Merkez Mah. Atatürk Bulvarı No:88, Şehitkamil / GAZİANTEP',
     tarih: '2026-02-08T08:15:00', onayTarihi: '2026-02-08T09:00:00' },
-  { id: 510, durum: 'approved', ad: 'Zeynep Aydın', firma: 'Aydın Elektrik Toptan', vergiNo: '3341778820',
+  { id: 510, durum: 'approved', ad: 'Zeynep Aydın', firma: 'Aydın Elektrik Toptan', vergiNo: '3341778828',
     vergiDairesi: 'Nilüfer', telefon: '0544 662 37 12', eposta: 'zeynep@aydinelektrik.com',
     adres: 'Sanayi Mah. 5. Sokak No:21, Nilüfer / BURSA',
     tarih: '2026-03-22T17:44:00', onayTarihi: '2026-03-23T08:50:00' },
 
   /* --- Reddedilmiş / askıya alınmış örnekler --- */
-  { id: 511, durum: 'rejected', ad: 'Levent Acar', firma: 'Acar Ticaret', vergiNo: '1000000001',
+  { id: 511, durum: 'rejected', ad: 'Levent Acar', firma: 'Acar Ticaret', vergiNo: '1000000018',
     vergiDairesi: '—', telefon: '0530 000 00 01', eposta: 'levent@acarticaret.com',
     adres: 'Merkez / ESKİŞEHİR', tarih: '2026-06-11T10:00:00',
     redSebebi: 'Vergi levhası ile firma unvanı eşleşmedi.' },
-  { id: 512, durum: 'suspended', ad: 'Necati Doğan', firma: 'Doğan Yapı Malzeme', vergiNo: '1000000002',
+  { id: 512, durum: 'suspended', ad: 'Necati Doğan', firma: 'Doğan Yapı Malzeme', vergiNo: '1000000026',
     vergiDairesi: 'Selçuklu', telefon: '0530 000 00 02', eposta: 'necati@doganyapi.com',
     adres: 'Yeni Sanayi Sitesi 3. Blok No:12, Selçuklu / KONYA', tarih: '2026-04-05T12:00:00' }
 ];
@@ -6420,7 +6420,52 @@ function masterSifreDogruMu(girilen) {
  * Kilidin arayüzdeki karşılığını uygular.
  * Kapalıyken #ayarlarIcerik DOM'da `hidden` kalır — üstü örtülmez, hiç çizilmez.
  */
+/**
+ * Mağaza bağlantısı tanımlı mı?
+ *
+ * Üç alanın ÜÇÜ birden gerekir: eksik bir anahtarla yapılan istek 401 döner
+ * ve kullanıcı "bağlantı var ama çalışmıyor" sanır.
+ *
+ * @returns {boolean}
+ */
+function baglantiKuruluMu() {
+  const a = durum.ayarlar || {};
+  return !!(String(a.wooUrl || '').trim() && String(a.ck || '').trim() && String(a.cs || '').trim());
+}
+
+/**
+ * SIFIR KURULUM (0 KM) DURUMU.
+ *
+ * Panel yeni bir bilgisayara kurulduğunda ne bağlantı ne demo modu vardır.
+ * Bu durumda sipariş / bayi uçlarına istek atmanın anlamı yok: hepsi hataya
+ * düşer ve kullanıcı boş bir listeyle baş başa kalır.
+ *
+ * @returns {boolean}
+ */
+function ilkKurulumMu() {
+  const a = durum.ayarlar || {};
+  return !a.demoModu && !baglantiKuruluMu();
+}
+
+/** Karşılama bandını duruma göre gösterir/gizler. */
+function kurulumBandiniTazele() {
+  const bant = $('#kurulumBandi');
+  if (!bant) return;
+
+  bant.classList.toggle('hidden', !ilkKurulumMu());
+}
+
 function masterKilidiUygula() {
+  /*
+   * SIFIR KURULUMDA KILIT AÇIKTIR.
+   *
+   * Perdenin amacı KAYITLI API anahtarlarının ekrana basılmasını önlemektir.
+   * Hiç anahtar yokken korunacak bir sır da yoktur; kilitli bir perde,
+   * paneli ilk kez kuran kişinin önüne "şifreyi kurulumu yapan geliştiriciden
+   * isteyin" diyen bir duvar çıkarırdı - ki o kişi zaten kendisidir.
+   */
+  if (ilkKurulumMu()) durum.masterKilitAcik = true;
+
   const acik = !!durum.masterKilitAcik;
 
   const perde = $('#ayarKilitPerdesi');
@@ -6811,6 +6856,9 @@ async function ayarlariKaydet(sessizMi) {
     b2bOnaylandi: $('#girdiB2bOnay').value.trim() || 'onaylandi',
     b2bReddedildi: $('#girdiB2bRed').value.trim() || 'reddedildi'
   };
+
+  /* Bağlantı kurulunca karşılama bandı kendiliğinden kalkar. */
+  setTimeout(kurulumBandiniTazele, 0);
 
   const adresDegisti = yeni.wooUrl !== durum.ayarlar.wooUrl ||
                        yeni.ck !== durum.ayarlar.ck ||
@@ -7536,6 +7584,28 @@ async function baslat() {
   } else if (durum.ayarlar.demoModu) {
     durum.b2bVar = true;
     durum.eklentiTanindi = true;
+  }
+
+  /*
+   * SIFIR KURULUMDA AÇILIŞ EKRANI: AYARLAR.
+   *
+   * Bağlantı yokken sipariş sekmesini açmak, kullanıcıyı boş bir listeyle
+   * (ve arka planda hataya düşen isteklerle) karşılamak demekti. Yapılacak iş
+   * bellidir: önce bağlan. Bekleyen sayacı ve otomatik yenileme de bu durumda
+   * çalıştırılmaz - hepsi başarısız isteklerdir.
+   */
+  kurulumBandiniTazele();
+
+  if (ilkKurulumMu()) {
+    sekmeAc('ayarlar');
+
+    setTimeout(function () {
+      bildir('Panel bu bilgisayarda ilk kez açılıyor.\n' +
+             'Site adresinizi ve WooCommerce API anahtarlarınızı girip KAYDET deyin.\n' +
+             'Denemek için Demo Modu anahtarını da açabilirsiniz.', 'bilgi');
+    }, 500);
+
+    return;
   }
 
   sekmeAc('siparisler');
