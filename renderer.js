@@ -1106,8 +1106,11 @@ function bayiMinTutarHtml(u) {
       '</span>' +
     '</label>' +
 
+    /* Sinif listesi ISKONTO KAYDET butonuyla birebir aynidir. Iki buton ayni
+       karti kaydediyor; farkli renkte olmalari birini ikincil bir eylem gibi
+       gosteriyordu. marka-700 = #2563eb (blue-600), marka-800 = #1d4ed8. */
     '<button data-eylem="min-tutar-kaydet" data-id="' + u.id + '" ' +
-            'class="h-12 px-6 rounded-xl bg-slate-700 hover:bg-slate-800 active:scale-95 ' +
+            'class="h-12 px-6 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95 ' +
                    'text-white text-lg font-extrabold shadow-md transition shrink-0">' +
       ikon('kaydet') + ' KAYDET</button>' +
   '</div>';
