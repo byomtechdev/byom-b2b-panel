@@ -1,6 +1,6 @@
 {
   "name": "b2b-yonetim-paneli",
-  "version": "1.11.0",
+  "version": "2.0.0",
   "description": "Toptanci ve hirdavatcilar icin WooCommerce B2B Yonetim Paneli",
   "main": "main.js",
   "author": {
@@ -19,7 +19,8 @@
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac --universal",
     "build:dir": "electron-builder --win --dir",
-    "release": "electron-builder --win --publish always"
+    "release": "electron-builder --win --publish always",
+    "dist": "electron-builder --win"
   },
   "devDependencies": {
     "electron": "^43.3.0",
