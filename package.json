@@ -14,6 +14,7 @@
     "url": "https://github.com/byomtechdev/byom-b2b-panel.git"
   },
   "scripts": {
+    "test": "node --test \"test/*.test.js\"",
     "start": "electron .",
     "build": "electron-builder --win",
     "build:win": "electron-builder --win",

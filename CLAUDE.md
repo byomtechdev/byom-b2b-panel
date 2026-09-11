@@ -23,7 +23,9 @@ olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.0.0**
   Vitrin Editörü**, BYOM Brain lisans + destek masası.
 - Çalıştırma: `npm start` (electron). Paketleme: `npm run build` (electron-builder,
   NSIS tek-tık kurulum; macOS için `build:mac`).
-- **Commit sırası:** önce bu submodule, sonra kök depo. **`git push` yapılmaz.**
+- **Commit sırası:** önce bu submodule, sonra kök depo. **Push kendi
+  inisiyatifinle yapılmaz** — yalnızca kullanıcı o turda açıkça isterse, ve
+  yine önce bu submodule sonra kök.
 
 ### Süreç modeli (bilmek zorunlu)
 ```
@@ -161,8 +163,28 @@ Elle bildirim gerekirse: `Telemetri.bildir({ tip: 'elle', mesaj: '…' })`
 
 ## 5. Hızlı test komutları
 
-Testler **kök depodadır** (`../scripts/tests/`), bu submodule'de test yoktur.
-Kök dizinden koş:
+İki test kökü var:
+
+- **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
+- **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
+
+İkisini birden `../scripts/check-all.js` koşar (154 test).
+
+```bash
+# Bu submodule'un kendi birim testleri (31 test) — Electron GEREKMEZ
+npm test
+node --test test/telemetri.test.js
+node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
+```
+
+`test/telemetri.test.js` üretim kodunu değiştirmeden koşar: modül yüklenmeden
+önce `require.cache` içine sahte bir `electron` konur (`app.getPath` her teste
+taze bir geçici dizin verir, `ipcMain.on` kanalı yakalar) ve küresel `fetch`
+testte değiştirilir. `electron` çözülemezse (panelde `npm install`
+yapılmamışsa) suite **atlanır**, kırılmaz. Paketlemeye girmez:
+`build.files` listesinde `test/` yoktur.
+
+Kök depodaki testler:
 
 ```bash
 cd ..
@@ -185,7 +207,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (123 test)
+# Bitirirken: üç katmanın tamamı (154 test)
 node scripts/check-all.js
 ```
 
@@ -247,7 +269,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 148 php / 44 js / 123 test
+cd .. && node scripts/check-all.js     # 0 hata / 149 php / 47 js / 154 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.
