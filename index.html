@@ -7,6 +7,15 @@
 <title>B2B Yönetim Paneli</title>
 
 <!-- ===================================================================
+     TELEMETRİ (SESSİZ HATA AVCISI)
+     EN ÖNCE yüklenir: ondan sonra gelen HER betiğin yükleme ve çalışma
+     hatasını yakalayabilmesi için dinleyiciler ilk sırada kurulmalı.
+     Hiçbir betiğe bağımlı değildir (durum, $, bildir… kullanmaz) ve
+     arayüz akışını kesmez — ayrıntı: src/renderer/telemetry.js başlığı.
+     =================================================================== -->
+<script src="src/renderer/telemetry.js"></script>
+
+<!-- ===================================================================
      TAILWIND CSS
      Önce proje içindeki yerel kopya denenir (internetsiz sunum için).
      Bulunamazsa CDN'e düşer. İkisi de olmazsa aşağıdaki yedek CSS devreye girer.

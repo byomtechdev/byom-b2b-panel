@@ -32,6 +32,17 @@ const byom = require('./src/main/byom');
    Harici bağımlılık YOK — ayrıntı için src/main/byom-excel.js başlığı. */
 const excel = require('./src/main/byom-excel');
 
+/* Telemetri (sessiz hata avcısı): yakalanmamış hataları arka planda hub'a
+   yazar. Akışı ASLA beklemez, hata durumunda ASLA throw etmez; ağ yoksa
+   kayıt diske kuyruklanır ve sonraki açılışta gönderilir.
+   Ayrıntı ve gizlilik sınırları: src/main/byom-telemetri.js başlığı. */
+const telemetri = require('./src/main/byom-telemetri');
+
+/* Arayüzden gelen hata kanalını bağlar ve önceki oturumdan kalan kuyruğu
+   boşaltır. `kunye`, kaydın HANGİ firmaya/sürüme ait olduğunu söyler
+   (lisans anahtarı maskelenerek gider). */
+telemetri.kur({ kunye: byom.lisansOzeti });
+
 let anaPencere = null;
 
 /* ==========================================================================
@@ -1078,15 +1089,37 @@ function anaPencereyiOlustur() {
   });
 }
 
+/* ==========================================================================
+ *  YAKALANMAMIŞ HATALAR
+ *  ---------------------------------------------------------------------------
+ *  Kancaların DAVRANIŞI DEĞİŞMEDİ: hata diyaloğu aynı yerde, günlük satırları
+ *  aynı, uygulamanın ayakta kalma biçimi aynı. Eklenen tek şey `telemetri.bildir`
+ *  satırlarıdır ve bunlar:
+ *    · diyalogdan ÖNCE çağrılır — çünkü `showErrorBox` ana süreci senkron
+ *      kilitler; kayıt o kilide girmeden diske yazılmış olur,
+ *    · `await` edilmez, throw etmez, dönüş değeri okunmaz.
+ * ========================================================================*/
+
 // Ana süreçte yakalanmamış bir hata olursa uygulama sessizce arka planda takılmasın.
 process.on('uncaughtException', function (e) {
+  telemetri.bildir('uncaughtException', e, 'panel-main');
   console.error('Ana süreçte yakalanmamış hata:', e);
   try {
     dialog.showErrorBox('Beklenmeyen hata', String((e && e.stack) || e));
   } catch (e2) { /* dialog hazır değilse yapacak bir şey yok */ }
 });
 process.on('unhandledRejection', function (e) {
+  telemetri.bildir('unhandledRejection', e, 'panel-main');
   console.error('Ana süreçte karşılanmamış promise reddi:', e);
+});
+
+/* Arayüz süreci çökerse (beyaz ekran) kullanıcı genelde hiçbir hata görmez;
+   tek iz budur. Gözlemcidir: pencereye ya da akışa dokunmaz. */
+app.on('render-process-gone', function (olay, icerik, ayrinti) {
+  telemetri.bildir('render-process-gone', {
+    mesaj: 'Arayüz süreci sonlandı: sebep=' + ((ayrinti && ayrinti.reason) || 'bilinmiyor') +
+           ' cikisKodu=' + ((ayrinti && ayrinti.exitCode) === undefined ? '?' : ayrinti.exitCode)
+  }, 'panel-main');
 });
 
 // Aynı uygulamanın ikinci kopyası açılmasın
