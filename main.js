@@ -38,6 +38,13 @@ const excel = require('./src/main/byom-excel');
    Ayrıntı ve gizlilik sınırları: src/main/byom-telemetri.js başlığı. */
 const telemetri = require('./src/main/byom-telemetri');
 
+/* Yönetici Master PIN ve cihaz (saha terminali) kilidi — bkz. bölüm 3.9.
+   DOM'suz ve Electron'suz saf motor: hash'leme, kaba kuvvet sayacı ve cihaz
+   rolü geçişleri orada; diske yazma kararı BURADA. Doğrulamanın arayüzde
+   değil ana süreçte olmasının sebebi `nodeIntegration: true` — renderer'da
+   yazılan her kontrol aynı konsoldan atlatılabilir. */
+const yoneticiKilit = require('./src/main/byom-yonetici-kilit');
+
 /* Arayüzden gelen hata kanalını bağlar ve önceki oturumdan kalan kuyruğu
    boşaltır. `kunye`, kaydın HANGİ firmaya/sürüme ait olduğunu söyler
    (lisans anahtarı maskelenerek gider). */
@@ -281,8 +288,23 @@ function ayarlariYaz(yeni) {
   return tam;
 }
 
-ipcMain.handle('ayar:oku', () => ayarlariOku());
-ipcMain.handle('ayar:yaz', (olay, yeni) => ayarlariYaz(yeni));
+/*
+ * AYAR KANALLARI — YÖNETİCİ PIN VE CİHAZ KİLİDİ İÇİN SÜZÜLÜR (bkz. bölüm 3.9)
+ *
+ * Bu iki kanal GENEL amaçlıdır: arayüz her anahtarı okuyup geri yazabilir.
+ * Cihaz kilidi ve Master PIN alanları buradan serbest geçseydi kilit hiçbir
+ * şey ifade etmezdi — kilitli cihazdaki biri tek satırla
+ * `ayar:yaz { cihazRolu: 'standart' }` diyerek yönetici kapısını geri açardı.
+ * Bu yüzden:
+ *   okuma → `maskele`  : PIN özeti arayüze HİÇ gitmez, yerine bool bayrak.
+ *   yazma → `suz`      : korumalı alanlar sessizce ayıklanır.
+ *
+ * Korumalı alanlar YALNIZCA bölüm 3.9'daki PIN doğrulamalı kanallardan yazılır.
+ * İçerideki `ayarlariYaz()` çağrıları süzgeçten geçmez (gerekir de: kilidi
+ * yazan kod onu kullanıyor) — süzgeç bilinçli olarak IPC SINIRINDA durur.
+ */
+ipcMain.handle('ayar:oku', () => yoneticiKilit.maskele(ayarlariOku()));
+ipcMain.handle('ayar:yaz', (olay, yeni) => yoneticiKilit.maskele(ayarlariYaz(yoneticiKilit.suz(yeni))));
 
 /** Destek verirken lazım olan teknik bilgiler (Ayarlar sekmesinde gösterilir). */
 ipcMain.handle('uygulama:bilgi', () => ({
@@ -1415,6 +1437,130 @@ ipcMain.handle('ziyaret:kuyruga', function (olay, veri) {
   ayarlariYaz({ plasiyerZiyaretKuyrugu: kuyruk });
 
   return { ok: true, bekleyen: kuyruk.length };
+});
+
+/* ==========================================================================
+ *  3.9) YÖNETİCİ MASTER PIN VE CİHAZ KİLİDİ (SAHA TERMİNALİ MODU)
+ *  ---------------------------------------------------------------------------
+ *  Amaç: sahaya verilen laptopta plasiyerin yönetici ekranına geçememesi.
+ *
+ *  İki ayrı kontrol:
+ *    · MASTER PIN (6 hane) — "Yönetici Girişi" kapısını açar.
+ *    · CİHAZ ROLÜ — cihaz bir plasiyere tahsis edilirse yönetici kapısı
+ *      arayüzden tamamen kalkar; geri dönüş yalnızca Master PIN ile.
+ *
+ *  NEDEN DOĞRULAMA BURADA: arayüzde `nodeIntegration: true`; orada yazılacak
+ *  her karşılaştırma aynı konsoldan atlatılabilir. Bu kanallar arayüze
+ *  yalnızca "oldu / olmadı" döner; özet hiç gitmez.
+ *
+ *  Hash'leme, kaba kuvvet sayacı ve rol geçişleri `byom-yonetici-kilit.js`
+ *  içindedir (DOM'suz, test edilebilir). Burada yapılan tek şey: motoru
+ *  ayar dosyasına bağlamak.
+ *
+ *  ⚠️ DÜRÜST SINIR: `ayarlar.json` düz metin bir dosyadır. Bu kilit, cihazı
+ *  eline alan plasiyerin ARAYÜZDEN yönetici ekranına geçmesini engeller;
+ *  dosya sistemine erişip dosyayı elle düzenleyen birine karşı mutlak
+ *  değildir. Ayrıntılı gerekçe: byom-yonetici-kilit.js dosya başlığı.
+ * ========================================================================*/
+
+/** Motorun `yazilacak` çıktısını diske uygular ve yeni durumu döndürür. */
+function kilitSonucunuUygula(sonuc) {
+  if (sonuc && sonuc.yazilacak) ayarlariYaz(sonuc.yazilacak);
+
+  const d = yoneticiKilit.durum(ayarlariOku());
+
+  /* Yanıtta `yazilacak` ARAYÜZE GÖNDERİLMEZ: içinde PIN özeti olabilir. */
+  return {
+    ok: !!(sonuc && sonuc.ok),
+    hata: (sonuc && sonuc.hata) || '',
+    kilitli: !!(sonuc && sonuc.kilitli),
+    kilitKalanSn: (sonuc && sonuc.kilitKalanSn) || d.kilitKalanSn,
+    kalanDeneme: undefined === (sonuc && sonuc.kalanDeneme) ? d.kalanDeneme : sonuc.kalanDeneme,
+    durum: d
+  };
+}
+
+/** Kapı açılışında sorulur: PIN kurulu mu, cihaz kilitli mi, kilit var mı? */
+ipcMain.handle('auth:yonetici-pin-durum', function () {
+  return { ok: true, durum: yoneticiKilit.durum(ayarlariOku()) };
+});
+
+/** İlk kurulum — PIN yoksa belirler. PIN VARSA motor reddeder. */
+ipcMain.handle('auth:yonetici-pin-kur', function (olay, veri) {
+  veri = veri || {};
+
+  const sonuc = yoneticiKilit.pinKur(String(veri.pin || ''), ayarlariOku());
+
+  /* PIN referansı bırakılmaz; nesne çöpe gider (bkz. bölüm 3.6 kural 1). */
+  veri.pin = '';
+
+  return kilitSonucunuUygula(sonuc);
+});
+
+/** Yönetici kapısı doğrulaması — 3 hatalı denemede 60 sn kilit. */
+ipcMain.handle('auth:yonetici-pin-dogrula', function (olay, veri) {
+  veri = veri || {};
+
+  const sonuc = yoneticiKilit.pinDene(String(veri.pin || ''), ayarlariOku());
+
+  veri.pin = '';
+
+  return kilitSonucunuUygula(sonuc);
+});
+
+/** PIN değiştirme — eski PIN doğrulanmadan yenisi yazılmaz. */
+ipcMain.handle('auth:yonetici-pin-degistir', function (olay, veri) {
+  veri = veri || {};
+
+  const sonuc = yoneticiKilit.pinDegistir(
+    String(veri.eski || ''),
+    String(veri.yeni || ''),
+    ayarlariOku()
+  );
+
+  veri.eski = '';
+  veri.yeni = '';
+
+  return kilitSonucunuUygula(sonuc);
+});
+
+/** Cihaz durumu — açılışta kapının hangi biçimde çizileceğini söyler. */
+ipcMain.handle('cihaz:durum', function () {
+  return { ok: true, durum: yoneticiKilit.durum(ayarlariOku()) };
+});
+
+/**
+ * Cihazı plasiyere tahsis eder (saha terminali modu).
+ *
+ * Master PIN tanımlı değilse motor REDDEDER: kilidi açmanın tek yolu o PIN,
+ * PIN'siz kilitlemek cihazı geri dönüşsüz kilitlerdi.
+ */
+ipcMain.handle('cihaz:kilitle', function (olay, veri) {
+  veri = veri || {};
+
+  return kilitSonucunuUygula(
+    yoneticiKilit.cihazKilitle({ id: veri.id, ad: veri.ad }, ayarlariOku())
+  );
+});
+
+/**
+ * Cihaz kilidini Master PIN ile açar.
+ *
+ * Kaba kuvvet sayacı burada da işler — kilit açma ekranı sayaçsız bir arka
+ * kapı olmamalı.
+ */
+ipcMain.handle('cihaz:ac', function (olay, veri) {
+  veri = veri || {};
+
+  const sonuc = yoneticiKilit.cihazAc(String(veri.pin || ''), ayarlariOku());
+
+  veri.pin = '';
+
+  /* Kilit açıldıysa plasiyer oturumu da düşürülür: cihaz artık bu kişiye
+     tahsisli değil, açık kalan jetonla veri çekmeye devam etmemeli. */
+  if (sonuc.ok) plasiyerOturumu = null;
+
+  return kilitSonucunuUygula(sonuc);
 });
 
 /* ==========================================================================

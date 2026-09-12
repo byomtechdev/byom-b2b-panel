@@ -49,7 +49,29 @@
 
   var kapi = null;
   var pinPerde = null;
+  var ypinPerde = null;
   var plasiyerListesi = [];
+
+  /**
+   * CİHAZ DURUMU (Master PIN + saha terminali kilidi).
+   *
+   * Tek doğruluk kaynağı ANA SÜREÇTİR; burada tutulan kopya yalnızca hangi
+   * ekranın çizileceğine karar vermek için. Buradaki bir değeri değiştirmek
+   * kilidi AÇMAZ: korumalı alanlar `ayar:yaz` kanalından süzülür ve PIN
+   * doğrulaması ana süreçte yapılır (bkz. main.js § 3.9).
+   */
+  var cihaz = {
+    pinKurulu: false,
+    kilitli: false,          // cihaz bir plasiyere tahsis edildi mi?
+    plasiyerId: 0,
+    plasiyerAd: ''
+  };
+
+  /** Master PIN penceresinin hangi amaçla açıldığı: kur | dogrula | kilit-ac */
+  var ypinModu = '';
+
+  /** Kilit geri sayımı zamanlayıcısı (60 sn). */
+  var ypinSayacZaman = null;
 
   /* ------------------------------------------------------------------ *
    *  Yardımcılar
@@ -80,6 +102,44 @@
 
     dugum.textContent = String(mesaj || '');
     dugum.classList.toggle('hidden', !mesaj);
+  }
+
+  /**
+   * Güvenli IPC çağrısı.
+   *
+   * `ipcRenderer` yoksa (jsdom testleri) ya da kanal patlarsa `null` döner —
+   * kapı hiçbir koşulda çökmemeli, en kötü hâlde kısıtlamasız mevcut davranışa
+   * düşmeli.
+   */
+  async function ipc(kanal, veri) {
+    try {
+      if ('undefined' === typeof ipcRenderer || !ipcRenderer || !ipcRenderer.invoke) return null;
+
+      return await ipcRenderer.invoke(kanal, veri);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Cihaz durumunu ayarlardan okur.
+   *
+   * Ayar nesnesi ana süreçte MASKELENİR: `yoneticiPinHash` hiç gelmez, yerine
+   * `yoneticiPinKurulu` bayrağı gelir (bkz. byom-yonetici-kilit.js → maskele).
+   */
+  function cihazDurumunuAl() {
+    var a = (typeof durum !== 'undefined' && durum.ayarlar) || {};
+
+    cihaz.pinKurulu = !!a.yoneticiPinKurulu;
+    cihaz.kilitli = 'plasiyer_kilitli' === a.cihazRolu;
+    cihaz.plasiyerId = Number(a.tahsisliPlasiyerId || 0) || 0;
+    cihaz.plasiyerAd = String(a.tahsisliPlasiyerAd || '');
+
+    /* Tahsisli plasiyer bilgisi eksikse kilit UYGULANMAZ. Adı/kimliği olmayan
+       bir kilit, kimsenin giremediği bir cihaz demekti. */
+    if (cihaz.kilitli && (!cihaz.plasiyerId || !cihaz.plasiyerAd)) cihaz.kilitli = false;
+
+    return cihaz;
   }
 
   /* ------------------------------------------------------------------ *
@@ -211,14 +271,302 @@
     }, 220);
   }
 
+  /**
+   * "👑 Yönetici Girişi" düğmesi — ARTIK DOĞRUDAN AÇMAZ.
+   *
+   * Master PIN'den geçmek zorunludur; sahaya verilen laptopta plasiyerin
+   * yönetici ekranına geçmesini engelleyen şey tam olarak bu adım.
+   *
+   * HİÇBİR REST İSTEĞİ ATILMAZ (Faz 4 sözü korunur): PIN ana sürece IPC ile
+   * gider, sunucuya çıkılmaz. Sunucusu kapalı bir mağazada yönetici yine
+   * paneli açıp ayarları düzeltebilir.
+   */
   function yoneticiSec() {
+    /* PIN hiç tanımlanmamışsa ilk kurulum ekranı gelir — şartname:
+       "Eğer PIN yoksa ... Master PIN Belirleyin modalı açılsın". */
+    ypinAc(cihaz.pinKurulu ? 'dogrula' : 'kur');
+  }
+
+  /**
+   * Master PIN geçildikten SONRA asıl yönetici girişi.
+   *
+   * `yoneticiSec`'ten ayrı tutulması bilinçli: panel açma adımının tek bir
+   * yeri olsun ve o yere yalnızca doğrulanmış yoldan girilebilsin.
+   */
+  function yoneticiGirisiniTamamla() {
     oturumKur('admin', {});
     kisitlamayiUygula();
+    ypinKapat();
     kapiyiKapat();
   }
 
   /* ------------------------------------------------------------------ *
-   *  PIN AKIŞI
+   *  YÖNETİCİ MASTER PIN AKIŞI
+   *  ---------------------------------------------------------------
+   *  Üç mod, tek pencere:
+   *    kur       → ilk kurulum (iki kutu: PIN + tekrar)
+   *    dogrula   → yönetici kapısını aç
+   *    kilit-ac  → cihaz kilidini kaldır (patron çıkışı)
+   *
+   *  DOĞRULAMA BURADA YOK. Üç mod da ana sürece IPC atar ve yalnızca
+   *  "oldu/olmadı" alır; PIN özeti arayüze hiç gelmez.
+   * ------------------------------------------------------------------ */
+
+  /** Master PIN hane sayısı — ana süreçteki `PIN_UZUNLUK` ile aynı olmalı. */
+  var YPIN_UZUNLUK = 6;
+
+  var YPIN_METIN = {
+    kur: {
+      baslik: 'Yönetici Master PIN Belirleyin (6 Haneli)',
+      aciklama: 'Bu PIN yönetici ekranını ve cihaz kilidini açar. Sahadaki pazarlamacıyla paylaşmayın.',
+      dugme: 'PIN\'i Kaydet ve Gir'
+    },
+    dogrula: {
+      baslik: 'Yönetici Girişi',
+      aciklama: '6 haneli yönetici PIN\'inizi girin.',
+      dugme: 'Giriş Yap'
+    },
+    'kilit-ac': {
+      baslik: 'Cihaz Kilidini Aç',
+      aciklama: 'Bu cihaz saha satışına tahsisli. Kilidi kaldırmak için yönetici PIN\'inizi girin.',
+      dugme: 'Kilidi Aç'
+    }
+  };
+
+  function ypinAlanlariTemizle() {
+    var a = el('ypinKod');
+    var b = el('ypinKod2');
+
+    /* PIN ekranda bile bırakılmaz (bkz. dosya başlığı — SIR kuralı). */
+    if (a) a.value = '';
+    if (b) b.value = '';
+  }
+
+  function ypinSayaciDurdur() {
+    if (ypinSayacZaman) {
+      window.clearInterval(ypinSayacZaman);
+      ypinSayacZaman = null;
+    }
+  }
+
+  /**
+   * 60 saniyelik kilidi kullanıcıya geri sayarak gösterir.
+   *
+   * Düğme kapatılır: kilitliyken denemeye devam etmek ana süreçte zaten
+   * reddediliyor, ama kullanıcıya sebebini göstermek gerekir — yoksa
+   * "uygulama bozuldu" sanır.
+   */
+  function ypinKilidiGoster(kalan) {
+    var dugme = el('ypinGonder');
+    var hata = el('ypinHata');
+
+    ypinSayaciDurdur();
+
+    var sn = Number(kalan) || 0;
+
+    function ciz() {
+      if (sn <= 0) {
+        ypinSayaciDurdur();
+        if (dugme) dugme.disabled = false;
+        hataYaz(hata, 'Tekrar deneyebilirsiniz.');
+        return;
+      }
+
+      if (dugme) dugme.disabled = true;
+      hataYaz(hata, 'Çok fazla hatalı deneme. ' + sn + ' saniye bekleyin.');
+      sn--;
+    }
+
+    ciz();
+    ypinSayacZaman = window.setInterval(ciz, 1000);
+  }
+
+  function ypinAc(mod) {
+    ypinModu = YPIN_METIN[mod] ? mod : 'dogrula';
+
+    var metin = YPIN_METIN[ypinModu];
+
+    var baslik = el('ypinBaslik');
+    var aciklama = el('ypinAciklama');
+    var dugme = el('ypinGonder');
+
+    if (baslik) baslik.textContent = metin.baslik;
+    if (aciklama) aciklama.textContent = metin.aciklama;
+    if (dugme) {
+      dugme.textContent = metin.dugme;
+      dugme.disabled = false;
+    }
+
+    /* Onay kutusu YALNIZCA ilk kurulumda: tek kutuyla kurulan PIN'deki yazım
+       hatası, cihaz kilitlendikten sonra geri dönüşü olmayan bir kilit üretir. */
+    gorunur(el('ypinOnayAlan'), 'kur' === ypinModu);
+
+    /* Kilit açma modunda "Geri Dön" kullanıcıyı terminale bırakır; kapatma
+       düğmeleri kilidi AÇMAZ, yalnızca bu pencereyi kapatır. */
+    ypinAlanlariTemizle();
+    hataYaz(el('ypinHata'), '');
+    ypinSayaciDurdur();
+
+    gorunur(ypinPerde, true);
+
+    var kod = el('ypinKod');
+    if (kod) kod.focus();
+  }
+
+  function ypinKapat() {
+    ypinSayaciDurdur();
+    ypinAlanlariTemizle();
+    hataYaz(el('ypinHata'), '');
+    gorunur(ypinPerde, false);
+
+    var dugme = el('ypinGonder');
+    if (dugme) dugme.disabled = false;
+  }
+
+  /**
+   * Master PIN gönderimi — üç mod tek yerden.
+   *
+   * Ana süreç yanıtı `{ ok, hata, kilitli, kilitKalanSn, durum }` biçiminde
+   * gelir; `durum` maskelenmiş cihaz durumudur (özet içermez).
+   */
+  async function ypinGonder() {
+    var kod = el('ypinKod');
+    var kod2 = el('ypinKod2');
+    var dugme = el('ypinGonder');
+    var hata = el('ypinHata');
+
+    var pin = String((kod && kod.value) || '');
+
+    if (pin.length !== YPIN_UZUNLUK) {
+      return hataYaz(hata, 'PIN ' + YPIN_UZUNLUK + ' haneli olmalı.');
+    }
+
+    if ('kur' === ypinModu && pin !== String((kod2 && kod2.value) || '')) {
+      return hataYaz(hata, 'İki PIN aynı değil. Tekrar girin.');
+    }
+
+    hataYaz(hata, '');
+    if (dugme) dugme.disabled = true;
+
+    var cevap;
+
+    if ('kur' === ypinModu) {
+      cevap = await ipc('auth:yonetici-pin-kur', { pin: pin });
+    } else if ('kilit-ac' === ypinModu) {
+      cevap = await ipc('cihaz:ac', { pin: pin });
+    } else {
+      cevap = await ipc('auth:yonetici-pin-dogrula', { pin: pin });
+    }
+
+    /* PIN yerel değişkende bırakılmaz. */
+    pin = '';
+    ypinAlanlariTemizle();
+
+    if (!cevap) {
+      if (dugme) dugme.disabled = false;
+      return hataYaz(hata, 'Doğrulama yapılamadı. Uygulamayı yeniden başlatın.');
+    }
+
+    if (!cevap.ok) {
+      if (cevap.kilitli) {
+        ypinKilidiGoster(cevap.kilitKalanSn);
+      } else {
+        if (dugme) dugme.disabled = false;
+        hataYaz(hata, cevap.hata || 'PIN doğrulanamadı.');
+      }
+      return;
+    }
+
+    /* Ana sürecin döndürdüğü taze durum esas alınır — yerel kopya değil. */
+    if (cevap.durum) {
+      cihaz.pinKurulu = !!cevap.durum.pinKurulu;
+      cihaz.kilitli = !!cevap.durum.cihazKilitli;
+      cihaz.plasiyerId = Number(cevap.durum.tahsisliPlasiyerId || 0) || 0;
+      cihaz.plasiyerAd = String(cevap.durum.tahsisliPlasiyerAd || '');
+
+      /* Ayar nesnesi de tazelenir ki başka modüller eski değeri okumasın. */
+      if (typeof durum !== 'undefined' && durum.ayarlar) {
+        durum.ayarlar.yoneticiPinKurulu = cihaz.pinKurulu;
+        durum.ayarlar.cihazRolu = cihaz.kilitli ? 'plasiyer_kilitli' : 'standart';
+        durum.ayarlar.tahsisliPlasiyerId = cihaz.plasiyerId;
+        durum.ayarlar.tahsisliPlasiyerAd = cihaz.plasiyerAd;
+      }
+    }
+
+    if ('kilit-ac' === ypinModu) {
+      ypinKapat();
+      terminalModunuKapat();
+
+      if (typeof bildir === 'function') bildir('Cihaz kilidi açıldı. Standart giriş ekranına dönüldü.', 'basari');
+      return;
+    }
+
+    /* kur / dogrula → yönetici paneli açılır. */
+    yoneticiGirisiniTamamla();
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  SAHA TERMİNALİ MODU (cihaz bir plasiyere kilitli)
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Yönetici kapısını EKRANDAN KALDIRIR, doğrudan plasiyer PIN ekranını açar.
+   *
+   * Düğme hem gizlenir hem `disabled` yapılır hem `aria-hidden` alır: yalnızca
+   * CSS ile gizlemek klavyeyle (Tab) erişimi açık bırakırdı — § 4.5'teki
+   * kısıtlama kalıbının aynısı.
+   */
+  function terminalModunuAc() {
+    var yon = el('kapiYonetici');
+
+    if (yon) {
+      yon.hidden = true;
+      yon.disabled = true;
+      yon.setAttribute('aria-hidden', 'true');
+    }
+
+    gorunur(el('kapiKartlar'), false);
+    gorunur(el('kapiTerminal'), true);
+    gorunur(el('kapiKilitAc'), true);
+
+    var ad = el('kapiTerminalAd');
+    if (ad) ad.textContent = cihaz.plasiyerAd + ' — Saha Satış Terminali';
+
+    var firma = el('kapiFirma');
+    if (firma) firma.textContent = '';
+
+    kapiyiGoster();
+
+    /* Kapı zaten opak: PIN penceresi kapanırsa arkada yönetici paneli değil
+       bu kaplama durur. İki katmanlı koruma bilinçli. */
+    pinPerdesiniAc();
+  }
+
+  /** Kilit kaldırıldıktan sonra standart çift kapıya döner. */
+  function terminalModunuKapat() {
+    var yon = el('kapiYonetici');
+
+    if (yon) {
+      yon.hidden = false;
+      yon.disabled = false;
+      yon.removeAttribute('aria-hidden');
+    }
+
+    gorunur(el('kapiTerminal'), false);
+    gorunur(el('kapiKilitAc'), false);
+    gorunur(el('kapiKartlar'), true);
+
+    /* Plasiyer PIN penceresinin çıkışları geri gelir. */
+    gorunur(el('pinKapat'), true);
+    gorunur(el('pinGeri'), true);
+    gorunur(el('pinSecimAlan'), true);
+    gorunur(pinPerde, false);
+
+    kapiyiGoster();
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  PLASİYER PIN AKIŞI
    * ------------------------------------------------------------------ */
 
   /** Plasiyer listesi için süre aşımı — modal ASLA asılı kalmamalı. */
@@ -303,8 +651,48 @@
     if (son && son.id) secim.value = String(son.id);
   }
 
+  /**
+   * Kilitli cihazda PIN penceresini terminal biçimine sokar.
+   *
+   * · Başlık "[Plasiyer Adı] — Saha Satış Terminali".
+   * · Pazarlamacı SEÇİMİ kapalı: cihaz tek kişiye tahsisli, başkası seçilemez.
+   * · ÇIKIŞ DÜĞMELERİ KAPALI: Faz 4'te eklenen çıkışlar burada bir kaçış
+   *   yoluna dönüşürdü. (Kapı kaplaması arkada durduğu için pencere kapansa
+   *   bile panel görünmez; yine de iki katman birden kapatılıyor.)
+   * · Liste için AĞA ÇIKILMAZ: plasiyerin kim olduğu ayarlardan biliniyor,
+   *   internetsiz sahada da açılış çalışmalı.
+   */
+  function terminalPinGorunumu() {
+    var baslik = el('pinBaslik');
+    var alt = el('pinAltBaslik');
+
+    if (baslik) baslik.textContent = cihaz.plasiyerAd + ' — Saha Satış Terminali';
+    if (alt) alt.textContent = 'PIN\'inizi girin.';
+
+    gorunur(el('pinSecimAlan'), false);
+    gorunur(el('pinKapat'), false);
+    gorunur(el('pinGeri'), false);
+
+    /* Giriş akışı seçim kutusunun değerini okur; tahsisli plasiyeri tek
+       seçenek olarak koyuyoruz ki `pinGirisDene` değişmeden çalışsın. */
+    var secim = el('pinPlasiyer');
+
+    if (secim) {
+      secim.innerHTML = '';
+
+      var secenek = document.createElement('option');
+
+      secenek.value = String(cihaz.plasiyerId);
+      secenek.textContent = cihaz.plasiyerAd;
+      secim.appendChild(secenek);
+      secim.value = String(cihaz.plasiyerId);
+    }
+  }
+
   function pinPerdesiniAc() {
-    if (!baglantiVar()) {
+    /* Kilitli cihazda bağlantı uyarısı kapıyı kapatmaz: plasiyer PIN'ini
+       girebilmeli, bağlantı sorunu ayrıca bildirilir. */
+    if (!cihaz.kilitli && !baglantiVar()) {
       hataYaz(el('kapiUyari'), 'Pazarlamacı girişi için önce site bağlantısı kurulmalı. Yönetici girişinden API & Sistem Ayarları\'nı doldurun.');
       return;
     }
@@ -315,12 +703,26 @@
     var kod = el('pinKod');
     if (kod) kod.value = '';
 
+    if (cihaz.kilitli) {
+      terminalPinGorunumu();
+      if (kod) kod.focus();
+      return;
+    }
+
     plasiyerleriYukle().then(function () {
       if (kod) kod.focus();
     });
   }
 
   function pinPerdesiniKapat() {
+    /*
+     * KİLİTLİ CİHAZDA PENCERE KAPANMAZ.
+     *
+     * Tek satır, üç kaçış yolunu birden kapatır: ✕ düğmesi, perdeye tıklama
+     * ve ESC. Kapanabilseydi plasiyer PIN girmeden panele düşerdi.
+     */
+    if (cihaz.kilitli) return;
+
     gorunur(pinPerde, false);
 
     var kod = el('pinKod');
@@ -454,9 +856,57 @@
       });
     }
 
-    /* Esc tuşu PIN perdesini kapatır, kapıyı kapatmaz. */
+    /* ---- YÖNETİCİ MASTER PIN PENCERESİ ---- */
+
+    var ykapat = el('ypinKapat');
+    if (ykapat) ykapat.addEventListener('click', ypinKapat);
+
+    var ygeri = el('ypinGeri');
+    if (ygeri) ygeri.addEventListener('click', ypinKapat);
+
+    var ygonder = el('ypinGonder');
+    if (ygonder) ygonder.addEventListener('click', ypinGonder);
+
+    if (ypinPerde) {
+      ypinPerde.addEventListener('click', function (olay) {
+        if (olay.target === ypinPerde) ypinKapat();
+      });
+    }
+
+    /* Her iki PIN kutusu: yalnızca rakam + Enter gönderir. */
+    ['ypinKod', 'ypinKod2'].forEach(function (id) {
+      var kutu = el(id);
+
+      if (!kutu) return;
+
+      kutu.addEventListener('keydown', function (olay) {
+        if ('Enter' === olay.key) ypinGonder();
+      });
+
+      kutu.addEventListener('input', function () {
+        var temiz = kutu.value.replace(/[^0-9]/g, '').slice(0, YPIN_UZUNLUK);
+        if (temiz !== kutu.value) kutu.value = temiz;
+      });
+    });
+
+    /* Kilitli terminaldeki discreet 🔓 — patron çıkışı. */
+    var kilitAc = el('kapiKilitAc');
+    if (kilitAc) kilitAc.addEventListener('click', function () { ypinAc('kilit-ac'); });
+
+    /* Terminal ekranındaki "PIN ile Giriş" düğmesi (pencere kapanmışsa geri açar). */
+    var terminalGiris = el('kapiTerminalGiris');
+    if (terminalGiris) terminalGiris.addEventListener('click', pinPerdesiniAc);
+
+    /*
+     * ESC SIRASI ÖNEMLİ: Master PIN penceresi plasiyer penceresinin ÜSTÜNDE
+     * durur (z-80 > z-70). Üstteki kapanmadan alttakine dokunulmamalı, yoksa
+     * tek ESC iki pencereyi birden kapatırdı.
+     */
     document.addEventListener('keydown', function (olay) {
-      if ('Escape' === olay.key && pinPerde && !pinPerde.hidden) pinPerdesiniKapat();
+      if ('Escape' !== olay.key) return;
+
+      if (ypinPerde && !ypinPerde.hidden) return ypinKapat();
+      if (pinPerde && !pinPerde.hidden) pinPerdesiniKapat();
     });
   }
 
@@ -470,11 +920,73 @@
    */
   var kuruldu = false;
 
+  /**
+   * Ayarlar hazır olduktan sonra hangi kapının çizileceğine karar verir.
+   *
+   * SIRA ÖNEMLİ — yukarıdan aşağı:
+   *   1) CİHAZ KİLİDİ her şeyin önündedir. Tahsisli cihazda ne çift kapı ne
+   *      sıfır-kurulum dalı çalışır; yönetici kapısı ekranda HİÇ olmaz.
+   *   2) SIFIR KURULUM (bağlantı yok + Master PIN de yok): mevcut davranış
+   *      aynen korunur — kapı gösterilmez, doğrudan yönetici akışı.
+   *      `sifir-kurulum.test.js`'in kilitlediği dal budur.
+   *   3) Master PIN TANIMLIYSA bağlantı olmasa bile kapı gösterilir: yönetici
+   *      ekranı PIN'siz açılmamalı. (Taze kurulumda PIN yoktur, yani yeni
+   *      kullanıcı kurulum ekranına PIN sorulmadan ulaşır — yazım hatası olan
+   *      bir PIN'in taze kurulumu kilitlemesi bundan daha kötü olurdu.)
+   */
+  function kapiyiKur() {
+    cihazDurumunuAl();
+
+    if (cihaz.kilitli) {
+      terminalModunuAc();
+      return;
+    }
+
+    if (!baglantiVar() && !cihaz.pinKurulu) {
+      oturumKur('admin', {});
+      kapi.hidden = true;
+      return;
+    }
+
+    kapiyiGoster();
+  }
+
+  /**
+   * AÇILIŞ SIRASI HATASI DÜZELTMESİ — okumadan değiştirme.
+   *
+   * `renderer.js` ayarları `await ipcRenderer.invoke('ayar:oku')` ile çeker ve
+   * `durum.ayarlar` bu iş bitene kadar **null**'dır. Her iki dosya da
+   * DOMContentLoaded'a bağlı olduğu için buradaki kod, ayarlar gelmeden
+   * çalışıyordu: `baglantiVar()` boş nesne görüp `false` dönüyor, kapı
+   * kendini gizliyor ve çift kapı GERÇEK UYGULAMADA HİÇ GÖRÜNMÜYORDU.
+   *
+   * Testler bunu yakalamıyordu çünkü `durum.ayarlar`'ı önceden dolduruyorlar.
+   * Üretimde ise Faz 4'e kadar `[hidden]` CSS hatası kapıyı zorla görünür
+   * tuttuğu için belirti maskeliydi; o hata düzeltilince ortaya çıktı.
+   *
+   * Çözüm: ayarlar hazırsa SENKRON devam et (test yolu ve hızlı yol aynı
+   * kalır), değilse kendimiz okuyup bekle. Cihaz kilidi de aynı nesneden
+   * geldiği için tek IPC turu üç soruyu birden cevaplar.
+   */
+  async function ayarlariBekleyipKur() {
+    var cevap = await sureAsimiyla(ipc('ayar:oku'), LISTE_SURE_ASIMI_MS);
+
+    /* `durum.ayarlar` hâlâ boşsa dolduruyoruz; renderer.js birazdan aynı
+       içerikle üzerine yazacak. Dolmuşsa DOKUNMUYORUZ — tek doğruluk kaynağı
+       orası kalsın. */
+    if (cevap && !cevap.sureAsimi && typeof durum !== 'undefined' && !durum.ayarlar) {
+      durum.ayarlar = cevap;
+    }
+
+    kapiyiKur();
+  }
+
   function baslat() {
     if (kuruldu) return;
 
     kapi = el('girisKapisi');
     pinPerde = el('pinPerde');
+    ypinPerde = el('ypinPerde');
 
     if (!kapi) return;   // işaretleme yoksa sessizce devre dışı
 
@@ -482,18 +994,12 @@
 
     olaylariBagla();
 
-    /*
-     * SIFIR KURULUM: bağlantı yoksa pazarlamacı girişi çalışamaz. Kapıyı
-     * göstermek yerine doğrudan yönetici akışına geçilir — kullanıcı
-     * kurulum ekranıyla karşılaşmaya devam eder.
-     */
-    if (!baglantiVar()) {
-      oturumKur('admin', {});
-      kapi.hidden = true;
+    if (typeof durum !== 'undefined' && durum.ayarlar) {
+      kapiyiKur();
       return;
     }
 
-    kapiyiGoster();
+    ayarlariBekleyipKur();
   }
 
   /* renderer.js DOMContentLoaded'da boot ediyor; biz de aynı anı bekliyoruz. */
@@ -511,13 +1017,26 @@
     cikisYap: cikisYap,
     kapiyiGoster: kapiyiGoster,
     yoneticiSec: yoneticiSec,
+    yoneticiGirisiniTamamla: yoneticiGirisiniTamamla,
     pinPerdesiniAc: pinPerdesiniAc,
     pinPerdesiniKapat: pinPerdesiniKapat,
     geriDonYonetici: geriDonYonetici,
     plasiyerleriYukle: plasiyerleriYukle,
+
+    /* Master PIN ve cihaz kilidi (bkz. main.js § 3.9) */
+    ypinAc: ypinAc,
+    ypinKapat: ypinKapat,
+    ypinGonder: ypinGonder,
+    cihazDurumunuAl: cihazDurumunuAl,
+    terminalModunuAc: terminalModunuAc,
+    terminalModunuKapat: terminalModunuKapat,
+    kapiyiKur: kapiyiKur,
+    cihaz: cihaz,
+
     PLASIYER_SEKMELERI: PLASIYER_SEKMELERI,
     KISITLI_SEKMELER: KISITLI_SEKMELER,
     LISTE_SURE_ASIMI_MS: LISTE_SURE_ASIMI_MS,
-    PLASIYER_YOK_MESAJI: PLASIYER_YOK_MESAJI
+    PLASIYER_YOK_MESAJI: PLASIYER_YOK_MESAJI,
+    YPIN_UZUNLUK: YPIN_UZUNLUK
   };
 })();

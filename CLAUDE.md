@@ -59,6 +59,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/main/byom-telemetri.js`** | **Telemetri (sessiz hata avcısı) · ana süreç.** Bkz. §4 |
 | **`src/main/byom-katalog-depo.js`** | **Çevrimdışı katalog deposu** (Faz 2). `<userData>/byom-data/katalog.json` + bellekte SKU/barkod/ad/kategori indeksleri. SQLite DEĞİL — gerekçe dosya başlığında. `kur({ dizin })` ile test edilebilir | — |
 | **`src/main/byom-gorsel-onbellek.js`** | **Görsel indirme kuyruğu** (Faz 2). `<userData>/byom-gorseller/`, SHA-256 dosya adı ile tekrar indirme yok, en çok 3 eşzamanlı | — |
+| **`src/main/byom-yonetici-kilit.js`** | **Yönetici Master PIN + cihaz (saha terminali) kilidi** (Faz 5). Tuzlu scrypt özeti, 3 deneme/60 sn kilit, cihaz rolü geçişleri, **ayar maskeleme/süzme**. DOM'suz + Electron'suz → `node --test` altında koşar. Bkz. §4.9 | — |
 
 `main.js` bölüm haritasına eklenenler:
 **`3.6)` Plasiyer kimlik ve veri kapısı** (`plasiyer:*` IPC, oturum belleği → §5) ·
@@ -103,6 +104,10 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | `ayarlar.json → plasiyerYerelMusteriler` | Çevrimdışı eklenen müşteriler (`temp_musteri_<uuid>`) |
 | `ayarlar.json → plasiyerSiparisKuyrugu` | Yazılmış siparişler. Faz 3 eşitler; **KALICI HATALI kayıt kuyrukta KALIR** (kullanıcı sebebini görsün) |
 | `ayarlar.json → plasiyerZiyaretKuyrugu` | Gönderilmemiş saha ziyaret notları (Faz 3) |
+| `ayarlar.json → yoneticiPinHash` | **Yönetici Master PIN'in tuzlu scrypt özeti** (Faz 5). Arayüze **hiç gitmez** (`maskele`), `ayar:yaz`'dan **yazılamaz** (`suz`) → §4.9 |
+| `ayarlar.json → yoneticiPinDeneme` / `yoneticiPinKilitBitis` | Kaba kuvvet sayacı ve 60 sn kilidin bitiş anı. **Diskte** tutulması bilinçli: bellekte olsa uygulamayı kapatıp açmak sayacı sıfırlardı |
+| `ayarlar.json → cihazRolu` | `standart` veya `plasiyer_kilitli` (saha terminali modu) |
+| `ayarlar.json → tahsisliPlasiyerId` / `tahsisliPlasiyerAd` | Cihazın tahsis edildiği plasiyer. İkisi de dolu olmadıkça kilit **uygulanmaz** |
 
 ---
 
@@ -162,7 +167,9 @@ listeye **elle** eklemen gerekir.
 
 | Önek | Nerede kurulur | Kanallar |
 |---|---|---|
-| `ayar:` | `main.js` | `ayar:oku`, `ayar:yaz` |
+| `ayar:` | `main.js` | `ayar:oku` (**maskeli** — PIN özeti gelmez), `ayar:yaz` (**süzgeçli** — korumalı alanlar geçmez → §4.9) |
+| `auth:` | `main.js` § 3.9 | `auth:yonetici-pin-durum`, `auth:yonetici-pin-kur`, `auth:yonetici-pin-dogrula`, `auth:yonetici-pin-degistir` |
+| `cihaz:` | `main.js` § 3.9 | `cihaz:durum`, `cihaz:kilitle` (plasiyere tahsis), `cihaz:ac` (Master PIN ile kilidi kaldır) |
 | `woo:` / `api:` | `main.js` | `woo:istek` (wc/v3), `api:istek` (wc-b2b/v1) |
 | `fis:` | `main.js` | `fis:onizleme`, `fis:yazdir`, `fis:pdf`, `fis:kapat` |
 | `excel:` | `main.js` | `excel:disaAktar`, `excel:dosyaSec`, `excel:tabloOku` |
@@ -488,6 +495,96 @@ plasiyer 🔔 bildirim zili → patron yanıtını okur
 
 ---
 
+## 4.9 Yönetici Master PIN ve Cihaz Kilidi (Faz 5)
+
+Sahaya verilen laptopta plasiyerin yönetici ekranına geçmesini engeller.
+Motor: **`src/main/byom-yonetici-kilit.js`** · IPC: **`main.js` § 3.9**.
+
+### Akış
+```
+PIN YOK      → 👑 Yönetici Girişi → "Yönetici Master PIN Belirleyin (6 Haneli)"
+                                    (PIN + TEKRAR kutusu) → kaydet → panel
+PIN VAR      → 👑 Yönetici Girişi → 6 hane sor → doğru → panel
+                                              → 3 hatalı → 60 sn kilit
+CİHAZ KİLİTLİ → iki kart YOK, yönetici kapısı YOK
+                "[Ad] — Saha Satış Terminali" + doğrudan PIN ekranı
+                sağ üstte discreet 🔓 → Master PIN → standart moda dön
+```
+
+Kilitleme: yönetici → **Pazarlamacılar** → satırdaki
+`[🔒 Bu Cihazı Tahsis Et]` → onay → `cihaz:kilitle`.
+
+### ⚠️ DÜRÜST SINIR — "güvenli" demeden önce oku
+`ayarlar.json` **düz metin** bir dosyadır. Bu kilit, cihazı eline alan
+plasiyerin **arayüzden** yönetici ekranına geçmesini engeller; **dosya
+sistemine erişen birine karşı mutlak değildir** — dosyayı elle düzenleyip
+`cihazRolu`'nü değiştiren ya da `yoneticiPinHash`'i silip PIN'i yeniden kuran
+biri kilidi aşar. 6 hane (10⁶) dosyayı kopyalayan için çevrimdışı denemeye de
+açıktır; scrypt yavaşlatır, imkânsız kılmaz.
+
+Bu, lisans deposundan (`byom-lisans-deposu.js`) **bilinçli olarak farklı** bir
+tehdit modelidir: orada korunan şey firmanın parasıdır ve safeStorage/HWID
+imzası kullanılır. Burada korunan şey *"çalışan yanlış ekranı açmasın"*dır.
+Daha güçlüsü isteniyorsa ayar dosyasını HWID-HMAC ile imzalamak gerekir —
+**ayrı bir görev**, çünkü ayar dosyasını elle düzeltebilmek şu anda destek
+sürecinin parçası.
+
+### Bozmaman gereken sözler
+- **DOĞRULAMA ARAYÜZDE YAPILMAZ.** `nodeIntegration: true` olduğu için
+  renderer'da yazılan her karşılaştırma aynı konsoldan atlatılabilir. PIN
+  `auth:*` / `cihaz:*` kanallarıyla ana sürece gider, arayüz yalnızca
+  "oldu/olmadı" alır.
+- **PIN ÖZETİ ARAYÜZE HİÇ GELMEZ.** `ayar:oku` → `maskele()`: `yoneticiPinHash`
+  silinir, yerine `yoneticiPinKurulu` bool'u konur. Yanıtlarda da `yazilacak`
+  alanı arayüze gönderilmez (içinde özet olabilir).
+- **KORUMALI ALANLAR `ayar:yaz`'DAN GEÇMEZ** (`suz()`): `yoneticiPinHash`,
+  `yoneticiPinDeneme`, `yoneticiPinKilitBitis`, `cihazRolu`,
+  `tahsisliPlasiyerId`, `tahsisliPlasiyerAd`. **Kilidin tamamı buna dayanıyor:**
+  `ayar:yaz` genel amaçlı bir kanal, açık kalsaydı kilitli cihazdaki biri tek
+  satırla `{ cihazRolu: 'standart' }` yazıp yönetici kapısını geri açardı.
+  Süzgeç **IPC sınırında** durur; içerideki `ayarlariYaz()` çağrıları süzülmez
+  (kilidi yazan kod onları kullanıyor).
+- **TUZLU scrypt**, tuzsuz SHA-256 değil. Depodaki geliştirici kilidi tuzsuz
+  SHA-256 kullanıyor ve bu "kabul edilmiş risk" olarak kayıtlı
+  (`../BYOM-REGISTRY.md §5.20 madde 18`); **yeni** bir güvenlik kontrolünde o
+  kalıp tekrar edilmez. `N=16384, r=8, p=1` → ~16 MB / ~60 ms. **DÜŞÜRME.**
+- **DENEME SAYACI DİSKE YAZILIR**, belleğe değil. Bellekte tutulsa uygulamayı
+  kapatıp açmak sayacı sıfırlardı; saha laptopunda bu "kilit yok" demektir.
+- **KİLİT, PIN KONTROLÜNDEN ÖNCE BAKILIR.** Sonra bakılsaydı doğru PIN'i bulan
+  biri 60 saniye kuralını hiç görmeden geçerdi.
+- **PIN'SİZ CİHAZ KİLİTLENEMEZ.** Kilidi açmanın tek yolu Master PIN; PIN'siz
+  kilitlemek cihazı geri dönüşsüz kilitlerdi (uygulamayı silmekten başka çıkış
+  kalmazdı). Aynı sebeple ilk kurulumda **TEKRAR kutusu zorunlu**.
+- **KİLİTLİ CİHAZDA PIN PENCERESİ KAPANMAZ.** `pinPerdesiniKapat()` başındaki
+  tek `if (cihaz.kilitli) return;` satırı üç kaçışı birden kapatır: ✕,
+  perdeye tıklama, ESC. Kapanabilseydi plasiyer PIN girmeden arkadaki panele
+  düşerdi. Ayrıca kapı kaplaması opak olarak **ayakta kalır** (iki katman).
+- **KİLİTLİ CİHAZDA AĞA ÇIKILMAZ.** Tahsisli plasiyer ayarlardan bilinir;
+  `/admin/plasiyerler` çağrılmaz — internetsiz sahada da açılmalı.
+- **TAHSİS BİLGİSİ EKSİKSE KİLİT UYGULANMAZ.** Adı/kimliği olmayan bir kilit,
+  kimsenin giremediği bir cihaz demekti.
+- **KİLİT AÇMA EKRANI SAYAÇTAN MUAF DEĞİL** — `cihaz:ac` de `pinDene`'den geçer.
+- **Kilit açılınca plasiyer jetonu düşürülür** (`plasiyerOturumu = null`): cihaz
+  artık o kişiye tahsisli değil, açık jetonla veri çekmeye devam etmemeli.
+
+### 4.9.1 AÇILIŞ SIRASI HATASI — kapı gerçek uygulamada görünmüyordu
+`renderer.js` ayarları `await ipcRenderer.invoke('ayar:oku')` ile çeker ve
+`durum.ayarlar` o iş bitene kadar **null**'dır. Her iki dosya da
+`DOMContentLoaded`'a bağlı olduğu için `renderer-plasiyer.js` ayarlar gelmeden
+çalışıyor, `baglantiVar()` boş nesne görüp `false` dönüyor ve kapı kendini
+gizliyordu — **çift kapı üretimde hiç görünmüyordu.**
+
+Testler yakalamıyordu çünkü `durum.ayarlar`'ı **önceden dolduruyorlar**. Faz
+4'e kadar `[hidden]` CSS hatası kapıyı zorla görünür tuttuğu için belirti de
+maskeliydi; o hata düzeltilince ortaya çıktı.
+
+**Çözüm (`baslat`):** ayarlar hazırsa **senkron** devam (hızlı yol ve test yolu
+aynı kalır), değilse `ayar:oku`'yu kendisi okuyup bekler (3 sn süre aşımıyla).
+Cihaz kilidi de aynı nesneden geldiği için **tek IPC turu üç soruyu birden**
+cevaplar. `ortamKurAyarsiz()` yardımcısı artık üretim sırasını test eder.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -495,10 +592,10 @@ plasiyer 🔔 bildirim zili → patron yanıtını okur
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**325 test**: panel 155 + kök 170).
+İkisini birden `../scripts/check-all.js` koşar (**384 test**: panel 190 + kök 194).
 
 ```bash
-# Bu submodule'un kendi birim testleri (155 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (190 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
@@ -506,6 +603,7 @@ node --test test/plasiyer-siparis.test.js   # 34 — koli matematigi, sepet, son
 node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprusu, hata toleransi,
                                             #      esitlemeGerekliMi (Faz 4 oto-esitleme karari)
 node --test test/harita-notlar.test.js      # 35 — 81 il kutugu, durum gecisleri, filtreler
+node --test test/cihaz-kilidi.test.js       # 35 — Master PIN hash/kilit, cihaz tahsisi, KAYNAK denetimi
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
 
@@ -530,7 +628,7 @@ node --test scripts/tests/depo-fisi.test.js           # fiş muhasebe dökümü
 node --test scripts/tests/odeme-matrisi.dom.test.js   # matris arayüzü
 node --test scripts/tests/checkout-masasi.dom.test.js
 node --test scripts/tests/sifre-goz.dom.test.js
-node --test scripts/tests/plasiyer-kapi.dom.test.js   # 28 — çift kapı, [hidden] kuralı, 3 sn süre aşımı, çıkışlar
+node --test scripts/tests/plasiyer-kapi.dom.test.js   # 52 — çift kapı, [hidden], süre aşımı, Master PIN, cihaz kilidi
 node --test scripts/tests/harita-kokpit.dom.test.js   # 15 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
@@ -542,7 +640,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (325 test)
+# Bitirirken: üç katmanın tamamı (384 test)
 node scripts/check-all.js
 ```
 
@@ -608,13 +706,15 @@ if (typeof window !== 'undefined') window.X = X;
 | `vitrin-motor.js → demoRegistry()` | Registry'nin 3. kopyası; eklenti ve tema kopyalarıyla **birebir** eşit olmalı (`registry-parity.test.js`) |
 | Geliştirici kilidi şifresi (tuzsuz SHA-256, `renderer.js`) | **Kabul edilmiş risk** (`../BYOM-REGISTRY.md §5.20 madde 18`): yerel kaza önleyici, saldırı savunması değil. Değiştirmek mevcut kurulumların şifresini geçersiz kılar |
 | `main.js` içindeki küresel hata kancaları | Davranışları (diyalog + günlük) müşteri deneyiminin parçası. Telemetri bunlara **satır ekler**, davranışı değiştirmez |
+| **`ayar:oku` → `maskele()` / `ayar:yaz` → `suz()`** | **Cihaz kilidinin tamamı bu iki çağrıya dayanıyor.** Biri kaldırılırsa kilit sessizce işlevsiz kalır: PIN özeti arayüze sızar ya da kilitli cihazdaki biri `ayar:yaz` ile `cihazRolu`'nü kendisi değiştirir. Davranış testleri bunu YAKALAMAZ (main.js Electron gerektirir, `node --test` altında yüklenmez) — bu yüzden `cihaz-kilidi.test.js` **kaynak metnini** denetler. → §4.9 |
+| **`byom-yonetici-kilit.js` scrypt parametreleri** | `N=16384, r=8, p=1`. Düşürmenin tek kazancı ölçülemeyecek bir hız, bedeli 6 haneli PIN'e kaba kuvvetin kolaylaşması. Parametreler özetin **içinde** saklanır, yani ileride artırmak sahadaki PIN'leri geçersiz kılmaz |
 
 ---
 
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 156 php / 69 js / 325 test
+cd .. && node scripts/check-all.js     # 0 hata / 156 php / 71 js / 384 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

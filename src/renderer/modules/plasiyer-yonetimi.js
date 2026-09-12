@@ -100,6 +100,102 @@
    *  TABLO + CİRO ÇUBUĞU
    * ------------------------------------------------------------------ */
 
+  /* ------------------------------------------------------------------ *
+   *  CİHAZ TAHSİSİ (saha terminali kilidi)
+   *  ---------------------------------------------------------------
+   *  Ayrıntı ve tehdit modeli: src/main/byom-yonetici-kilit.js başlığı.
+   *  Burada yalnızca düğme ve onay var; karar ana süreçte verilir.
+   * ------------------------------------------------------------------ */
+
+  /** Bu cihaz şu an hangi plasiyere tahsisli? (0 = tahsis yok) */
+  function tahsisliId() {
+    var a = (typeof durum !== 'undefined' && durum.ayarlar) || {};
+
+    if ('plasiyer_kilitli' !== a.cihazRolu) return 0;
+
+    return Number(a.tahsisliPlasiyerId || 0) || 0;
+  }
+
+  /**
+   * Satır sonundaki kilit düğmesi.
+   *
+   * Cihaz ZATEN bu plasiyere tahsisliyse düğme yerine durum rozeti gösterilir:
+   * aynı kilidi ikinci kez kurmak anlamsız, ve "kilitli" bilgisini yöneticinin
+   * görmesi gerekir. Kilidi kaldırmak kasıtlı olarak BURADA DEĞİL — giriş
+   * ekranındaki discreet 🔓 + Master PIN ile yapılır; çünkü kilit kurulduktan
+   * sonra bu sekmeye ulaşmanın yolu da Master PIN'den geçer.
+   */
+  function cihazDugmesi(p) {
+    var id = Number(p.id) || 0;
+
+    if (tahsisliId() === id && id > 0) {
+      return '<span class="px-3 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/40 ' +
+             'text-amber-800 dark:text-amber-300 font-bold text-sm" ' +
+             'title="Bu cihaz bu pazarlamacıya tahsisli. Kilidi giriş ekranındaki 🔓 ile açabilirsiniz.">' +
+             '🔒 Bu Cihaza Tahsisli</span>';
+    }
+
+    return '<button type="button" class="plasiyer-cihaz px-3 py-2 rounded-lg border-2 ' +
+           'border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 ' +
+           'font-bold text-sm hover:bg-amber-50 dark:hover:bg-amber-900/30" ' +
+           'data-id="' + id + '" ' +
+           'title="Bu bilgisayarı yalnızca bu pazarlamacının girişine kilitler">' +
+           '🔒 Bu Cihazı Tahsis Et</button>';
+  }
+
+  /**
+   * Cihazı plasiyere kilitler.
+   *
+   * ONAY ŞART: kilit, cihazı eline alan kişinin yönetici ekranını tamamen
+   * kapatır. Yanlış satıra tıklayan yöneticinin bunu fark etmeden yapması
+   * kabul edilemez.
+   */
+  async function cihaziTahsisEt(plasiyerId) {
+    var p = kayit.plasiyerler.find(function (x) { return Number(x.id) === Number(plasiyerId); });
+
+    if (!p) return;
+
+    var ad = String(p.ad || '').trim() || ('#' + plasiyerId);
+
+    var onay = await onayla(
+      'Cihazı Tahsis Et',
+      'Bu bilgisayar yalnızca ' + ad + ' girişine kilitlenecektir. ' +
+      'Yönetici giriş kapısı ekrandan kalkar ve geri dönmek için Yönetici Master PIN gerekir. ' +
+      'Onaylıyor musunuz?',
+      'KİLİTLE',
+      true
+    );
+
+    if (!onay) return;
+
+    var cevap = null;
+
+    try {
+      cevap = await ipcRenderer.invoke('cihaz:kilitle', { id: Number(plasiyerId), ad: ad });
+    } catch (e) {
+      cevap = null;
+    }
+
+    if (!cevap || !cevap.ok) {
+      /* En sık sebep: Master PIN hiç belirlenmemiş. Ana süreç bunu açıkça
+         söylüyor; mesajı olduğu gibi gösteriyoruz. */
+      bildir((cevap && cevap.hata) || 'Cihaz kilitlenemedi.', 'hata');
+      return;
+    }
+
+    /* Ayar kopyası tazelenir ki tablo doğru rozeti çizsin. */
+    if (typeof durum !== 'undefined' && durum.ayarlar && cevap.durum) {
+      durum.ayarlar.cihazRolu = cevap.durum.cihazKilitli ? 'plasiyer_kilitli' : 'standart';
+      durum.ayarlar.tahsisliPlasiyerId = cevap.durum.tahsisliPlasiyerId;
+      durum.ayarlar.tahsisliPlasiyerAd = cevap.durum.tahsisliPlasiyerAd;
+    }
+
+    tabloyuCiz();
+
+    bildir(ad + ' için cihaz kilidi kuruldu. Uygulama bir dahaki açılışta ' +
+           'doğrudan saha satış terminali olarak başlayacak.', 'basari');
+  }
+
   function tabloyuCiz() {
     var kap = el('plasiyerTablo');
 
@@ -154,9 +250,10 @@
             (p.pinTanimli
               ? '<span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">PIN ✓</span>'
               : '<span class="text-xs font-bold text-amber-700 dark:text-amber-400">PIN yok</span>') +
-            '<div class="mt-2 flex gap-2 justify-end">' +
+            '<div class="mt-2 flex gap-2 justify-end flex-wrap">' +
               '<button type="button" class="plasiyer-duzenle px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + Number(p.id) + '">Düzenle</button>' +
               '<button type="button" class="plasiyer-bayiler px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + Number(p.id) + '">Bayiler</button>' +
+              cihazDugmesi(p) +
             '</div>' +
           '</td>' +
         '</tr>';
@@ -426,7 +523,14 @@
         }
 
         var bayiler = olay.target.closest('.plasiyer-bayiler');
-        if (bayiler) bayiPerdesiniAc(Number(bayiler.dataset.id));
+
+        if (bayiler) {
+          bayiPerdesiniAc(Number(bayiler.dataset.id));
+          return;
+        }
+
+        var cihazDugme = olay.target.closest('.plasiyer-cihaz');
+        if (cihazDugme) cihaziTahsisEt(Number(cihazDugme.dataset.id));
       });
     }
   }
@@ -469,6 +573,8 @@
     tabloyuCiz: tabloyuCiz,
     formuAc: formuAc,
     formuKapat: formuKapat,
+    cihaziTahsisEt: cihaziTahsisEt,
+    tahsisliId: tahsisliId,
     kayit: kayit
   };
 })();

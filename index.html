@@ -312,9 +312,16 @@
   .kapi-kart:hover { transform: translateY(-4px); }
   .kapi-kart:active { transform: translateY(-1px); }
 
+  /* DISCREET KİLİT AÇMA DÜĞMESİ (kilitli cihazda sağ üst köşe)
+     Silik duruyor, üzerine gelinince belirginleşiyor. Saha plasiyerinin
+     dikkatini çekmemeli ama patron cihazı geri alırken bulabilmeli.
+     Yalnızca `opacity` animasyonlanır — düzen hesabı tetiklenmez. */
+  .kilit-ac { opacity: .28; transition: opacity .2s ease; }
+  .kilit-ac:hover, .kilit-ac:focus-visible { opacity: 1; }
+
   /* Azaltılmış hareket tercihi olan kullanıcıda geçişler susar. */
   @media (prefers-reduced-motion: reduce) {
-    #girisKapisi, .kapi-kart { transition: none; }
+    #girisKapisi, .kapi-kart, .kilit-ac { transition: none; }
     .kapi-kart:hover, .kapi-kart:active { transform: none; }
   }
 
@@ -1549,7 +1556,26 @@
       <div id="kapiFirma" class="mt-2 text-lg text-slate-500 dark:text-slate-400"></div>
     </div>
 
-    <div class="grid gap-6 sm:grid-cols-2">
+    <!-- ==============================================================
+         SAHA SATIŞ TERMİNALİ BAŞLIĞI (cihaz bir plasiyere kilitliyken)
+         `cihazRolu === 'plasiyer_kilitli'` olduğunda iki kart GİZLENİR ve
+         bunun yerine bu blok görünür. Yönetici kapısı ekranda HİÇ olmaz.
+         Kilidi açmanın tek yolu sağ üstteki discreet 🔓 düğmesi + Master PIN.
+         ============================================================== -->
+    <div id="kapiTerminal" hidden class="text-center">
+      <div class="text-6xl mb-4" aria-hidden="true">💼</div>
+      <div id="kapiTerminalAd" class="text-2xl font-extrabold"></div>
+      <p class="mt-3 text-slate-500 dark:text-slate-400">
+        Bu cihaz saha satışına tahsis edilmiştir. Devam etmek için PIN'inizi girin.
+      </p>
+      <button type="button" id="kapiTerminalGiris"
+              class="mt-8 px-8 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold
+                     hover:bg-marka-600 focus:outline-none focus:ring-4 focus:ring-marka-500/30 transition">
+        PIN ile Giriş
+      </button>
+    </div>
+
+    <div id="kapiKartlar" class="grid gap-6 sm:grid-cols-2">
 
       <!-- KAPI 1 — YÖNETİCİ -->
       <button type="button" id="kapiYonetici"
@@ -1578,6 +1604,18 @@
 
     <p id="kapiUyari" class="hidden mt-8 text-center text-amber-700 dark:text-amber-400 font-semibold"></p>
   </div>
+
+  <!-- DISCREET KİLİT AÇMA (patron çıkışı)
+       Kasıtlı olarak SİLİK: sahadaki plasiyerin dikkatini çekmemeli, ama
+       patron cihazı geri alırken bulabilmeli. Yalnızca kilitli cihazda görünür.
+       Tıklanınca 6 haneli Yönetici Master PIN sorulur. -->
+  <button type="button" id="kapiKilitAc" hidden title="Cihaz kilidini aç (yönetici)"
+          aria-label="Cihaz kilidini aç — yönetici PIN'i gerekir"
+          class="kilit-ac fixed top-4 right-4 w-10 h-10 rounded-xl grid place-items-center
+                 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
+                 focus:outline-none focus:ring-2 focus:ring-marka-500/40">
+    <span class="text-lg leading-none" aria-hidden="true">🔓</span>
+  </button>
 </div>
 
 <!-- ==================================================================
@@ -1591,20 +1629,25 @@
 
     <div class="flex items-start justify-between gap-4">
       <div>
-        <div class="text-xl font-extrabold">Pazarlamacı Girişi</div>
-        <div class="text-sm text-slate-500 dark:text-slate-400 mt-1">Adınızı seçip PIN'inizi girin.</div>
+        <div id="pinBaslik" class="text-xl font-extrabold">Pazarlamacı Girişi</div>
+        <div id="pinAltBaslik" class="text-sm text-slate-500 dark:text-slate-400 mt-1">Adınızı seçip PIN'inizi girin.</div>
       </div>
       <button type="button" id="pinKapat"
               class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600
                      text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>
     </div>
 
-    <label class="block mt-6 text-sm font-bold text-slate-600 dark:text-slate-300" for="pinPlasiyer">Pazarlamacı</label>
-    <select id="pinPlasiyer"
-            class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                   bg-white dark:bg-slate-900 text-lg font-semibold">
-      <option value="">Yükleniyor…</option>
-    </select>
+    <!-- PAZARLAMACI SEÇİMİ — kilitli cihazda GİZLENİR.
+         Cihaz bir plasiyere tahsisliyse başka bir plasiyer seçilemez;
+         seçim kutusunu açık bırakmak kilidin anlamını boşaltırdı. -->
+    <div id="pinSecimAlan">
+      <label class="block mt-6 text-sm font-bold text-slate-600 dark:text-slate-300" for="pinPlasiyer">Pazarlamacı</label>
+      <select id="pinPlasiyer"
+              class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                     bg-white dark:bg-slate-900 text-lg font-semibold">
+        <option value="">Yükleniyor…</option>
+      </select>
+    </div>
 
     <label class="block mt-5 text-sm font-bold text-slate-600 dark:text-slate-300" for="pinKod">PIN</label>
     <input id="pinKod" type="password" inputmode="numeric" autocomplete="off" maxlength="6"
@@ -1626,6 +1669,73 @@
             class="mt-3 w-full px-6 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
                    font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">
       ← Geri Dön / Yönetici Girişi
+    </button>
+  </div>
+</div>
+
+<!-- ==================================================================
+     YÖNETİCİ MASTER PIN PENCERESİ
+     Üç yerden açılır:
+       1) İlk kurulum — PIN tanımsızken "Yönetici Girişi"ne basılınca
+          (başlık: "Yönetici Master PIN Belirleyin (6 Haneli)").
+       2) Normal giriş — PIN tanımlıyken "Yönetici Girişi"ne basılınca.
+       3) Cihaz kilidini açma — kilitli terminaldeki discreet 🔓 düğmesinden.
+
+     DOĞRULAMA BURADA YAPILMAZ. PIN `auth:yonetici-pin-*` / `cihaz:ac`
+     kanallarıyla ana sürece gider; arayüz yalnızca sonucu gösterir.
+     Gerekçe: renderer'da `nodeIntegration: true` — burada yazılacak her
+     karşılaştırma aynı konsoldan atlatılabilirdi.
+     ================================================================== -->
+<div id="ypinPerde" hidden
+     class="fixed inset-0 z-[80] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border-2 border-slate-200 dark:border-slate-700 p-8">
+
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <div id="ypinBaslik" class="text-xl font-extrabold">Yönetici PIN</div>
+        <div id="ypinAciklama" class="text-sm text-slate-500 dark:text-slate-400 mt-1"></div>
+      </div>
+      <button type="button" id="ypinKapat"
+              class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                     text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>
+    </div>
+
+    <label class="block mt-6 text-sm font-bold text-slate-600 dark:text-slate-300" for="ypinKod">
+      6 Haneli PIN
+    </label>
+    <input id="ypinKod" type="password" inputmode="numeric" autocomplete="off" maxlength="6"
+           class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                  bg-white dark:bg-slate-900 text-2xl font-black tracking-[0.4em] text-center"
+           placeholder="••••••" />
+
+    <!-- ONAY ALANI — YALNIZCA İLK KURULUMDA.
+         Tek kutuyla kurulan bir PIN'de yapılan yazım hatası, cihaz
+         kilitlendikten sonra geri dönüşü olmayan bir kilit üretirdi. -->
+    <div id="ypinOnayAlan" hidden>
+      <label class="block mt-5 text-sm font-bold text-slate-600 dark:text-slate-300" for="ypinKod2">
+        PIN'i Tekrar Girin
+      </label>
+      <input id="ypinKod2" type="password" inputmode="numeric" autocomplete="off" maxlength="6"
+             class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                    bg-white dark:bg-slate-900 text-2xl font-black tracking-[0.4em] text-center"
+             placeholder="••••••" />
+      <p class="mt-3 text-xs text-amber-700 dark:text-amber-400 font-semibold">
+        Bu PIN'i kaybederseniz kilitli bir cihazı açmanın başka yolu yoktur. Not alın.
+      </p>
+    </div>
+
+    <p id="ypinHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>
+
+    <button type="button" id="ypinGonder"
+            class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold
+                   hover:bg-marka-600 disabled:opacity-50 disabled:cursor-not-allowed transition">
+      Devam
+    </button>
+
+    <button type="button" id="ypinGeri"
+            class="mt-3 w-full px-6 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                   font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+      ← Geri Dön
     </button>
   </div>
 </div>
