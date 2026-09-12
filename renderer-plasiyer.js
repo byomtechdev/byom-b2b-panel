@@ -45,7 +45,7 @@
   var PLASIYER_SEKMELERI = ['satis', 'siparisler'];
 
   /** Plasiyer oturumunda gizlenecek sekmeler (beyaz liste dışı olanlar). */
-  var KISITLI_SEKMELER = ['ayarlar', 'iskonto', 'vitrin-editor', 'uyeler', 'destek', 'plasiyerler', 'urunler'];
+  var KISITLI_SEKMELER = ['ayarlar', 'iskonto', 'vitrin-editor', 'uyeler', 'destek', 'plasiyerler', 'urunler', 'harita'];
 
   var kapi = null;
   var pinPerde = null;

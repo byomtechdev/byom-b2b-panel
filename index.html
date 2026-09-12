@@ -369,6 +369,50 @@
     .kat-kenar, .vitrin-kab, .urun-kart, .urun-modal, .matris-satir { transition: none; }
     .urun-kart:hover, .urun-kart:active { transform: none; }
   }
+
+  /* ==================================================================
+     TÜRKİYE HARİTA KOKPİTİ (Faz 3)
+     ------------------------------------------------------------------
+     Hover ve yakınlaştırmanın tamamı `transform` / `opacity` / `fill`
+     ile yapılır. `fill` geçişi boyama (paint) tetikler ama düzen (layout)
+     tetiklemez; 81 kutu için ölçülebilir bir maliyeti yoktur.
+
+     ZOOM: `viewBox` DEĞİL `transform: scale/translate` animasyonlanır.
+     viewBox her karede yeniden düzen hesabı demektir.
+     ================================================================== */
+  .harita-il {
+    transition: fill .14s ease, transform .14s ease, stroke-width .14s ease;
+    transform-box: fill-box;
+    transform-origin: center;
+    cursor: pointer;
+  }
+  .harita-il:hover,
+  .harita-il:focus-visible {
+    fill: #1d4ed8 !important;
+    stroke-width: 2;
+    transform: scale(1.12);
+    outline: none;
+  }
+
+  .harita-zoom {
+    transform-origin: 0 0;
+    transition: transform .28s cubic-bezier(.2,.8,.2,1);
+  }
+
+  /* Çözülmemiş ziyaret notu uyarısı — hafifçe yanıp söner. */
+  .harita-uyari { animation: uyariNabzi 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes uyariNabzi {
+    0%, 100% { opacity: 1;   transform: scale(1); }
+    50%      { opacity: .55; transform: scale(1.18); }
+  }
+
+  #haritaIpucu { transition: opacity .12s ease; will-change: transform; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .harita-il, .harita-zoom, #haritaIpucu { transition: none; }
+    .harita-il:hover, .harita-il:focus-visible { transform: none; }
+    .harita-uyari { animation: none; }
+  }
   @keyframes girisAnimasyon { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
   .donuyor { animation: donme .9s linear infinite; display: inline-block; }
@@ -1765,6 +1809,14 @@
         <span class="align-middle">Pazarlamacılar</span>
       </button>
 
+      <!-- Saha haritası (Faz 3): 81 il, bayi/ciro yoğunluğu, ziyaret notları.
+           Harici bağımlılık YOK — yerel SVG, internet/Google Maps gerekmez
+           (src/renderer/modules/harita-kokpit.js). -->
+      <button data-sekme="harita" data-rol="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-panel"></use></svg>
+        <span class="align-middle">Saha Haritası</span>
+      </button>
+
       <!-- BYOM Brain destek masası: talepler doğrudan merkezî sisteme düşer -->
       <button data-sekme="destek" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg>
@@ -3004,6 +3056,17 @@
                       border-2 border-slate-200 dark:border-slate-700 p-6"></div>
         </div>
 
+        <!-- SAHA ZİYARET NOTU PENCERESİ (Faz 3)
+             Plasiyerin patrona not bıraktığı ve patron yanıtlarını okuduğu
+             perde. İçerik src/renderer/modules/plasiyer-ziyaret.js tarafından
+             çizilir. NOT BIRAKMAK TAMAMEN İSTEĞE BAĞLIDIR. -->
+        <div id="ziyaretPerde" hidden
+             class="fixed inset-0 z-[71] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6 overflow-y-auto">
+          <div id="ziyaretModal"
+               class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+                      border-2 border-slate-200 dark:border-slate-700 p-8"></div>
+        </div>
+
         <!-- MÜŞTERİ EKLE / SİPARİŞİ TAMAMLA PENCERESİ -->
         <div id="satisPerde" hidden
              class="fixed inset-0 z-[69] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6 overflow-y-auto">
@@ -3011,6 +3074,18 @@
                class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
                       border-2 border-slate-200 dark:border-slate-700 p-8"></div>
         </div>
+      </section>
+
+      <!-- ============================================================
+ SEKME — SAHA HARİTASI (TÜRKİYE KOKPİTİ)
+ ------------------------------------------------------------
+ İçerik src/renderer/modules/harita-kokpit.js tarafından çizilir:
+ 81 illi yerel SVG, hover vurgusu, ipucu kartı, bölünmüş ekran,
+ tarih/ölçüt filtreleri ve ziyaret notu işlemleri.
+ Harici bağımlılık YOK — internet ya da Google Maps gerekmez.
+ ============================================================ -->
+      <section id="sekme-harita" class="sekme-govde">
+        <div id="haritaKab"></div>
       </section>
 
       <!-- ============================================================
@@ -4117,5 +4192,18 @@
 <script src="src/renderer/plasiyer-siparis-motor.js"></script>
 <script src="src/renderer/modules/plasiyer-vitrin.js"></script>
 <script src="src/renderer/modules/plasiyer-musteri.js"></script>
+
+<!-- Plasiyer Faz 3 — çevrimdışı eşitleme, saha haritası, ziyaret notları.
+     SIRA ZORUNLU:
+       harita-veri.js (DOM'suz il kütüğü + not mantığı) ÖNCE; harita-kokpit ve
+       plasiyer-ziyaret onu `window.HaritaVeri` üzerinden çağırır.
+       plasiyer-ziyaret.js EN SON: `PlasiyerMusteri.seridiCiz`'i SARAR, yani
+       sarılacak fonksiyonun tanımlı olması gerekir.
+     sync-motor ana süreçte de require edilir (main.js § 3.8); burada arayüz
+     tarafı için yüklenir. -->
+<script src="src/renderer/plasiyer-sync-motor.js"></script>
+<script src="src/renderer/harita-veri.js"></script>
+<script src="src/renderer/modules/harita-kokpit.js"></script>
+<script src="src/renderer/modules/plasiyer-ziyaret.js"></script>
 </body>
 </html>

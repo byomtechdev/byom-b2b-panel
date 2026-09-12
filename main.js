@@ -1261,6 +1261,163 @@ ipcMain.handle('gorsel:yol', function (olay, veri) {
 });
 
 /* ==========================================================================
+ *  3.8) ÇEVRİMDIŞI EŞİTLEME DAĞITICISI (Plasiyer Faz 3)
+ *  ---------------------------------------------------------------------------
+ *  Sahada yazılan siparişleri, çevrimdışı eklenen müşterileri ve ziyaret
+ *  notlarını ağ geri geldiğinde merkeze iletir.
+ *
+ *  SIRA DEĞİŞTİRİLEMEZ: müşteri → kimlik köprüsü → sipariş → not.
+ *  Sunucu geçici kimlikli siparişi 409 ile reddeder, yani sıra yanlışsa
+ *  sessizce değil GÖRÜNÜR biçimde başarısız olur (bkz. plasiyer-sync-motor.js).
+ *
+ *  KUYRUK ayarlar.json'da durur:
+ *    plasiyerYerelMusteriler · plasiyerSiparisKuyrugu · plasiyerZiyaretKuyrugu
+ *  Diskte olması bilinçli: uygulama kapanırsa sahada yazılmış sipariş
+ *  kaybolmaz. Jeton ise belleğe bağlıdır (bkz. bölüm 3.6) — oturum düşmüşse
+ *  eşitleme "PIN gerekiyor" der, kuyruğa dokunmaz.
+ * ========================================================================*/
+
+const syncMotor = require('./src/renderer/plasiyer-sync-motor');
+
+/** Eşitleme sürüyor mu? (ikinci tur başlatılmasın) */
+let esitlemeSuruyor = false;
+
+/** Son eşitleme özeti — arayüz `sync:durum` ile okur. */
+let sonEsitleme = null;
+
+/** Plasiyer uçlarına istek atan küçük yardımcı. */
+function plasiyerIstek(yol, govde) {
+  return apiIstek({ alan: 'b2b', yol: yol, metod: 'POST', govde: govde, sureAsimi: 45000 });
+}
+
+/**
+ * Kuyruğu boşaltır.
+ *
+ * Arayüzü BEKLETMEZ: çağıran `await` etse bile tek turluk iştir ve kuyruk
+ * boşsa anında döner. Ağ yoksa kayıtlar kuyrukta kalır, hiçbir şey silinmez.
+ */
+ipcMain.handle('sync:esitle', async function () {
+  if (esitlemeSuruyor) {
+    return { ok: false, hata: 'Eşitleme zaten sürüyor.', ozet: sonEsitleme };
+  }
+
+  if (!plasiyerOturumuGecerliMi()) {
+    return { ok: false, durum: 401, hata: 'Oturum kapalı. PIN ile giriş yapın.' };
+  }
+
+  const ayarlar = ayarlariOku();
+
+  const musteriler = Array.isArray(ayarlar.plasiyerYerelMusteriler) ? ayarlar.plasiyerYerelMusteriler : [];
+  const siparisler = Array.isArray(ayarlar.plasiyerSiparisKuyrugu) ? ayarlar.plasiyerSiparisKuyrugu : [];
+  const notlar = Array.isArray(ayarlar.plasiyerZiyaretKuyrugu) ? ayarlar.plasiyerZiyaretKuyrugu : [];
+
+  /* Yapacak iş yoksa ağa hiç çıkılmaz. */
+  if (!musteriler.length && !siparisler.length && !notlar.length) {
+    return { ok: true, bosta: true, ozet: null };
+  }
+
+  esitlemeSuruyor = true;
+
+  const plasiyerId = plasiyerOturumu.id;
+  const jeton = plasiyerOturumu.token;
+
+  try {
+    const ozet = await syncMotor.esitle(
+      { musteriler: musteriler, siparisler: siparisler, notlar: notlar },
+      {
+        musteri: function (gecici) {
+          return plasiyerIstek('/plasiyer/musteri-esitle', {
+            plasiyerId: plasiyerId,
+            token: jeton,
+            gecici: gecici
+          });
+        },
+        siparis: function (kayit) {
+          return plasiyerIstek('/plasiyer/siparis', Object.assign({}, kayit, {
+            plasiyerId: plasiyerId,
+            token: jeton,
+            musteriId: String(kayit.musteriId)
+          }));
+        },
+        not: function (not) {
+          return plasiyerIstek('/plasiyer/ziyaret-notu', {
+            plasiyerId: plasiyerId,
+            token: jeton,
+            musteriId: Number(not.musteriId) || 0,
+            il: String(not.il || ''),
+            etiketler: Array.isArray(not.etiketler) ? not.etiketler : [],
+            not: String(not.not || ''),
+            gorsel: String(not.gorsel || ''),
+            yerelKimlik: String(not.yerelKimlik || '')
+          });
+        }
+      }
+    );
+
+    /* Gönderilenler düşer; KALICI HATALI KAYITLAR KALIR (kullanıcı görsün). */
+    ayarlariYaz({
+      plasiyerYerelMusteriler: syncMotor.esitlenenMusterileriTemizle(musteriler),
+      plasiyerSiparisKuyrugu: syncMotor.gonderilenleriTemizle(siparisler),
+      plasiyerZiyaretKuyrugu: syncMotor.gonderilenleriTemizle(notlar)
+    });
+
+    sonEsitleme = Object.assign({ zaman: new Date().toISOString() }, ozet);
+
+    return { ok: true, ozet: sonEsitleme, mesaj: syncMotor.ozetMesaji(ozet) };
+  } finally {
+    esitlemeSuruyor = false;
+  }
+});
+
+/** Kuyruk künyesi — arayüzdeki "bekleyen" göstergesi. */
+ipcMain.handle('sync:durum', function () {
+  const a = ayarlariOku();
+
+  const say = function (liste) {
+    return Array.isArray(liste) ? liste.length : 0;
+  };
+
+  const hatali = function (liste) {
+    return Array.isArray(liste)
+      ? liste.filter(function (k) { return k && syncMotor.KALICI_HATA === k.durum; }).length
+      : 0;
+  };
+
+  return {
+    ok: true,
+    suruyor: esitlemeSuruyor,
+    musteri: say(a.plasiyerYerelMusteriler),
+    siparis: say(a.plasiyerSiparisKuyrugu),
+    not: say(a.plasiyerZiyaretKuyrugu),
+    hatali: hatali(a.plasiyerSiparisKuyrugu) + hatali(a.plasiyerZiyaretKuyrugu) + hatali(a.plasiyerYerelMusteriler),
+    son: sonEsitleme
+  };
+});
+
+/** Ziyaret notunu yerel kuyruğa yazar (çevrimdışı yol). */
+ipcMain.handle('ziyaret:kuyruga', function (olay, veri) {
+  veri = veri || {};
+
+  const a = ayarlariOku();
+  const kuyruk = Array.isArray(a.plasiyerZiyaretKuyrugu) ? a.plasiyerZiyaretKuyrugu : [];
+
+  kuyruk.push({
+    durum: 'bekliyor',
+    zaman: new Date().toISOString(),
+    yerelKimlik: String(veri.yerelKimlik || ('not-' + Date.now() + '-' + Math.round(Math.random() * 99999))),
+    musteriId: Number(veri.musteriId) || 0,
+    il: String(veri.il || ''),
+    etiketler: Array.isArray(veri.etiketler) ? veri.etiketler : [],
+    not: String(veri.not || ''),
+    gorsel: String(veri.gorsel || '')
+  });
+
+  ayarlariYaz({ plasiyerZiyaretKuyrugu: kuyruk });
+
+  return { ok: true, bekleyen: kuyruk.length };
+});
+
+/* ==========================================================================
  *  4) ANA PENCERE VE UYGULAMA YAŞAM DÖNGÜSÜ
  * ========================================================================*/
 

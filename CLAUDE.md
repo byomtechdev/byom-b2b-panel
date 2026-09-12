@@ -62,7 +62,8 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 
 `main.js` bölüm haritasına eklenenler:
 **`3.6)` Plasiyer kimlik ve veri kapısı** (`plasiyer:*` IPC, oturum belleği → §5) ·
-**`3.7)` Çevrimdışı katalog ve görsel önbelleği** (`katalog:*` / `gorsel:*` IPC → §4.6).
+**`3.7)` Çevrimdışı katalog ve görsel önbelleği** (`katalog:*` / `gorsel:*` IPC → §4.6) ·
+**`3.8)` Çevrimdışı eşitleme dağıtıcısı** (`sync:*` / `ziyaret:kuyruga` IPC → §4.7).
 
 ### 1.2 Arayüz
 | Dosya | Sorumluluk | İç bölüm haritası (satır) |
@@ -82,6 +83,10 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/plasiyer-siparis-motor.js`** | **DOM'suz sipariş motoru** (Faz 2): koli matematiği, sepet indirgeyici, "son siparişi kopyala", geçici müşteri UUID, iskonto tavanı, sipariş gövdesi. `node --test` altında koşar (→ §4.6) | — |
 | **`src/renderer/modules/plasiyer-vitrin.js`** | **Satış vitrini** (Faz 2): daraltılabilir kategori kenar çubuğu, filtre barı, çift görünüm (Vitrin/Matris), SPOT rozeti, ürün detay penceresi, sepet. `sekmeAc`'ı SARAR | — |
 | **`src/renderer/modules/plasiyer-musteri.js`** | **Müşteri ve sipariş akışı** (Faz 2): seçim/arama, cari risk uyarısı, çevrimdışı müşteri, son siparişi kopyala, üç ödeme yöntemi + notlar | — |
+| **`src/renderer/plasiyer-sync-motor.js`** | **DOM'suz eşitleme motoru** (Faz 3): outbox dağıtıcı, kimlik köprüsü, hata toleransı. Ana süreç de `require` eder (→ §4.7) | — |
+| **`src/renderer/harita-veri.js`** | **DOM'suz 81 il kütüğü + ziyaret notu mantığı** (Faz 3): plaka/ad/bölge/konum, durum geçişleri, filtreler, yoğunluk. **Gerçek sınır yolları YOK** — gerekçe dosya başlığında (→ §4.8) | — |
+| **`src/renderer/modules/harita-kokpit.js`** | **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. `sekmeAc`'ı SARAR | — |
+| **`src/renderer/modules/plasiyer-ziyaret.js`** | **Saha ziyaret notu** (Faz 3): plasiyerin not girişi (İSTEĞE BAĞLI) + patron yanıtlarının düştüğü bildirim zili. `PlasiyerMusteri.seridiCiz`'i SARAR | — |
 | `lisans/lisans.html` + `lisans/lisans.js` | Lisans/aktivasyon penceresi — ana pencereden bağımsız | — |
 | `vendor/tailwind.js` | Yerel Tailwind kopyası (internetsiz sunum). Bulunamazsa CDN, o da olmazsa yedek CSS | — |
 
@@ -95,7 +100,8 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | `byom-data/katalog.json` | **Çevrimdışı ürün kataloğu** (Faz 2). Şema sürümü uyuşmazsa yok sayılır; geçici dosya + rename ile yazılır |
 | `byom-gorseller/<sha256>.jpg` | İndirilmiş ürün görselleri. Dosya adı ADRESİN özetidir — aynı görsel tek kez iner |
 | `ayarlar.json → plasiyerYerelMusteriler` | Çevrimdışı eklenen müşteriler (`temp_musteri_<uuid>`) |
-| `ayarlar.json → plasiyerSiparisKuyrugu` | Yazılmış ama sunucuya gönderilmemiş siparişler (Faz 3 eşitleyecek) |
+| `ayarlar.json → plasiyerSiparisKuyrugu` | Yazılmış siparişler. Faz 3 eşitler; **KALICI HATALI kayıt kuyrukta KALIR** (kullanıcı sebebini görsün) |
+| `ayarlar.json → plasiyerZiyaretKuyrugu` | Gönderilmemiş saha ziyaret notları (Faz 3) |
 
 ---
 
@@ -153,6 +159,8 @@ listeye **elle** eklemen gerekir.
 | `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout` |
 | `katalog:` | `main.js` § 3.7 | `katalog:guncelle` (sunucudan eşitle + görsel kuyruğu), `katalog:ara` (**AĞA ÇIKMAZ**, yerel indeks), `katalog:kategoriler`, `katalog:urun`, `katalog:barkod`, `katalog:durum` |
 | `gorsel:` | `main.js` § 3.7 | `gorsel:onbellege-al` (indirmeyi tetikle), `gorsel:yol` (yerel `file://` ya da uzak adres — **base64 DÖNMEZ**) |
+| `sync:` | `main.js` § 3.8 | `sync:esitle` (kuyruğu boşalt — **sıra: müşteri → köprü → sipariş → not**), `sync:durum` (bekleyen/hatalı sayıları) |
+| `ziyaret:` | `main.js` § 3.8 | `ziyaret:kuyruga` (notu **önce diske** yaz) |
 
 **Kural:** veri isteyen kanal `handle`/`invoke` (Promise), ateşle-ve-unut olan
 kanal `on`/`send`. Telemetri bilinçli olarak `on`/`send`'dir: arayüz beklemez.
@@ -292,6 +300,91 @@ yol açardı; bu yüzden kuyruk açıkça yerel ve görünür tutuluyor.
 
 ---
 
+## 4.7 Plasiyer Faz 3 — çevrimdışı eşitleme (Outbox Dispatcher)
+
+Eklenti tarafı (`/plasiyer/siparis`, `/plasiyer/musteri-esitle`): **`../CLAUDE.md` §10**.
+
+### SIRA DEĞİŞTİRİLEMEZ
+```
+1) MÜŞTERİLER   temp_musteri_<uuid> → gerçek user_id
+2) KİMLİK KÖPRÜSÜ  bekleyen siparişlerdeki geçici kimlikler DEĞİŞTİRİLİR
+3) SİPARİŞLER   ancak şimdi gönderilebilir
+4) NOTLAR       sıradan bağımsız, en az acil
+```
+Sunucu geçici kimlikli siparişi **409 ile reddeder**
+(`B2B_REST_Plasiyer::siparis_olustur`). Yani sıra yanlışsa siparişler sessizce
+değil **görünür** biçimde başarısız olur.
+
+### Hata toleransı
+- **Ağ hatası / 5xx → kayıt BEKLER**, sonraki turda tekrar denenir; kullanıcıya
+  gürültü yapılmaz.
+- **4xx → KALICI HATA.** 50 kez aynı 400'ü almanın anlamı yok; kayıt kuyrukta
+  kalır ama bir daha denenmez ve sebebi gösterilir. **409 İSTİSNA**: "önce
+  müşteriyi eşitle" demektir, sıradaki turda düzelebilir.
+- `EN_COK_DENEME` (5) dolunca da kalıcı hata.
+- **Bir kaydın patlaması turu DURDURMAZ** — sıradakine geçilir.
+- **Müşterisi hâlâ geçici olan sipariş GÖNDERİLMEZ** (deneme sayacı boşa yanmaz).
+- **KALICI HATALI KAYIT KUYRUKTA KALIR.** Sessizce silmek, plasiyerin yazdığı
+  siparişin kaybolduğunu kimsenin fark etmemesi olurdu.
+
+### Kuyruklar (`ayarlar.json`)
+`plasiyerYerelMusteriler` · `plasiyerSiparisKuyrugu` · `plasiyerZiyaretKuyrugu`
+Diskte olmaları bilinçli: uygulama kapanırsa sahada yazılmış sipariş kaybolmaz.
+Jeton ise **belleğe** bağlıdır (§5) — oturum düşmüşse eşitleme "PIN gerekiyor"
+der ve kuyruğa **dokunmaz**.
+
+---
+
+## 4.8 Türkiye Harita Kokpiti (Faz 3)
+
+### ⚠️ GEOMETRİ — DÜRÜST NOT, OKUMADAN DEĞİŞTİRME
+`harita-veri.js` **gerçek il sınır poligonları İÇERMEZ.** 81 ilin sınır yolu
+(~100 KB ölçülmüş coğrafi veri) bellekten üretilemez; üretilse harita tanınmaz
+bir karalamaya döner. Onun yerine her il **gerçeğe yakın coğrafi konumunda bir
+kutu** olarak çizilir (kartogram / tile-map üslubu) — konum ilişkisi doğru,
+sınır şekli şematiktir. Test bu ilişkiyi denetler (İzmir Van'ın batısında,
+Sinop Antalya'nın kuzeyinde…).
+
+**Gerçek sınırlara geçiş — TEK KAPI:**
+```js
+HaritaVeri.yollariYukle({ 35: 'M180,230 L…', 'Ankara': 'M…' });
+```
+`il.yol` dolu olduğunda kokpit `<rect>` yerine `<path>` basar. **Başka hiçbir
+yer değişmez**: hover, ipucu, bölünmüş ekran, zoom, uyarı ikonu, filtreler iki
+kaynakta da aynı çalışır.
+
+### Davranış
+- **Harici bağımlılık SIFIR.** İnternet ya da Google Maps gerekmez; SVG yerel.
+- **Hover** → il marka rengine boyanır + hafif `scale`. **İpucu kartı** il adı,
+  bölge, bayi sayısı/adları, sipariş, ciro ve açık not sayısını gösterir.
+- **Bölünmüş ekran:** ile tıklanınca sol tarafa o il `transform: scale/translate`
+  ile büyür (komşular soluk arka plan), sağ tarafa bayiler + ziyaret notları
+  gelir. Sol üstte "← Türkiye Haritasına Dön".
+- **Çözülmemiş not** olan ilin merkezinde **yanıp sönen kırmızı `!`**; sol
+  menüdeki "Pazarlamacılar" düğmesinde kırmızı sayaç rozeti.
+- **Filtreler:** Bugün / Bu hafta / Bu ay / Tümü · ölçüt Ciro / Sipariş / Bayi.
+- **GPU:** yalnızca `transform`, `opacity`, `fill` animasyonlanır. **`viewBox`
+  animasyonlanMAZ** — her karede düzen hesabı tetiklerdi.
+- Klavye: il kutuları `tabindex` alır, Enter/Space ile açılır.
+
+### Ziyaret notu döngüsü
+```
+plasiyer [📝 Saha Ziyaret Notu]  (İSTEĞE BAĞLI, zorunlu değil)
+   → ziyaret:kuyruga (ÖNCE DİSKE) → sync:esitle
+patron  harita → il → not → [Gördüm] / [Çözüldü] / [Yanıt Yaz]
+   → kırmızı ! yeşile döner / kaybolur
+plasiyer 🔔 bildirim zili → patron yanıtını okur
+```
+- **Durum ILERI gider, GERİYE GİTMEZ** (`beklemede → gorundu → cozuldu`).
+  Çözülmüş notu geri almak haritadaki uyarıyı yeniden yakardı. Kural **iki
+  yerde**: `harita-veri.js → ilerleyebilirMi` (arayüz düğmeyi göstermez) ve
+  `B2B_Ziyaret::durum_ilerlet` (sunucu reddeder).
+- **"gorundu" DA ÇÖZÜLMEMİŞTİR:** patron okudu ama iş bitmedi; sayaç düşmez.
+- **BOŞ not kabul edilmez** (ne etiket ne metin) — haritada sebepsiz kırmızı
+  uyarı yakmak patronun güvenini boşa harcar.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -299,14 +392,16 @@ yol açardı; bu yüzden kuyruk açıkça yerel ve görünür tutuluyor.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (233 test).
+İkisini birden `../scripts/check-all.js` koşar (294 test).
 
 ```bash
-# Bu submodule'un kendi birim testleri (59 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (119 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js
 node --test test/katalog-depo.test.js       # cevrimdisi katalog: arama, indeks, disk, esitleme
 node --test test/plasiyer-siparis.test.js   # koli matematigi, sepet, son siparis, UUID, tavan
+node --test test/plasiyer-sync.test.js      # outbox: sira, kimlik koprusu, hata toleransi
+node --test test/harita-notlar.test.js      # 81 il kutugu, durum gecisleri, filtreler
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
 
@@ -342,7 +437,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (233 test)
+# Bitirirken: üç katmanın tamamı (294 test)
 node scripts/check-all.js
 ```
 
@@ -404,7 +499,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 154 php / 60 js / 233 test
+cd .. && node scripts/check-all.js     # 0 hata / 156 php / 67 js / 294 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.
