@@ -37,12 +37,7 @@
     "files": [
       "main.js",
       "index.html",
-      "renderer.js",
-      "renderer-ek.js",
-      "renderer-izgara.js",
-      "renderer-excel.js",
-      "renderer-byom.js",
-      "renderer-vitrin.js",
+      "renderer*.js",
       "src/**/*",
       "lisans/**/*",
       "vendor/**/*",

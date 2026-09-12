@@ -920,6 +920,199 @@ function otomatikGuncellemeyiBaslat() {
 }
 
 /* ==========================================================================
+ *  3.6) PLASİYER (SAHA SATIŞ) — KİMLİK VE VERİ KAPISI
+ *  ---------------------------------------------------------------------------
+ *  Panel tek bir Consumer Key/Secret ile çalışır; başındaki kişi yönetici de
+ *  olabilir plasiyer de. "Hangi plasiyer?" sorusunu PIN cevaplar, cevabın
+ *  karşılığı kısa ömürlü bir oturum jetonudur.
+ *
+ *  SIR YÖNETİMİ — ÜÇ KURAL:
+ *
+ *   1) PIN HİÇBİR YERDE TUTULMAZ. `plasiyer:auth` kanalına gelen PIN doğrudan
+ *      isteğe konur ve çağrı biter; ne değişkende bekletilir ne loglanır.
+ *      Arayüz de saklamaz (bkz. renderer-plasiyer.js).
+ *
+ *   2) JETON YALNIZCA ANA SÜREÇ BELLEĞİNDE. Diske YAZILMAZ — ayarlar.json'a
+ *      da girmez. Uygulama kapanınca oturum düşer, plasiyer yeniden PIN girer.
+ *      Saha cihazı kaybolursa dosyadan jeton okunamaz.
+ *      (Bir taşıyıcı jetonun kullanılabilmesi için bellekte DURMASI gerekir;
+ *       kaçınılan şey kalıcılaştırmak ve arayüze sızdırmaktır.)
+ *
+ *   3) JETON ARAYÜZE DÖNMEZ. `plasiyer:auth` yanıtında token alanı yoktur;
+ *      `plasiyer:get-dealers` jetonu buradan, bellekten okur. Böylece jeton
+ *      DOM'a, DevTools'a ve renderer günlüklerine hiç uğramaz.
+ * ========================================================================*/
+
+/** Etkin plasiyer oturumu — { id, ad, bolge, token, bitis }. Yalnızca bellek. */
+let plasiyerOturumu = null;
+
+/** Oturumun arayüze gösterilebilir (jetonsuz) hâli. */
+function plasiyerOturumOzeti() {
+  if (!plasiyerOturumu) return null;
+
+  return {
+    id: plasiyerOturumu.id,
+    ad: plasiyerOturumu.ad,
+    bolge: plasiyerOturumu.bolge,
+    bitis: plasiyerOturumu.bitis,
+    bayiSayisi: plasiyerOturumu.bayiSayisi
+  };
+}
+
+/** Jeton süresi geçmiş mi? */
+function plasiyerOturumuGecerliMi() {
+  if (!plasiyerOturumu || !plasiyerOturumu.token) return false;
+  if (!plasiyerOturumu.bitis) return true;
+
+  return (plasiyerOturumu.bitis * 1000) > Date.now();
+}
+
+/**
+ * PIN ile kimlik seçimi.
+ *
+ * Yanıt arayüze JETON İÇERMEDEN döner.
+ */
+ipcMain.handle('plasiyer:auth', async function (olay, veri) {
+  veri = veri || {};
+
+  const govde = {
+    username: String(veri.kullanici || veri.username || '').trim(),
+    plasiyer_id: Number(veri.id || veri.plasiyer_id || 0) || 0,
+    pin: String(veri.pin || '')
+  };
+
+  if (!govde.username && !govde.plasiyer_id) {
+    return { ok: false, hata: 'Pazarlamacı seçilmedi.' };
+  }
+  if (!govde.pin) {
+    return { ok: false, hata: 'PIN girilmedi.' };
+  }
+
+  let cevap;
+
+  try {
+    cevap = await apiIstek({ alan: 'b2b', yol: '/plasiyer/auth', metod: 'POST', govde: govde });
+  } finally {
+    /* PIN referansı burada bırakılır; nesne çöpe gider, kopyası tutulmaz. */
+    govde.pin = '';
+  }
+
+  if (!cevap || !cevap.ok || !cevap.veri || !cevap.veri.ok) {
+    return {
+      ok: false,
+      durum: cevap ? cevap.durum : 0,
+      hata: (cevap && cevap.hata) || 'PIN doğrulanamadı.'
+    };
+  }
+
+  const v = cevap.veri;
+
+  plasiyerOturumu = {
+    id: Number(v.id) || 0,
+    ad: String(v.ad || ''),
+    bolge: String(v.bolge || ''),
+    bayiSayisi: Number(v.bayiSayisi) || 0,
+    token: String(v.token || ''),     // ARAYÜZE DÖNMEZ
+    bitis: Number(v.bitis) || 0
+  };
+
+  return Object.assign({ ok: true }, plasiyerOturumOzeti());
+});
+
+/** Etkin oturumu sorar (arayüz yeniden çizilirken). */
+ipcMain.handle('plasiyer:session', function () {
+  if (!plasiyerOturumuGecerliMi()) {
+    plasiyerOturumu = null;
+    return { ok: true, oturum: null };
+  }
+
+  return { ok: true, oturum: plasiyerOturumOzeti() };
+});
+
+/**
+ * Oturumun SIR OLMAYAN kısmını ayarlara yazar.
+ *
+ * Amacı yalnızca kolaylık: giriş kapısı bir dahaki açılışta aynı pazarlamacıyı
+ * seçili getirir. Jeton ve PIN buraya GİRMEZ — dosya düz JSON'dur.
+ */
+ipcMain.handle('plasiyer:save-session', function (olay, veri) {
+  veri = veri || {};
+
+  const id = Number(veri.id || (plasiyerOturumu && plasiyerOturumu.id) || 0) || 0;
+
+  if (!id) return { ok: false, hata: 'Kaydedilecek oturum yok.' };
+
+  try {
+    ayarlariYaz({
+      plasiyerSonOturum: {
+        id: id,
+        ad: String(veri.ad || (plasiyerOturumu && plasiyerOturumu.ad) || ''),
+        bolge: String(veri.bolge || (plasiyerOturumu && plasiyerOturumu.bolge) || '')
+      }
+    });
+  } catch (e) {
+    return { ok: false, hata: 'Oturum kaydedilemedi.' };
+  }
+
+  return { ok: true };
+});
+
+/**
+ * Plasiyerin KENDİ bayileri.
+ *
+ * Jeton bellekten okunur; arayüz hangi plasiyer olduğunu söyleyemez
+ * (söylese bile oturum kimliği esas alınır). Böylece arayüzdeki bir hata ya
+ * da kurcalama başka bir plasiyerin bayilerini getirtemez.
+ */
+ipcMain.handle('plasiyer:get-dealers', async function (olay, veri) {
+  veri = veri || {};
+
+  if (!plasiyerOturumuGecerliMi()) {
+    plasiyerOturumu = null;
+    return { ok: false, durum: 401, hata: 'Oturum süresi doldu. Tekrar PIN ile giriş yapın.' };
+  }
+
+  const cevap = await apiIstek({
+    alan: 'b2b',
+    yol: '/plasiyer/dealers',
+    metod: 'GET',
+    sorgu: {
+      plasiyer_id: plasiyerOturumu.id,   // arayüzden DEĞİL, oturumdan
+      token: plasiyerOturumu.token,
+      search: String(veri.arama || ''),
+      per_page: Number(veri.adet || 200) || 200,
+      page: Number(veri.sayfa || 1) || 1
+    }
+  });
+
+  if (!cevap || !cevap.ok || !cevap.veri) {
+    /* 401 = jeton düşmüş: oturumu burada kapatıp arayüzü kapıya yolluyoruz. */
+    if (cevap && 401 === cevap.durum) plasiyerOturumu = null;
+
+    return { ok: false, durum: cevap ? cevap.durum : 0, hata: (cevap && cevap.hata) || 'Bayi listesi alınamadı.' };
+  }
+
+  return { ok: true, veri: cevap.veri };
+});
+
+/** Çıkış — jetonu sunucuda iptal eder ve bellekten siler. */
+ipcMain.handle('plasiyer:logout', async function () {
+  const id = plasiyerOturumu ? plasiyerOturumu.id : 0;
+
+  plasiyerOturumu = null;
+
+  if (!id) return { ok: true };
+
+  try {
+    await apiIstek({ alan: 'b2b', yol: '/plasiyer/logout', metod: 'POST', govde: { plasiyer_id: id } });
+  } catch (e) {
+    /* Sunucuya ulaşılamasa bile yerel oturum düştü; kullanıcı kapıya döner. */
+  }
+
+  return { ok: true };
+});
+
+/* ==========================================================================
  *  4) ANA PENCERE VE UYGULAMA YAŞAM DÖNGÜSÜ
  * ========================================================================*/
 

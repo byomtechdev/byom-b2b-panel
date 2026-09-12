@@ -58,6 +58,9 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | `src/main/byom-excel.js` | Excel motoru — `.xlsx` yazar, `.xlsx/.xls/.csv` okur. **Harici bağımlılık yok** |
 | **`src/main/byom-telemetri.js`** | **Telemetri (sessiz hata avcısı) · ana süreç.** Bkz. §4 |
 
+`main.js` bölüm haritasına eklenen: **`3.6)` Plasiyer kimlik ve veri kapısı** —
+`plasiyer:*` IPC kanalları, oturum belleği. Bkz. §5.
+
 ### 1.2 Arayüz
 | Dosya | Sorumluluk | İç bölüm haritası (satır) |
 |---|---|---|
@@ -71,6 +74,8 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | `src/renderer/vitrin-motor.js` | **DOM'suz** vitrin motoru: indirgeyici (reorder/toggle/updateSettings/undo/redo), `buildPutBody`, **çevrimdışı outbox**, `demoRegistry()` (**registry'nin 3. kopyası**) | `node --test` altında doğrudan koşar |
 | `src/renderer/sira-motor.js` | **DOM'suz** kademeli (domino) taşıma motoru | Izgaradan **ÖNCE** yüklenir |
 | **`src/renderer/telemetry.js`** | **Telemetri · arayüz.** EN ÖNCE yüklenir (→ §4) | — |
+| **`renderer-plasiyer.js`** | **Çift kapılı giriş + rol kısıtlaması.** Kapı kaplaması, `durum.oturum`, menü daraltma, üst bar, çıkış. EN SONA yüklenir (→ §5) | — |
+| **`src/renderer/modules/plasiyer-yonetimi.js`** | **Yöneticinin "Pazarlamacılar" sekmesi:** tanımlama, PIN, bayi atama, performans tablosu + ciro çubuğu. `sekmeAc`'ı SARAR (→ §5) | — |
 | `lisans/lisans.html` + `lisans/lisans.js` | Lisans/aktivasyon penceresi — ana pencereden bağımsız | — |
 | `vendor/tailwind.js` | Yerel Tailwind kopyası (internetsiz sunum). Bulunamazsa CDN, o da olmazsa yedek CSS | — |
 
@@ -96,8 +101,21 @@ renderer-izgara.js
 renderer-excel.js           ← ızgaranın olay bağlamasını sarar
 renderer-byom.js
 src/renderer/vitrin-motor.js
-renderer-vitrin.js          ← EN SON: yukarıdaki tüm yardımcıları kullanır
+renderer-vitrin.js
+renderer-plasiyer.js        ← kapı + rol kısıtlaması (durum, $, bildir, sekmeAc, kacis)
+src/renderer/modules/plasiyer-yonetimi.js  ← EN SON: sekmeAc'ı SARAR
 ```
+
+**`src/renderer/` alt dizin anlamı — karıştırma:**
+- `src/renderer/*.js` → **DOM'suz** motorlar; `node --test` altında doğrudan
+  `require` edilir (`sira-motor`, `vitrin-motor`, `telemetry`).
+- `src/renderer/modules/*.js` → **DOM'a bağlı** özellik modülleri; yalnızca
+  `<script src>` ile çalışır, require edilemez.
+
+**`check-all.js` artık panel kökünü TARAR** (eskiden sabit liste vardı):
+kök dizine eklenen yeni bir `renderer-*.js` kendiliğinden `node --check`
+kapsamına girer. `package.json → build.files` de `renderer*.js` deseni
+kullanır, yani yeni dosya pakete elle eklenmez.
 **Kural:** bir dosya başka bir dosyanın fonksiyonunu **sarıyorsa** (wrap) ondan
 sonra gelir. Sırayı değiştirmek "fonksiyon tanımsız" yerine **sessizce
 sarılmamış davranış** üretir — test yakalamaz, kullanıcı yakalar.
@@ -122,6 +140,7 @@ listeye **elle** eklemen gerekir.
 | `uygulama:` | `main.js` | `uygulama:bilgi` (gerçek paket sürümü) |
 | `byom:` | `src/main/byom.js` | `byom:hwid`, `byom:durum`, `byom:aktive`, `byom:yeniden-dogrula`, `byom:lisans-sil`, `byom:hwid-yenile`, `byom:api-url:oku/yaz`, `byom:baglanti-testi`, `byom:uygulamayi-ac`, `byom:cikis`, `byom:panoya-kopyala`, `byom:dis-baglanti`, `byom:destek:liste/detay/olustur/yanit/secenekler` |
 | `byom:telemetri` | `src/main/byom-telemetri.js` | **Tek yönlü** (`ipcMain.on` + `ipcRenderer.send`) — cevap beklenmez |
+| `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout` |
 
 **Kural:** veri isteyen kanal `handle`/`invoke` (Promise), ateşle-ve-unut olan
 kanal `on`/`send`. Telemetri bilinçli olarak `on`/`send`'dir: arayüz beklemez.
@@ -161,6 +180,54 @@ Elle bildirim gerekirse: `Telemetri.bildir({ tip: 'elle', mesaj: '…' })`
 
 ---
 
+## 4.5 Plasiyer (saha satış) Faz 1 — çift kapılı giriş
+
+Eklenti tarafı (rol, meta, REST, PIN kuralları): **`../CLAUDE.md` §10**.
+
+### Akış
+```
+lisans doğrulandı → index.html açıldı
+   #girisKapisi (kaplama)
+      👑 Yönetici   → kaplama kalkar, panel 2.0.0'daki gibi devam eder
+      💼 Pazarlamacı → #pinPerde → plasiyer seç + PIN
+                       → plasiyer:auth → durum.oturum kurulur
+                       → menü daralır, üst barda ad + bölge
+```
+
+### Bozmaman gereken sözler
+- **MEVCUT AKIŞ DEĞİŞMEDİ.** `baslat()` ve sekme akışına dokunulmaz; kapı bir
+  **kaplamadır**. Yönetici kapıyı seçince kaplama kalkar, panel aynen devam
+  eder. `sifir-kurulum.test.js`'in kilitlediği açılış dalı korunur.
+- **SIFIR KURULUMDA KAPI GÖSTERİLMEZ.** Bağlantı (adres + iki anahtar) yoksa
+  pazarlamacı girişi çalışamaz; kapı açmak tıklayınca hata veren bir düğme
+  demek olurdu. O durumda doğrudan yönetici akışına geçilir.
+- **DURUM ADI TEK:** `durum.oturum = { rol: 'admin'|'plasiyer', id, ad, bolge }`.
+  Şartname `appState.currentUser` diyordu; aynı bilgi için iki ad tutmak bu
+  depoda iki kez canımızı yakmış hata sınıfıdır (`../BYOM-REGISTRY.md §5.13`).
+- **PIN HİÇBİR YERDE SAKLANMAZ.** Arayüz okur → IPC'ye verir → hem değişkeni
+  hem input'u temizler. Perde kapanırken de alan silinir.
+- **JETON ARAYÜZE GELMEZ.** `plasiyer:auth` yanıtında token alanı yoktur;
+  `plasiyer:get-dealers` jetonu ana süreç belleğinden okur. Jeton diske
+  **yazılmaz** — uygulama kapanınca oturum düşer.
+- **KISITLAMA ÇİFT KATLI:** düğme hem `plasiyer-gizli` ile gizlenir hem
+  `disabled` yapılır hem `aria-hidden` alır. Yalnızca CSS ile gizlemek
+  klavyeyle (Tab) erişimi açık bırakırdı.
+- **GPU DOSTU GEÇİŞLER:** yalnızca `transform` + `opacity` animasyonlanır
+  (`#girisKapisi`, `.kapi-kart`, `.ciro-cubuk`). `width/height/top/left` ile
+  animasyon her karede reflow tetikler ve eski saha tabletlerinde takılır.
+  `prefers-reduced-motion` saygı görür.
+- **ÇİFT BAĞLANMA KORUMASI:** `renderer-plasiyer.js → kuruldu` bayrağı ve
+  `plasiyer-yonetimi.js → bagli` bayrağı. Olmasa tek tıklama PIN denemesini
+  iki kez gönderir ve kaba kuvvet sayacı boşuna ilerlerdi.
+
+### Plasiyer oturumunda açık kalan sekmeler
+`PLASIYER_SEKMELERI = ['urunler', 'siparisler']` · kapananlar:
+`KISITLI_SEKMELER = ['ayarlar','iskonto','vitrin-editor','uyeler','destek','plasiyerler']`
+(ikisi de `renderer-plasiyer.js` başında; değiştirirsen
+`plasiyer-kapi.dom.test.js` içindeki `IZINLI`/`KISITLI` listelerini de güncelle).
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -168,7 +235,7 @@ Elle bildirim gerekirse: `Telemetri.bildir({ tip: 'elle', mesaj: '…' })`
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (154 test).
+İkisini birden `../scripts/check-all.js` koşar (174 test).
 
 ```bash
 # Bu submodule'un kendi birim testleri (31 test) — Electron GEREKMEZ
@@ -198,6 +265,8 @@ node --test scripts/tests/depo-fisi.test.js           # fiş muhasebe dökümü
 node --test scripts/tests/odeme-matrisi.dom.test.js   # matris arayüzü
 node --test scripts/tests/checkout-masasi.dom.test.js
 node --test scripts/tests/sifre-goz.dom.test.js
+node --test scripts/tests/plasiyer-kapi.dom.test.js   # çift kapılı giriş + rol kısıtlaması
+node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
 node --test scripts/tests/registry-parity.test.js     # 3 registry kopyası eşit mi
 
@@ -207,7 +276,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (154 test)
+# Bitirirken: üç katmanın tamamı (174 test)
 node scripts/check-all.js
 ```
 
@@ -269,7 +338,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 149 php / 47 js / 154 test
+cd .. && node scripts/check-all.js     # 0 hata / 154 php / 53 js / 174 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

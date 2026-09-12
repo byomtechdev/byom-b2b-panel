@@ -271,6 +271,40 @@
 
   .sekme-govde { display: none; }
   .sekme-govde.acik { display: block; animation: girisAnimasyon .14s ease-out; }
+
+  /* ==================================================================
+     ÇİFT KAPILI GİRİŞ (Yönetici / Pazarlamacı)
+     ------------------------------------------------------------------
+     GPU DOSTU GEÇİŞLER: yalnızca `transform` ve `opacity` animasyonlanır.
+     Bu iki özellik kompozitör katmanında çalışır; düzen (layout) ya da
+     boyama (paint) tetiklemez. `width/height/top/left/margin` gibi
+     özelliklerle animasyon yapmak her karede reflow'a yol açar ve eski
+     saha tabletlerinde kapı açılışı görünür biçimde takılır.
+
+     `will-change` BİLİNÇLİ OLARAK YOK: kapı yalnızca açılışta bir kez
+     görünür, kalıcı bir katman ayırmak boşa bellek olurdu.
+     ================================================================== */
+  #girisKapisi { transition: opacity .2s ease, transform .2s ease; }
+  #girisKapisi.kapali { opacity: 0; transform: scale(.98); pointer-events: none; }
+
+  .kapi-kart {
+    transition: transform .2s ease, opacity .2s ease, box-shadow .2s ease;
+    transform: translateZ(0);
+  }
+  .kapi-kart:hover { transform: translateY(-4px); }
+  .kapi-kart:active { transform: translateY(-1px); }
+
+  /* Azaltılmış hareket tercihi olan kullanıcıda geçişler susar. */
+  @media (prefers-reduced-motion: reduce) {
+    #girisKapisi, .kapi-kart { transition: none; }
+    .kapi-kart:hover, .kapi-kart:active { transform: none; }
+  }
+
+  /* Plasiyer oturumunda gizlenen alanlar (sekme düğmesi, menü bölümü...). */
+  .plasiyer-gizli { display: none !important; }
+
+  /* Ciro dağılım çubuğu — genişlik yerine transform ile büyür (reflow yok). */
+  .ciro-cubuk { transform-origin: left center; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
   @keyframes girisAnimasyon { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
   .donuyor { animation: donme .9s linear infinite; display: inline-block; }
@@ -1368,6 +1402,101 @@
 <body class="bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
 
 <!-- ==================================================================
+     ÇİFT KAPILI GİRİŞ EKRANI
+     ------------------------------------------------------------------
+     Lisans doğrulaması GEÇİLDİKTEN SONRA açılan ilk ekran. İki net kapı:
+     yönetici (mevcut tam panel) ve pazarlamacı (plasiyer + PIN).
+
+     NEDEN `hidden` İLE BAŞLAR: kapıyı kimin göreceğine renderer-plasiyer.js
+     karar verir. Sıfır kurulumda (bağlantı yok) kapı HİÇ gösterilmez —
+     kullanıcı doğrudan Ayarlar'a düşer, yoksa "pazarlamacı girişi" diye
+     çalışması mümkün olmayan bir düğmeyle karşılaşırdı.
+
+     Mantık burada DEĞİL, renderer-plasiyer.js'tedir; bu blok saf işaretleme.
+     ================================================================== -->
+<div id="girisKapisi" hidden
+     class="fixed inset-0 z-[60] bg-slate-100 dark:bg-slate-900 grid place-items-center p-6 overflow-y-auto">
+  <div class="w-full max-w-4xl">
+
+    <div class="text-center mb-10">
+      <div class="text-3xl font-black tracking-tight">BYOM B2B Yönetim Paneli</div>
+      <div id="kapiFirma" class="mt-2 text-lg text-slate-500 dark:text-slate-400"></div>
+    </div>
+
+    <div class="grid gap-6 sm:grid-cols-2">
+
+      <!-- KAPI 1 — YÖNETİCİ -->
+      <button type="button" id="kapiYonetici"
+              class="kapi-kart text-left bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700
+                     rounded-3xl p-8 shadow-sm hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-marka-500/30">
+        <div class="text-5xl leading-none mb-4" aria-hidden="true">👑</div>
+        <div class="text-2xl font-extrabold">Yönetici Girişi</div>
+        <p class="mt-2 text-slate-500 dark:text-slate-400 leading-relaxed">
+          Siparişler, ürün &amp; stok, üye onayları, iskonto, vitrin editörü ve
+          sistem ayarları — tam panel.
+        </p>
+      </button>
+
+      <!-- KAPI 2 — PAZARLAMACI -->
+      <button type="button" id="kapiPlasiyer"
+              class="kapi-kart text-left bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700
+                     rounded-3xl p-8 shadow-sm hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-marka-500/30">
+        <div class="text-5xl leading-none mb-4" aria-hidden="true">💼</div>
+        <div class="text-2xl font-extrabold">Pazarlamacı Girişi</div>
+        <p class="mt-2 text-slate-500 dark:text-slate-400 leading-relaxed">
+          Saha satış. Yalnızca kendi bayileriniz, katalog ve sipariş yazma.
+          PIN ile giriş yapılır.
+        </p>
+      </button>
+    </div>
+
+    <p id="kapiUyari" class="hidden mt-8 text-center text-amber-700 dark:text-amber-400 font-semibold"></p>
+  </div>
+</div>
+
+<!-- ==================================================================
+     PAZARLAMACI PIN PENCERESİ
+     Kapı 2'den açılır. Plasiyer listesi /admin/plasiyerler ucundan gelir;
+     PIN hiçbir yerde saklanmaz, doğrulama ana süreçte yapılır.
+     ================================================================== -->
+<div id="pinPerde" hidden
+     class="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border-2 border-slate-200 dark:border-slate-700 p-8">
+
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <div class="text-xl font-extrabold">Pazarlamacı Girişi</div>
+        <div class="text-sm text-slate-500 dark:text-slate-400 mt-1">Adınızı seçip PIN'inizi girin.</div>
+      </div>
+      <button type="button" id="pinKapat"
+              class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                     text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>
+    </div>
+
+    <label class="block mt-6 text-sm font-bold text-slate-600 dark:text-slate-300" for="pinPlasiyer">Pazarlamacı</label>
+    <select id="pinPlasiyer"
+            class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                   bg-white dark:bg-slate-900 text-lg font-semibold">
+      <option value="">Yükleniyor…</option>
+    </select>
+
+    <label class="block mt-5 text-sm font-bold text-slate-600 dark:text-slate-300" for="pinKod">PIN</label>
+    <input id="pinKod" type="password" inputmode="numeric" autocomplete="off" maxlength="6"
+           class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                  bg-white dark:bg-slate-900 text-2xl font-black tracking-[0.4em] text-center"
+           placeholder="••••" />
+
+    <p id="pinHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>
+
+    <button type="button" id="pinGiris"
+            class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold
+                   hover:bg-marka-600 disabled:opacity-50 disabled:cursor-not-allowed transition">
+      Giriş Yap
+    </button>
+  </div>
+</div>
+
+<!-- ==================================================================
      MONOKROM İKON DEPOSU
      Arayüzdeki renkli emojilerin yerini alan tek renkli SVG'ler.
      Her ikon burada BİR KEZ tanımlanır; kullanım yerleri <use> ile
@@ -1554,6 +1683,14 @@
       <button data-sekme="vitrin-editor" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-panel"></use></svg>
         <span class="align-middle">Vitrin Editörü</span>
+      </button>
+
+      <!-- Plasiyer (saha satış) yönetimi: tanımlama, PIN, bayi atama, performans.
+           YALNIZCA yönetici oturumunda görünür; plasiyer girişinde
+           renderer-plasiyer.js bu düğmeye `plasiyer-gizli` sınıfını ekler. -->
+      <button data-sekme="plasiyerler" data-rol="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg>
+        <span class="align-middle">Pazarlamacılar</span>
       </button>
 
       <!-- BYOM Brain destek masası: talepler doğrudan merkezî sisteme düşer -->
@@ -2718,6 +2855,45 @@
  Talepler BYOM Brain'e gider; müşteri yalnızca KENDİ taleplerini
  ve adminin cevaplarını görür.
  ============================================================ -->
+      <!-- ============================================================
+ SEKME — PAZARLAMACILAR (PLASİYER YÖNETİMİ)
+ ------------------------------------------------------------
+ İçerik src/renderer/modules/plasiyer-yonetimi.js tarafından çizilir.
+ Burada yalnızca kaplar durur: renderer.js'i şişirmemek için mantık
+ ayrı modülde (bkz. panel CLAUDE.md §1.2).
+ ============================================================ -->
+      <section id="sekme-plasiyerler" class="sekme-govde">
+
+        <div class="flex items-center gap-4 mb-5 flex-wrap">
+          <h1 class="text-3xl font-black">
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg> Pazarlamacılar
+          </h1>
+          <span id="plasiyerOzet"
+                class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
+                       dark:bg-slate-800 dark:text-slate-300"></span>
+
+          <div class="ml-auto flex gap-3">
+            <button type="button" id="plasiyerYenile"
+                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+            <button type="button" id="plasiyerYeni"
+                    class="px-5 py-3 rounded-xl bg-marka-700 text-white font-extrabold
+                           hover:bg-marka-600 transition">+ Yeni Pazarlamacı</button>
+          </div>
+        </div>
+
+        <!-- Performans tablosu + ciro dağılım çubukları -->
+        <div id="plasiyerTablo" class="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-6"></div>
+
+        <!-- Tanımlama / düzenleme formu (modülün açıp kapadığı perde) -->
+        <div id="plasiyerFormPerde" hidden
+             class="fixed inset-0 z-[65] bg-slate-900/60 backdrop-blur-sm grid place-items-center p-6 overflow-y-auto">
+          <div id="plasiyerForm"
+               class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+                      border-2 border-slate-200 dark:border-slate-700 p-8"></div>
+        </div>
+      </section>
+
       <section id="sekme-destek" class="sekme-govde">
 
         <div class="flex items-center gap-4 mb-5 flex-wrap">
@@ -3763,5 +3939,16 @@
      bu yüzden EN SONA yüklenir. -->
 <script src="src/renderer/vitrin-motor.js"></script>
 <script src="renderer-vitrin.js"></script>
+
+<!-- Plasiyer (saha satış) Faz 1 — EN SONA yüklenir.
+     · renderer-plasiyer.js: çift kapılı giriş, rol durumu (durum.oturum),
+       arayüz kısıtlaması, çıkış. `durum`, `$`, `bildir`, `sekmeAc`, `kacis`
+       ve `baglantiKuruluMu` yardımcılarını kullandığı için renderer.js'ten
+       SONRA gelmek ZORUNDA.
+     · plasiyer-yonetimi.js: yöneticinin "Pazarlamacılar" sekmesi. `sekmeAc`'ı
+       SARAR (değiştirmez), bu yüzden sarılacak fonksiyonun tanımlı olduğu
+       andan sonra yüklenir. -->
+<script src="renderer-plasiyer.js"></script>
+<script src="src/renderer/modules/plasiyer-yonetimi.js"></script>
 </body>
 </html>
