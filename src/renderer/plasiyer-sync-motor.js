@@ -203,6 +203,40 @@
     return { koprulenen: koprulenen, bekleyen: bekleyen };
   }
 
+  /**
+   * Aynı köprüyü ZİYARET NOTLARINA uygular (Faz 9).
+   *
+   * Not kayıtları düzdür (`kayit` sarmalı yok): `musteriId` doğrudan
+   * kaydın üstünde. Çevrimdışı müşteriye yazılan not `temp_musteri_<uuid>`
+   * metniyle bekler; müşteri eşitlenince gerçek kimliğe çevrilir. Karşılığı
+   * olmayan not DOKUNULMADAN bırakılır (sıradaki tur).
+   *
+   * @param {Array}  notlar Not kuyruğu.
+   * @param {object} kopru  temp_musteri_x -> user_id
+   * @returns {object} { koprulenen, bekleyen }
+   */
+  function notKoprusuKur(notlar, kopru) {
+    var liste = dizi(notlar);
+    var koprulenen = 0;
+    var bekleyen = 0;
+
+    kopru = kopru || {};
+
+    liste.forEach(function (not) {
+      if (!not || !geciciMi(not.musteriId)) return;
+
+      if (Object.prototype.hasOwnProperty.call(kopru, not.musteriId)) {
+        not.geciciKimlik = not.musteriId;
+        not.musteriId = Number(kopru[not.musteriId]);
+        koprulenen++;
+      } else {
+        bekleyen++;
+      }
+    });
+
+    return { koprulenen: koprulenen, bekleyen: bekleyen };
+  }
+
   /* ------------------------------------------------------------------ *
    *  3) SİPARİŞLER
    * ------------------------------------------------------------------ */
@@ -372,9 +406,10 @@
       ozet.musteri = { gonderilen: m.gonderilen, kalan: m.kalan };
       ozet.hatalar = ozet.hatalar.concat(m.hatalar);
 
-      /* --- 2) Kimlik köprüsü --- */
+      /* --- 2) Kimlik köprüsü — siparişler VE notlar --- */
       var k = kimlikKoprusuKur(kuyruklar.siparisler, m.kopru);
-      ozet.koprulenen = k.koprulenen;
+      var kn = notKoprusuKur(kuyruklar.notlar, m.kopru);
+      ozet.koprulenen = k.koprulenen + kn.koprulenen;
     }
 
     /* --- 3) Siparişler --- */
@@ -468,6 +503,7 @@
     esitlemeGerekliMi: esitlemeGerekliMi,
     musterileriEsitle: musterileriEsitle,
     kimlikKoprusuKur: kimlikKoprusuKur,
+    notKoprusuKur: notKoprusuKur,
     siparisleriGonder: siparisleriGonder,
     notlariGonder: notlariGonder,
     gonderilenleriTemizle: gonderilenleriTemizle,

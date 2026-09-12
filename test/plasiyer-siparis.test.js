@@ -630,3 +630,142 @@ test('kendiSiparisleri: ozgun liste DEGISTIRILMEZ', (t) => {
 
   assert.equal(liste.length, 2, 'kaynak liste korunur');
 });
+
+/* =========================================================================
+ * FAZ 9 — BİLEŞİK İSKONTO: Net = Liste × (1 − bayi/100) × (1 − ödeme/100)
+ * ---------------------------------------------------------------------
+ * `sepet.iskonto` bayi iskontosudur (müşteri seçilince onun oranı, tavana
+ * kırpılır); `sepet.odemeIskonto` ödeme yöntemi iskontosudur (müşterinin
+ * `odemeIskontolari` tablosundan, ödeme matrisi kaynaklı). İki oran
+ * TOPLANMAZ, ardışık uygulanır. Sunucu aynı sırayla iki ücret satırı yazar.
+ * ====================================================================== */
+
+const MUSTERI = {
+  id: 42, unvan: 'Karun Yapı', iskonto: 10,
+  odemeIskontolari: { nakit: 5, vade: 0, kart: 2.5 }
+};
+
+test('netFiyat: bilesik formul — oranlar TOPLANMAZ, ardisik uygulanir', (t) => {
+  /* 100 × 0,90 × 0,95 = 85,50 (toplansaydi %15 → 85,00 olurdu) */
+  assert.equal(M.netFiyat(100, 10, 5), 85.5);
+  assert.equal(M.netFiyat(100, 15, 0), 85);
+  assert.equal(M.netFiyat(100, 0, 0), 100, 'iskontosuz = liste');
+  assert.equal(M.netFiyat(12.5, 10, 5), 10.69, 'kurusa yuvarlanir (10.6875 → 10.69)');
+
+  /* Gecersiz/negatif/taskin oranlar guvenli okunur. */
+  assert.equal(M.netFiyat(100, -5, 'x'), 100);
+  assert.equal(M.netFiyat(100, 150, 0), 0, 'oran 100\'de kirpilir');
+});
+
+test('musteriIskontosuUygula: bayi orani TAVANA kirpilir, odeme orani yonteme gore okunur', (t) => {
+  const s = M.sepetKur();
+
+  s.odeme = 'nakit';
+  M.musteriIskontosuUygula(s, MUSTERI, 8);   // tavan 8 < musteri 10
+
+  assert.equal(s.musteri, MUSTERI);
+  assert.equal(s.iskonto, 8, 'bayi iskontosu tavana kirpildi');
+  assert.equal(s.odemeIskonto, 5, 'nakit iskontosu musteriden okundu');
+
+  /* Tavan yeterliyse musterinin orani aynen. */
+  M.musteriIskontosuUygula(s, MUSTERI, 20);
+  assert.equal(s.iskonto, 10);
+
+  /* Musteri kaldirilinca iki oran da sifirlanir — vitrin liste fiyatina doner. */
+  M.musteriIskontosuUygula(s, null, 20);
+  assert.equal(s.musteri, null);
+  assert.equal(s.iskonto, 0);
+  assert.equal(s.odemeIskonto, 0);
+});
+
+test('odemeSec: yontem + odeme iskontosu birlikte degisir; gecersiz yontem seçimi TEMIZLER', (t) => {
+  const s = M.sepetKur();
+  M.musteriIskontosuUygula(s, MUSTERI, 20);
+
+  M.odemeSec(s, 'kart');
+  assert.equal(s.odeme, 'kart');
+  assert.equal(s.odemeIskonto, 2.5);
+
+  M.odemeSec(s, 'vade');
+  assert.equal(s.odemeIskonto, 0, 'vadede odeme iskontosu yok');
+
+  M.odemeSec(s, 'havale');   // sirket politikasinda yok
+  assert.equal(s.odeme, '', 'gecersiz yontem secilmez');
+  assert.equal(s.odemeIskonto, 0, 'eski yontemin iskontosu TASINMAZ');
+
+  /* Musterisi olmayan sepette odeme iskontosu daima 0. */
+  const bos = M.sepetKur();
+  M.odemeSec(bos, 'nakit');
+  assert.equal(bos.odemeIskonto, 0);
+});
+
+test('toplamlar: bilesik iskonto ile genel toplam ve ara satirlar', (t) => {
+  const s = M.sepetKur();
+
+  M.ekle(s, u(1, 'Silikon', 12.5, 24), 48);   // 600
+  M.ekle(s, u(2, 'Çivi', 2.25, 1), 4);        //   9  → 609
+
+  M.musteriIskontosuUygula(s, MUSTERI, 20);   // bayi %10
+  M.odemeSec(s, 'nakit');                     // odeme %5
+
+  const g = M.toplamlar(s, 20);
+
+  assert.equal(g.araToplam, 609);
+  assert.equal(g.iskontoOrani, 10);
+  assert.equal(g.indirim, 60.9);
+  assert.equal(g.bayiSonrasi, 548.1);
+  assert.equal(g.odemeIskontoOrani, 5);
+  assert.equal(g.odemeIndirim, 27.41, '548,10 × %5 = 27,405 → 27,41');
+  assert.equal(g.genelToplam, 520.69, '548,10 − 27,41');
+
+  /* Toplanmis oran (%15) ile FARKLI: 609 × 0,85 = 517,65 */
+  assert.notEqual(g.genelToplam, 517.65);
+
+  /* Odeme iskontosu TAVANA TABI DEGIL: tavan 0 iken bayi kirpilir, odeme kalir. */
+  const g0 = M.toplamlar(s, 0);
+  assert.equal(g0.iskontoOrani, 0);
+  assert.equal(g0.odemeIndirim, 30.45, '609 × %5');
+  assert.equal(g0.genelToplam, 578.55);
+});
+
+test('toplamlar: Faz 2 alanlari geriye uyumlu — odeme iskontosu yokken sonuc degismez', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, u(1, 'A', 100, 1), 1);
+  s.iskonto = 10;
+
+  const g = M.toplamlar(s, 10);
+  assert.equal(g.indirim, 10);
+  assert.equal(g.genelToplam, 90);
+  assert.equal(g.odemeIskontoOrani, 0);
+  assert.equal(g.odemeIndirim, 0);
+});
+
+test('geciciMusteri: iskonto, kimlik turu ve odeme tablosu kayda girer; gecersiz iskonto 0', (t) => {
+  const m = M.geciciMusteri({ unvan: 'Yeni', kimlikNo: '1234567890', kimlikTuru: 'vkn', iskonto: 7.5 }).musteri;
+
+  assert.equal(m.vergiNo, '1234567890', 'kimlikNo → vergiNo');
+  assert.equal(m.kimlikTuru, 'vkn');
+  assert.equal(m.iskonto, 7.5);
+  assert.deepEqual(m.odemeIskontolari, {}, 'cevrimdisi musteride odeme tablosu bos (0)');
+
+  assert.equal(M.geciciMusteri({ unvan: 'X', iskonto: -3 }).musteri.iskonto, 0);
+  assert.equal(M.geciciMusteri({ unvan: 'X', iskonto: 'abc' }).musteri.iskonto, 0);
+  assert.equal(M.geciciMusteri({ unvan: 'X', iskonto: 250 }).musteri.iskonto, 100, '100 ustu kirpilir');
+});
+
+test('siparisGovdesi: yerelKimlik uretilir (cift gonderim korumasi) ve iki oran govdede', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, u(1, 'A', 100, 1), 2);
+  M.musteriIskontosuUygula(s, MUSTERI, 20);
+  M.odemeSec(s, 'nakit');
+
+  const g1 = M.siparisGovdesi(s, { id: 7 }, 20);
+  const g2 = M.siparisGovdesi(s, { id: 7 }, 20);
+
+  assert.match(g1.yerelKimlik, /^sip-[0-9a-f-]{36}$/, 'sip-<uuid> bicimi');
+  assert.notEqual(g1.yerelKimlik, g2.yerelKimlik, 'her govde kendi kimligini alir');
+  assert.equal(g1.bayiIskontoOrani, 10);
+  assert.equal(g1.odemeIskontoOrani, 5);
+  assert.equal(g1.iskontoOrani, 10, 'sunucunun okudugu alan bayi orani (geriye uyum)');
+  assert.equal(g1.toplamlar.genelToplam, 171, '200 × 0,9 × 0,95');
+});

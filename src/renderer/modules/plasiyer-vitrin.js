@@ -217,7 +217,7 @@
         durumV.kategori = '';
         durumV.sorgu = '';
 
-        var arama = el('urunArama');
+        var arama = el('satisArama');
         if (arama) arama.value = '';
 
         kategorileriCiz();
@@ -283,6 +283,34 @@
     '</div>';
   }
 
+  /**
+   * FİYAT ETİKETİ (Faz 9) — müşteri seçiliyse BİLEŞİK NET fiyat.
+   *
+   * Net = Liste × (1 − bayi/100) × (1 − ödeme/100) — formül motorda
+   * (`PlasiyerSiparisMotor.netFiyat`), burada yalnızca basılır. Müşteri
+   * seçili değilken liste fiyatı gösterilir: müşterisiz "net" diye bir şey
+   * yoktur. Liste fiyatı çizili küçük yazıyla kalır ki plasiyer sahada
+   * "listede şu, size şu" diyebilsin.
+   */
+  function netFiyati(u) {
+    var s = sepet();
+
+    if (!s.musteri) return null;
+
+    return M().netFiyat(u.price, s.iskonto, s.odemeIskonto);
+  }
+
+  function fiyatHtml(u, sinif) {
+    var net = netFiyati(u);
+
+    if (null === net || net === (Number(u.price) || 0)) {
+      return '<div class="' + sinif + '">' + kacis(paraYaz(u.price)) + '</div>';
+    }
+
+    return '<div class="' + sinif + ' text-emerald-700 dark:text-emerald-400">' + kacis(paraYaz(net)) +
+      ' <span class="ml-1 text-xs font-bold text-slate-400 line-through">' + kacis(paraYaz(u.price)) + '</span></div>';
+  }
+
   function spotRozeti(u) {
     return u.is_spot ? '<span class="spot-rozet">🔥 SPOT / FIRSAT</span>' : '';
   }
@@ -308,7 +336,7 @@
             '<div class="mt-3 font-extrabold leading-snug line-clamp-2" title="' + kacis(u.name) + '">' + kacis(u.name) + '</div>' +
             '<div class="mt-1 text-xs text-slate-500 dark:text-slate-400">' + kacis(u.sku || '') + '</div>' +
             '<div class="mt-2 flex items-center gap-2 flex-wrap">' + koliEtiketi(u) + '</div>' +
-            '<div class="mt-2 text-lg font-black">' + kacis(paraYaz(u.price)) + '</div>' +
+            fiyatHtml(u, 'mt-2 text-lg font-black') +
             '<button type="button" class="urun-ekle mt-3 w-full px-4 py-3 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600 transition" ' +
                     'data-id="' + u.id + '">Sepete Ekle</button>' +
           '</div>';
@@ -353,7 +381,7 @@
                 '</div>' +
               '</td>' +
               '<td class="p-3 text-sm font-bold">' + (koli > 1 ? koli : '—') + '</td>' +
-              '<td class="p-3 text-right font-black whitespace-nowrap">' + kacis(paraYaz(u.price)) + '</td>' +
+              '<td class="p-3 text-right whitespace-nowrap">' + fiyatHtml(u, 'font-black') + '</td>' +
               '<td class="p-3">' +
                 '<input type="number" min="1" step="' + koli + '" class="matris-adet w-28 px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-center" ' +
                        'data-id="' + u.id + '" data-sira="' + i + '" placeholder="' + koli + '" />' +
@@ -414,7 +442,7 @@
         '<div class="relative">' + spotRozeti(u) + gorselEtiketi(u) + '</div>' +
         '<div>' +
           '<div class="text-sm text-slate-500 dark:text-slate-400">' + kacis(u.sku || '') + (u.barcode ? ' · ' + kacis(u.barcode) : '') + '</div>' +
-          '<div class="mt-3 text-3xl font-black">' + kacis(paraYaz(u.price)) + '</div>' +
+          fiyatHtml(u, 'mt-3 text-3xl font-black') +
           '<div class="mt-3">' + koliEtiketi(u) + '</div>' +
           (null === u.stock_quantity
             ? ''
@@ -529,15 +557,20 @@
             '<button type="button" class="sepet-arti w-9 h-9 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-black" data-id="' + r.id + '">+</button>' +
             '<button type="button" class="sepet-sil w-9 h-9 rounded-lg border-2 border-red-200 text-red-600 font-black" data-id="' + r.id + '" title="Kaldır">🗑</button>' +
           '</div>' +
-          '<div class="mt-1 text-right font-bold">' + kacis(paraYaz(r.price * M().adediOturt(r, r.adet))) + '</div>' +
+          '<div class="mt-1 text-right font-bold">' +
+            kacis(paraYaz(M().netFiyat(r.price, s.iskonto, s.odemeIskonto) * M().adediOturt(r, r.adet))) +
+          '</div>' +
         '</div>';
       }).join('') +
       '<div class="mt-4 pt-3 border-t-2 border-slate-200 dark:border-slate-600 space-y-1">' +
         '<div class="flex justify-between text-sm"><span>Ara toplam</span><span class="font-bold">' + kacis(paraYaz(t.araToplam)) + '</span></div>' +
         (t.indirim > 0
-          ? '<div class="flex justify-between text-sm text-emerald-700 dark:text-emerald-400"><span>İskonto %' + t.iskontoOrani + '</span><span class="font-bold">−' + kacis(paraYaz(t.indirim)) + '</span></div>'
+          ? '<div class="flex justify-between text-sm text-emerald-700 dark:text-emerald-400"><span>Bayi iskontosu %' + t.iskontoOrani + '</span><span class="font-bold">−' + kacis(paraYaz(t.indirim)) + '</span></div>'
           : '') +
-        '<div class="flex justify-between text-lg font-black"><span>Genel</span><span>' + kacis(paraYaz(t.genelToplam)) + '</span></div>' +
+        (t.odemeIndirim > 0
+          ? '<div class="flex justify-between text-sm text-emerald-700 dark:text-emerald-400"><span>' + kacis(M().ODEME_ETIKET[s.odeme] || 'Ödeme') + ' iskontosu %' + t.odemeIskontoOrani + '</span><span class="font-bold">−' + kacis(paraYaz(t.odemeIndirim)) + '</span></div>'
+          : '') +
+        '<div class="flex justify-between text-lg font-black"><span>Net</span><span>' + kacis(paraYaz(t.genelToplam)) + '</span></div>' +
         (t.koli ? '<div class="text-xs text-slate-500 dark:text-slate-400">' + t.kalem + ' adet · ' + t.koli + ' koli</div>' : '<div class="text-xs text-slate-500 dark:text-slate-400">' + t.kalem + ' adet</div>') +
       '</div>' +
       '<button type="button" id="sepetTamamla" class="mt-4 w-full px-5 py-4 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600 transition">Siparişi Tamamla</button>' +
@@ -611,7 +644,7 @@
     }
 
     /* Arama — 140 ms geciktirilir: her harfte IPC turu atmak gereksiz. */
-    var arama = el('urunArama');
+    var arama = el('satisArama');
 
     if (arama) {
       arama.addEventListener('input', function () {
@@ -664,7 +697,7 @@
 
         alan.value = '';
 
-        var arama2 = el('urunArama');
+        var arama2 = el('satisArama');
 
         if (arama2) { arama2.select(); arama2.focus(); }
       });
@@ -745,6 +778,8 @@
     sekmeyiAc: sekmeyiAc,
     sepetAl: sepetAl,
     sepetiCiz: sepetiCiz,
+    vitriniCiz: vitriniCiz,
+    netFiyati: netFiyati,
     urunBul: urunBul,
     tavanAl: tavanAl,
     durum: durumV,

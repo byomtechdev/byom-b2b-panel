@@ -361,7 +361,12 @@
     .kapi-kart:hover, .kapi-kart:active { transform: none; }
   }
 
-  /* Plasiyer oturumunda gizlenen alanlar (sekme düğmesi, menü bölümü...). */
+  /* ROL AYRIMI İKİ KATMANLIDIR (Faz 9):
+       1) KABUK SÖKME (asıl): karşı rolün düğümleri belgede HİÇ YOKTUR
+          (data-kabuk → src/renderer/kabuk-yonlendirici.js).
+       2) ÖZNİTELİK GİZLEME (kemer-askı): aşağıdaki kural. Boot tamamlanmadan
+          önceki kısa pencerede ve sekme gövdesi içindeki [data-rol-izin]
+          kutularında hâlâ gerekli. */
   /* ROL GİZLEMESİ — ÖZNİTELİK TABANLI (Faz 7), SINIF DEĞİL. OKUMADAN DEĞİŞTİRME.
 
      renderer.js → sekmeAc() menü düğmelerinin className'ini ATAMAYLA yeniden
@@ -2023,13 +2028,20 @@
   <div class="flex flex-1 min-h-0">
 
     <!-- ==================================================================
-         SOL MENÜ — rol süzgeci renderer-plasiyer.js § ROL_SEKMELERI
-         (yönetici 8 sekme, plasiyer 3 sekme; liste ORADA, burada değil)
+         SOL MENÜ — KABUK İŞARETLEMESİ (Faz 9, Clean Shell Router)
+         ------------------------------------------------------------
+         Her düğme iki öznitelik taşır:
+           data-rol-izin  → hangi rol görebilir (renderer-plasiyer.js süzer)
+           data-kabuk     → hangi kabukta BELGEDE durur; karşı kabukta düğüm
+                            DOM'DAN SÖKÜLÜR (src/renderer/kabuk-yonlendirici.js).
+         "admin plasiyer" = ORTAK: iki kabukta da durur, hiç sökülmez.
+         Yönetici kabuğu 8 sekme · Saha kabuğu 3 sekme
+         [Katalog & Satış] [Kendi Siparişlerim] [Müşterilerim].
          ================================================================== -->
     <nav class="w-72 shrink-0 bg-white dark:bg-slate-800 border-r-2 border-slate-200 dark:border-slate-700
                 p-4 flex flex-col gap-3 overflow-y-auto">
 
-      <button data-sekme="siparisler" data-rol-izin="admin plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+      <button data-sekme="siparisler" data-rol-izin="admin plasiyer" data-kabuk="admin plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg>
         <span class="align-middle">Siparişler & Depo Fişi</span>
       </button>
@@ -2043,17 +2055,17 @@
            durması iki dünyayı iç içe geçiriyordu. Öznitelik bilinçli olarak
            beyaz listeye EK: oturum henüz kurulmamışken (kapı ekranı) de
            gizli kalsın, rol bilinmeyen bir anda menüde görünmesin. -->
-      <button data-sekme="satis" data-rol-izin="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+      <button data-sekme="satis" data-rol-izin="plasiyer" data-kabuk="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg>
-        <span class="align-middle">Katalog &amp; Sipariş Yazma</span>
+        <span class="align-middle">Katalog &amp; Satış</span>
       </button>
 
-      <button data-sekme="urunler" data-rol-izin="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+      <button data-sekme="urunler" data-rol-izin="admin" data-kabuk="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg>
         <span class="align-middle">Ürün & Stok Yönetimi</span>
       </button>
 
-      <button data-sekme="uyeler" data-rol-izin="admin" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+      <button data-sekme="uyeler" data-rol-izin="admin" data-kabuk="admin" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg>
         <span class="align-middle">B2B Üye Onayları</span>
         <span id="uyeSayaci"
@@ -2061,14 +2073,14 @@
                      text-base font-black grid place-items-center shadow-lg">0</span>
       </button>
 
-      <button data-sekme="iskonto" data-rol-izin="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+      <button data-sekme="iskonto" data-rol-izin="admin" data-kabuk="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-yuzde"></use></svg>
         <span class="align-middle">İskonto Oranları</span>
       </button>
 
       <!-- BYOM 2.0 — Lego vitrin editörü: ana sayfa bloklarını sürükle-bırak ile düzenler,
            canlı önizler ve tek PUT ile yayınlar (renderer-vitrin.js). -->
-      <button data-sekme="vitrin-editor" data-rol-izin="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+      <button data-sekme="vitrin-editor" data-rol-izin="admin" data-kabuk="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-panel"></use></svg>
         <span class="align-middle">Vitrin Editörü</span>
       </button>
@@ -2076,7 +2088,7 @@
       <!-- Plasiyer (saha satış) yönetimi: tanımlama, PIN, bayi atama, performans.
            YALNIZCA yönetici oturumunda görünür; plasiyer girişinde
            renderer-plasiyer.js bu düğmeye `plasiyer-gizli` sınıfını ekler. -->
-      <button data-sekme="plasiyerler" data-rol-izin="admin" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+      <button data-sekme="plasiyerler" data-rol-izin="admin" data-kabuk="admin" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg>
         <span class="align-middle">Pazarlamacılar</span>
       </button>
@@ -2088,20 +2100,22 @@
            üretiyordu. `sekmeAc('harita')` geriye dönük olarak çalışmaya devam
            eder, Pazarlamacılar + harita alt sekmesini açar. -->
 
-      <!-- SAHA NOTLARIM (Faz 6) — YALNIZCA plasiyer oturumunda görünür.
-           Plasiyerin kendi ziyaret notları ve patronun yanıtları
-           (src/renderer/modules/plasiyer-ziyaret.js). Yöneticinin karşılığı
-           Pazarlamacılar › Saha Ziyaret Haritası'dır. -->
-      <button data-sekme="notlarim" data-rol-izin="plasiyer" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
-        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg>
-        <span class="align-middle">Saha Notlarım / CRM</span>
+      <!-- MÜŞTERİLERİM (Faz 9) — YALNIZCA plasiyer kabuğunda.
+           Plasiyerin portföyü: müşteri kartları, algoritmik doğrulamalı yeni
+           müşteri formu (TCKN/VKN/GSM), müşteri profili ve Saha Notlarım
+           (patron yanıtları + okunmamış rozeti). Faz 6'daki "Saha Notlarım /
+           CRM" sekmesi bu sekmenin İÇİNE taşındı; rozet sayacı aynı kaldı.
+           Çizim: src/renderer/modules/plasiyer-musteri.js + plasiyer-ziyaret.js -->
+      <button data-sekme="musterilerim" data-rol-izin="plasiyer" data-kabuk="plasiyer" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg>
+        <span class="align-middle">Müşterilerim</span>
         <span id="notlarimSayaci"
               class="hidden absolute top-3 right-3 min-w-8 h-8 px-2 rounded-full bg-red-600 text-white
                      text-base font-black grid place-items-center shadow-lg">0</span>
       </button>
 
       <!-- BYOM Brain destek masası: talepler doğrudan merkezî sisteme düşer -->
-      <button data-sekme="destek" data-rol-izin="admin" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+      <button data-sekme="destek" data-rol-izin="admin" data-kabuk="admin" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg>
         <span class="align-middle">BYOM Destek</span>
         <span id="destekSayaci"
@@ -2117,7 +2131,7 @@
            Tıklanınca renderer.js'teki `masterKilidiSor` şifre penceresini
            açar; SHA-256 doğrulaması geçilmeden sekmenin içi çizilmez.
            ============================================================ -->
-      <button data-sekme="ayarlar" data-rol-izin="admin" data-kilitli="1"
+      <button data-sekme="ayarlar" data-rol-izin="admin" data-kabuk="admin" data-kilitli="1"
               class="menu-btn mt-auto text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-ayar"></use></svg>
         <span class="align-middle">API & Sistem Ayarları</span>
@@ -2161,7 +2175,7 @@
       <!-- ============================================================
  SEKME 1 — SİPARİŞLER & DEPO FİŞİ
  ============================================================ -->
-      <section id="sekme-siparisler" class="sekme-govde acik">
+      <section id="sekme-siparisler" class="sekme-govde acik" data-kabuk="admin plasiyer">
 
         <div class="flex flex-wrap items-center gap-4 mb-5">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg> Siparişler</h1>
@@ -2183,6 +2197,11 @@
  </button>
         </div>
 
+        <!-- PLASİYER KUYRUK ŞERİDİ (Faz 9) — yalnızca saha kabuğunda belgede.
+             Çevrimdışı yazılan siparişler sunucuya gidene kadar burada durur:
+             bekleyen / kalıcı hatalı (sebebiyle) + [Şimdi Eşitle].
+             Çizim: plasiyer-musteri.js → kuyrukSeridiniCiz. -->
+        <div id="plasiyerKuyrukKab" data-kabuk="plasiyer" class="mb-5"></div>
         <!-- Sipariş sekmeleri: [Aktif Siparişler] [Kargodakiler] [Teslim Edilenler]
              Her sekme sunucudan KENDİ durum kümesini çeker (bkz. SIPARIS_SEKMELERI). -->
         <div id="siparisSekmeler" class="flex flex-wrap gap-3 mb-5"></div>
@@ -2223,7 +2242,7 @@
               çalıştığı için korundu; sıralama yapacak kullanıcı bu
               görünüme geçer.
  ============================================================ -->
-      <section id="sekme-urunler" class="sekme-govde">
+      <section id="sekme-urunler" class="sekme-govde" data-kabuk="admin">
 
         <div class="flex flex-wrap items-center gap-4 mb-4">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg> Ürün &amp; Stok Yönetimi</h1>
@@ -2426,7 +2445,7 @@
       <!-- ============================================================
  SEKME 3 — B2B ÜYE ONAYLARI
  ============================================================ -->
-      <section id="sekme-uyeler" class="sekme-govde">
+      <section id="sekme-uyeler" class="sekme-govde" data-kabuk="admin">
 
         <div class="flex flex-wrap items-center gap-4 mb-4">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg> Bayiler / Müşteriler</h1>
@@ -2484,7 +2503,7 @@
  Tablolar renderer-ek.js içindeki `matrisTablosuCiz` tarafından
  çizilir; buradaki iki kap yalnızca yerleşimi belirler.
  ============================================================ -->
-      <section id="sekme-iskonto" class="sekme-govde">
+      <section id="sekme-iskonto" class="sekme-govde" data-kabuk="admin">
 
         <div class="flex flex-wrap items-center gap-4 mb-5">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-yuzde"></use></svg> İskonto / Fiyat Ayarları</h1>
@@ -2587,7 +2606,7 @@
  Sağ: canlı önizleme (iframe, postMessage köprüsü).
  Mantık: renderer-vitrin.js + src/renderer/vitrin-motor.js
  ============================================================ -->
-      <section id="sekme-vitrin-editor" class="sekme-govde">
+      <section id="sekme-vitrin-editor" class="sekme-govde" data-kabuk="admin">
 
         <div class="flex flex-wrap items-center gap-3 mb-4">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-panel"></use></svg> Vitrin Editörü</h1>
@@ -2924,7 +2943,7 @@
       <!-- ============================================================
  SEKME 5 — API & SİTE AYARLARI
  ============================================================ -->
-      <section id="sekme-ayarlar" class="sekme-govde">
+      <section id="sekme-ayarlar" class="sekme-govde" data-kabuk="admin">
 
         <h1 class="text-3xl font-black mb-6"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kilit"></use></svg> API &amp; Sistem Ayarları</h1>
 
@@ -3383,7 +3402,7 @@
                          son siparişi kopyala, ödeme + notlar
  Burada yalnızca KAPLAR durur.
  ============================================================ -->
-      <section id="sekme-satis" class="sekme-govde">
+      <section id="sekme-satis" class="sekme-govde" data-kabuk="plasiyer">
 
         <!-- ÜST ŞERİT: müşteri + katalog durumu + görünüm anahtarı -->
         <div class="flex items-center gap-3 mb-4 flex-wrap">
@@ -3409,7 +3428,7 @@
           <div id="filtreEtiket" class="text-base font-bold text-slate-600 dark:text-slate-300"></div>
 
           <div class="ml-auto flex items-center gap-2">
-            <input id="urunArama" type="search" autocomplete="off" placeholder="Ad, SKU ya da barkod…"
+            <input id="satisArama" type="search" autocomplete="off" placeholder="Ad, SKU ya da barkod…"
                    class="w-72 px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
                           bg-white dark:bg-slate-900 font-semibold" />
             <span id="katalogKunye" class="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap"></span>
@@ -3479,18 +3498,47 @@
  Harici bağımlılık YOK — internet ya da Google Maps gerekmez.
  ============================================================ -->
       <!-- ============================================================
-           SEKME — SAHA NOTLARIM / CRM (plasiyer)
+           SEKME — MÜŞTERİLERİM (plasiyer, Faz 9)
            ------------------------------------------------------------
-           İçerik src/renderer/modules/plasiyer-ziyaret.js tarafından çizilir
-           (not kartları zilde kullanılan `zilKarti` ile AYNI çizicidir —
-           iki ayrı kart tasarımı bakmak zorunda kalmayalım).
+           Üst yarı: portföy kartları + [+ Yeni Müşteri] (algoritmik TCKN/VKN/
+           GSM doğrulaması, src/shared/dogrulama.js) + müşteri profili
+           (src/renderer/modules/plasiyer-musteri.js çizer).
+           Alt yarı: SAHA NOTLARIM — plasiyerin ziyaret notları ve patron
+           yanıtları (plasiyer-ziyaret.js; kartlar zildeki `zilKarti` ile
+           AYNI çiziciden gelir). Faz 6'daki bağımsız sekme buraya taşındı;
+           kimlikler (#notlarimKab/#notlarimOzet/#notlarimYenile) korundu.
            ============================================================ -->
-      <section id="sekme-notlarim" class="sekme-govde">
-
+      <section id="sekme-musterilerim" class="sekme-govde" data-kabuk="plasiyer">
         <div class="flex items-center gap-4 mb-5 flex-wrap">
           <h1 class="text-3xl font-black">
-            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg> Saha Notlarım
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg> Müşterilerim
           </h1>
+          <span id="musterilerimOzet"
+                class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
+                       dark:bg-slate-800 dark:text-slate-300"></span>
+          <div class="ml-auto flex gap-3 flex-wrap">
+            <input id="musterilerimArama" type="search" autocomplete="off" placeholder="Ünvan, kimlik no, telefon, il…"
+                   class="w-72 px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                          bg-white dark:bg-slate-900 font-semibold" />
+            <button type="button" id="musterilerimYenile"
+                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+            <button type="button" id="musterilerimYeni"
+                    class="px-5 py-3 rounded-xl bg-marka-700 text-white font-extrabold
+                           hover:bg-marka-600 transition">+ Yeni Müşteri</button>
+          </div>
+        </div>
+        <!-- Portföy kartları -->
+        <div id="musterilerimKab"
+             class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(18rem,1fr))] mb-6"></div>
+        <!-- Seçili müşterinin profili (kart tıklanınca dolar) -->
+        <div id="musteriProfilKab" hidden
+             class="bg-white dark:bg-slate-800 rounded-2xl border-2 border-marka-700/40 p-6 mb-6"></div>
+
+        <div class="flex items-center gap-4 mb-4 mt-8 flex-wrap">
+          <h2 class="text-2xl font-black">
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg> Saha Notlarım
+          </h2>
           <span id="notlarimOzet"
                 class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
                        dark:bg-slate-800 dark:text-slate-300"></span>
@@ -3513,7 +3561,7 @@
  Burada yalnızca kaplar durur: renderer.js'i şişirmemek için mantık
  ayrı modülde (bkz. panel CLAUDE.md §1.2).
  ============================================================ -->
-      <section id="sekme-plasiyerler" class="sekme-govde">
+      <section id="sekme-plasiyerler" class="sekme-govde" data-kabuk="admin">
 
         <div class="flex items-center gap-4 mb-5 flex-wrap">
           <h1 class="text-3xl font-black">
@@ -3587,7 +3635,7 @@
         </div>
       </section>
 
-      <section id="sekme-destek" class="sekme-govde">
+      <section id="sekme-destek" class="sekme-govde" data-kabuk="admin">
 
         <div class="flex items-center gap-4 mb-5 flex-wrap">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg> BYOM Destek</h1>
@@ -3700,7 +3748,7 @@
 <!-- ==================================================================
      YENİ ÜRÜN EKLEME PENCERESİ
      ================================================================== -->
-<div id="urunModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="urunModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-4xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700">
 
@@ -3851,7 +3899,7 @@
      yeniden ürün oluşturmaya gerek kalmadan güncellenir.
      (PUT /wp-json/wc/v3/products/<id>)
      ================================================================== -->
-<div id="urunDuzenleKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="urunDuzenleKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-4xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700">
 
@@ -4058,7 +4106,7 @@
 <!-- ==================================================================
      BAYİ DETAY & GEÇMİŞ SİPARİŞ DÖKÜMÜ PENCERESİ
      ================================================================== -->
-<div id="bayiModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="bayiModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-5xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700">
 
@@ -4085,7 +4133,7 @@
 <!-- ==================================================================
      SİPARİŞ DURUMU / KARGO BİLGİSİ PENCERESİ
      ================================================================== -->
-<div id="kargoModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="kargoModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
 
@@ -4183,7 +4231,7 @@
      güncellenir, tutar ve KDV sitede yeniden hesaplanır ve sipariş
      "Sipariş Hazır" durumuna geçer.
      ================================================================== -->
-<div id="revizeModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="revizeModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-5xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700">
 
@@ -4285,7 +4333,7 @@
 <!-- ==================================================================
      METİN SORMA PENCERESİ (ör. red sebebi)
      ================================================================== -->
-<div id="metinModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="metinModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
     <div class="p-7">
@@ -4314,7 +4362,7 @@
      önizleme, seçili ilk ürün ve seçimin toplam liste değeri üzerinden
      sonucu yazarak yanlış oran girilmesini engeller.
      ================================================================== -->
-<div id="zamModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="zamModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700">
 
@@ -4383,7 +4431,7 @@
 
      Mantığı renderer-excel.js yürütür.
      ================================================================== -->
-<div id="excelModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="excelModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-5xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700">
 
@@ -4488,7 +4536,7 @@
      çevrilip sabit özetle karşılaştırılır; düz şifre HİÇBİR yerde
      saklanmaz ve DOM'da tutulmaz.
      ================================================================== -->
-<div id="kilitModalKatman" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-6">
+<div id="kilitModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
     <div class="p-7">
@@ -4539,7 +4587,7 @@
  Gerekçesiz iptal kabul edilmez: depo ile muhasebe arasındaki en sık
  anlaşmazlık "bu sipariş neden iptal olmuş?" sorusudur.
  ================================================================== -->
-<div id="iptalModalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="iptalModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-2xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700">
 
@@ -4656,6 +4704,12 @@
      · plasiyer-yonetimi.js: yöneticinin "Pazarlamacılar" sekmesi. `sekmeAc`'ı
        SARAR (değiştirmez), bu yüzden sarılacak fonksiyonun tanımlı olduğu
        andan sonra yüklenir. -->
+<!-- Faz 9 — paylaşılan doğrulama motoru (TCKN/VKN/GSM; PHP ikizi
+     class-b2b-dogrulama.php) ve KABUK YÖNLENDİRİCİSİ. İkisi de DOM'suz/çift
+     modlu; renderer-plasiyer.js onları `window.Dogrulama` /
+     `window.KabukYonlendirici` üzerinden çağırdığı için ONDAN ÖNCE gelir. -->
+<script src="src/shared/dogrulama.js"></script>
+<script src="src/renderer/kabuk-yonlendirici.js"></script>
 <script src="renderer-plasiyer.js"></script>
 <script src="src/renderer/modules/plasiyer-yonetimi.js"></script>
 

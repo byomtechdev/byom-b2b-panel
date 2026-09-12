@@ -1460,7 +1460,7 @@ ipcMain.handle('sync:esitle', async function () {
           return plasiyerIstek('/plasiyer/ziyaret-notu', {
             plasiyerId: plasiyerId,
             token: jeton,
-            musteriId: Number(not.musteriId) || 0,
+            musteriId: Number(not.musteriId) || 0,   // hâlâ geçiciyse 0 (bağ kurulamadı)
             il: String(not.il || ''),
             etiketler: Array.isArray(not.etiketler) ? not.etiketler : [],
             not: String(not.not || ''),
@@ -1511,6 +1511,56 @@ ipcMain.handle('sync:durum', function () {
   };
 });
 
+/**
+ * Siparişi yerel kuyruğa yazar (çevrimdışı yol) — Faz 9.
+ *
+ * Eskiden renderer `ayar:oku → push → ayar:yaz` yapıyordu. Aynı anda
+ * `sync:esitle` kuyruğu temizlemişse renderer'ın eski fotoğrafı gönderilmiş
+ * siparişi "bekliyor" olarak DİRİLTİYORDU (ikinci kez açılırdı). Ekleme ana
+ * süreçte, tek yerde, okunduğu anda yazılır.
+ */
+ipcMain.handle('siparis:kuyruga', function (olay, govde) {
+  if (!govde || !Array.isArray(govde.kalemler) || !govde.kalemler.length) {
+    return { ok: false, hata: 'Sipariş gövdesi boş.' };
+  }
+
+  const a = ayarlariOku();
+  const kuyruk = Array.isArray(a.plasiyerSiparisKuyrugu) ? a.plasiyerSiparisKuyrugu : [];
+
+  /* yerelKimlik motorda üretilir; eksikse burada tamamlanır — sunucunun çift
+     gönderim koruması bu kimliğe bakar. */
+  if (!govde.yerelKimlik) {
+    govde.yerelKimlik = 'sip-' + Date.now() + '-' + Math.round(Math.random() * 99999);
+  }
+
+  kuyruk.push({ kayit: govde, zaman: new Date().toISOString(), durum: 'bekliyor' });
+
+  ayarlariYaz({ plasiyerSiparisKuyrugu: kuyruk });
+
+  return { ok: true, bekleyen: kuyruk.length, yerelKimlik: String(govde.yerelKimlik) };
+});
+
+/** Çevrimdışı müşteriyi yerel listeye ekler (tekil ekleme, aynı gerekçe). */
+ipcMain.handle('musteri:kuyruga', function (olay, musteri) {
+  if (!musteri || !musteri.id || !musteri.unvan) {
+    return { ok: false, hata: 'Müşteri kaydı eksik.' };
+  }
+
+  const a = ayarlariOku();
+  const liste = Array.isArray(a.plasiyerYerelMusteriler) ? a.plasiyerYerelMusteriler : [];
+
+  /* Aynı geçici kimlik iki kez eklenmez. */
+  if (liste.some(function (m) { return m && String(m.id) === String(musteri.id); })) {
+    return { ok: true, bekleyen: liste.length, tekrar: true };
+  }
+
+  liste.unshift(musteri);
+
+  ayarlariYaz({ plasiyerYerelMusteriler: liste });
+
+  return { ok: true, bekleyen: liste.length };
+});
+
 /** Ziyaret notunu yerel kuyruğa yazar (çevrimdışı yol). */
 ipcMain.handle('ziyaret:kuyruga', function (olay, veri) {
   veri = veri || {};
@@ -1522,7 +1572,11 @@ ipcMain.handle('ziyaret:kuyruga', function (olay, veri) {
     durum: 'bekliyor',
     zaman: new Date().toISOString(),
     yerelKimlik: String(veri.yerelKimlik || ('not-' + Date.now() + '-' + Math.round(Math.random() * 99999))),
-    musteriId: Number(veri.musteriId) || 0,
+    /* Çevrimdışı müşterinin notu temp_musteri_<uuid> metniyle bekler; eşitleme
+       köprüsü (syncMotor.notKoprusuKur) onu gerçek kimliğe çevirir (Faz 9). */
+    musteriId: ('string' === typeof veri.musteriId && 0 === veri.musteriId.indexOf(syncMotor.GECICI_ONEK))
+      ? veri.musteriId
+      : (Number(veri.musteriId) || 0),
     il: String(veri.il || ''),
     etiketler: Array.isArray(veri.etiketler) ? veri.etiketler : [],
     not: String(veri.not || ''),

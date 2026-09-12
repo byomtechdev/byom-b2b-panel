@@ -891,6 +891,117 @@ engelliyor.
 
 ---
 
+## 4.13 Faz 9 — Clean Shell Router, doğrulama motoru, bileşik iskonto, Müşterilerim
+
+**Şartname:** "Saha Satış (Plasiyer) & Yönetici Mimarisi Tam İzolasyon ve
+Yeniden İnşa" (`BYOM-REGISTRY.md §5.32`). Eklenti 2.16.0 ile birlikte.
+
+### 4.13.1 Kabuk yönlendiricisi — `src/renderer/kabuk-yonlendirici.js`
+
+Üç kesin kabuk: `durum.kabuk ∈ { kapi, admin, plasiyer }`. Faz 6-7'nin CSS/öznitelik
+gizlemesi **kemer-askı** olarak kaldı; asıl ayrım artık **SÖKME**: karşı rolün
+menü düğmeleri, sekme gövdeleri ve gövde seviyesi modalları belgede **hiç
+yoktur** (`getElementById` null döner). Yönetici kabuğu **8** düğme, saha
+kabuğu **3** düğme `[Katalog & Satış] [Kendi Siparişlerim] [Müşterilerim]`,
+kapı kabuğu yalnızca ortak düğme.
+
+**Neden şablondan klonlama DEĞİL, aynı düğümü park etme:** renderer.js olay
+dinleyicilerini açılışta belirli kimliklere tek sefer bağlar ve dinleyici
+düğümün üzerinde yaşar. `cloneNode` dinleyiciyi kopyalamaz ama
+`dataset.izgBagli` gibi "bağlandım" bayraklarını kopyalar → klon "bağlıyım"
+der, hiçbir tıklamaya cevap vermez (sessiz ölü arayüz). `replaceChild(yorumDüğümü, düğüm)`
+ile park edilen düğüm geri takıldığında dinleyicisi ve sırası aynıdır — test
+bunu aynı düğüm referansı ve tıklama sayacıyla kilitler.
+
+**İşaretleme sözleşmesi (index.html):** `data-kabuk="admin"` · `"plasiyer"` ·
+`"admin plasiyer"` (= ORTAK, **hiç sökülmez**, kapıda da durur). İşaretsiz düğüm
+iskelettir. `#sekme-siparisler` ortaktır: renderer.js'in otomatik yenileme
+zamanlayıcısı `#siparisListesi`'ne koşulsuz yazar; sökülü olsa her tik TypeError
+üretirdi. Yeni menü düğmesi eklerken **`data-rol-izin` ile `data-kabuk` aynı
+olmalı** (test kilitler).
+
+**⚠️ Zamanlama kilidi — okumadan değiştirme:** renderer.js `olaylariBagla()`
+null korumasızdır ve iki IPC turu sonra çalışır. Boot bitmeden bir yönetici
+düğümü sökülürse `$('#…').addEventListener` patlar, `sekmeAc` hiç çağrılmaz,
+uygulama ölü ekranda kalır. Bu yüzden renderer.js en başta
+`window.__byomHazir = false` yazar, `olaylariBagla()` bitince `true` yapıp
+`byom:hazir` yayar; yönlendirici hazır değilken gelen geçişi **erteler**.
+Test ortamında (renderer.js yüklenmez) bayrak tanımsız = hazır.
+
+**Yetki deliği kapatıldı:** eski `sekmeIzinli` "menüde olmayan düğme izinlidir"
+diyordu — sökme ile ters çalışır (plasiyer kabuğunda `ayarlar` düğmesi yok →
+izinli sayılır). İzin artık açılışta DOM'dan bir kez okunan **izin tablosundan**
+okunur; düğme belgede olmasa da cevap doğru.
+
+**Sipariş kartı rol kapısı (renderer.js):** plasiyer görünümünde kartta yalnızca
+ürün dökümü kalır; revize/durum/fiş/bayi/iptal/sil düğmeleri basılmaz — modalları
+saha kabuğunda belgede de yoktur. `uyeSayaciTazele`, `uyeSuzgecleriCiz` ve
+otomatik yenileme modal denetimi null korumalı yapıldı (yönetici zamanlayıcısı
+plasiyer oturumunda çalışmaya devam edebilir).
+
+Çift kimlik giderildi: satış arama kutusu `#urunArama` → **`#satisArama`**
+(plasiyer-vitrin.js yanlış — yönetici — kutuya bağlanıyordu).
+
+### 4.13.2 Doğrulama motoru — `src/shared/dogrulama.js`
+
+Çift modlu, DOM'suz. `tcknGecerli`, `vknGecerli`, `kimlikNoCoz` (10 → vkn, 11 →
+tckn), `gsmNormalle` (→ `05XXXXXXXXX`), `musteriFormuDenetle(form, {iskontoTavani})`
+→ **tüm hataları birden** + `temiz` kayıt. PHP ikizi `class-b2b-dogrulama.php`
+aynı vektörlerle test edilir. **Şartnamenin GSM deseni** ülke kodundan sonra
+boşluk kabul etmez (`+90 532…` reddedilir; `+905321112233` geçer) — desen
+birebir uygulandı, sonucu belgelendi.
+
+### 4.13.3 Müşteri odaklı satış ve bileşik iskonto
+
+- **Müşteri açılır menüsü** Katalog & Satış'ın tepesinde (`#musteriSecim`,
+  "Ünvan — %X İskonto"); `🔍 Ara` modal araması kaldı.
+- Müşteri seçilince `PlasiyerSiparisMotor.musteriIskontosuUygula` bayi
+  iskontosunu (tavana kırparak) sepete yazar ve **vitrin yeniden çizilir**:
+  kart/matris/modal fiyatı NET, liste fiyatı çizili.
+- **Bileşik formül tek yerde** (`netFiyat`): `Net = Liste × (1 − bayi/100) × (1 − ödeme/100)`.
+  `sepet.iskonto` = bayi (tavana tabi), `sepet.odemeIskonto` = ödeme yöntemi
+  (`odemeSec` müşterinin `odemeIskontolari` tablosundan okur; **tavana tabi
+  değil** — şirket kuralıdır). Sunucu aynı sırayla iki ücret satırı yazar.
+- **Yeni müşteri formu:** Ünvan*, Yetkili*, Kimlik No* (VKN/TCKN), GSM*,
+  E-posta, İl*, İlçe, Bayi iskontosu (≤ tavan). Hatalar alan altında **hepsi
+  birden**. **Yerel mükerrer uyarısı** (kimlik/telefon eldeki listede varsa
+  "Onu seç" düğmesi) — zorunlu engel değil, sunucu son sözü söyler.
+- Kayıt `musteri:kuyruga` IPC'siyle ana süreçte eklenir; sipariş
+  `siparis:kuyruga` ile. **Renderer artık oku-değiştir-yaz yapmaz** (eşitleme
+  ile yarış gönderilmiş siparişi diriltebiliyordu). Gövde `yerelKimlik`
+  (`sip-<uuid>`) taşır → sunucunun çift gönderim koruması artık besleniyor.
+- **Müşterilerim** sekmesi: portföy kartları (kimlik, telefon, il, bayi %,
+  bakiye), `[🛍️ Sipariş Yaz] [📝 Ziyaret Notu] [Profil]`; profilde son
+  siparişler + bu müşterinin notları. **Saha Notlarım** bölümü bu sekmenin
+  altında (kimlikler `#notlarimKab/#notlarimOzet/#notlarimYenile` korundu,
+  rozet `#notlarimSayaci` Müşterilerim düğmesinde). `sekmeAc('notlarim')` geriye
+  dönük çalışır.
+- **Kendi Siparişlerim** tepesinde çevrimdışı **kuyruk şeridi**
+  (`#plasiyerKuyrukKab`, yalnızca saha kabuğunda): bekleyen / KİLİTLİ
+  (sebebiyle) + `[⟳ Şimdi Eşitle]`.
+- Not köprüsü: çevrimdışı müşteriye yazılan ziyaret notu `temp_musteri_`
+  metniyle bekler, `notKoprusuKur` müşteri eşitlenince gerçek kimliğe çevirir
+  (eskiden 0 gidiyor, not sahipsiz kalıyordu).
+- Yönetici → Pazarlamacılar formuna **İskonto tavanı (%)** alanı ve tabloya
+  "Tavan" sütunu eklendi (sunucu `maxIskonto`'yu zaten okuyordu, form
+  göndermiyordu).
+
+**Yükleme sırası (index.html):** … renderer-vitrin → **dogrulama.js →
+kabuk-yonlendirici.js** → renderer-plasiyer → plasiyer-yonetimi → … (yönlendirici
+ve doğrulama, renderer-plasiyer'den ÖNCE).
+
+### Bozmaman gereken sözler (Faz 9)
+- Kabuk sökme **boot bitmeden** çalışmaz (`__byomHazir`); `byom:hazir`
+  renderer.js'te `olaylariBagla()`'dan hemen sonra yayılır.
+- `data-kabuk="admin plasiyer"` düğümler **hiç sökülmez** (`#sekme-siparisler`).
+- Her yeni `.menu-btn` ve `.sekme-govde` `data-kabuk` taşır; menü düğmesinde
+  `data-kabuk === data-rol-izin`.
+- Ödeme iskontosu **tavana tabi değildir**; bayi iskontosu **tavana kırpılır**.
+- `geciciMusteri` doğrulama YAPMAZ (form doğrular); `yerelKimlik` her gövdede
+  benzersizdir.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -898,14 +1009,14 @@ engelliyor.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**480 test**: panel 222 + kök 258).
+İkisini birden `../scripts/check-all.js` koşar (**525 test**: panel 253 + kök 272).
 
 ```bash
-# Bu submodule'un kendi birim testleri (222 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (253 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
-node --test test/plasiyer-siparis.test.js   # 40 — koli matematigi, sepet, son siparis, UUID, tavan,
+node --test test/plasiyer-siparis.test.js   # 47 — koli matematigi, sepet, son siparis, UUID, tavan,
                                             #      kendiSiparisleri ("Kendi Siparislerim" suzgeci)
 node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprusu, hata toleransi,
                                             #      esitlemeGerekliMi (Faz 4 oto-esitleme karari)
@@ -950,7 +1061,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (480 test)
+# Bitirirken: üç katmanın tamamı (525 test)
 node scripts/check-all.js
 ```
 
@@ -1028,7 +1139,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 156 php / 76 js / 480 test
+cd .. && node scripts/check-all.js     # 0 hata / 158 php / 81 js / 525 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

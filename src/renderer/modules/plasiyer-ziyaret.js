@@ -212,7 +212,13 @@
     if (dugme) dugme.disabled = true;
 
     var yuk = {
-      musteriId: musteri && !isNaN(Number(musteri.id)) ? Number(musteri.id) : 0,
+      /* Sayısal kimlik → sayı; çevrimdışı müşteri → temp_musteri_<uuid> METNİ
+         (Faz 9). Eskiden 0 gidiyordu ve not sunucuda sahipsiz kalıyordu;
+         artık eşitleme köprüsü (sync-motor → notKoprusuKur) notu müşteri
+         eşitlendikten sonra gerçek kimliğe bağlar. */
+      musteriId: musteri
+        ? (!isNaN(Number(musteri.id)) ? Number(musteri.id) : String(musteri.id))
+        : 0,
       il: String((musteri && musteri.il) || ''),
       etiketler: etiketler,
       not: metin,
@@ -444,14 +450,16 @@
     if (bagli) return;
     bagli = true;
 
-    /* "Saha Notlarım" sekmesi: sekmeAc'ı SARAR (renderer.js'e dokunmadan). */
+    /* "Saha Notlarım" artık Müşterilerim sekmesinin alt bölümü (Faz 9):
+       sekmeAc'ı SARAR (renderer.js'e dokunmadan). Eski 'notlarim' adı da
+       geriye dönük çalışır. */
     if ('function' === typeof window.sekmeAc) {
       var ozgunSekme = window.sekmeAc;
 
       window.sekmeAc = function (ad) {
         var sonuc = ozgunSekme.apply(this, arguments);
 
-        if ('notlarim' === ad) sekmeyiAc();
+        if ('musterilerim' === ad || 'notlarim' === ad) sekmeyiAc();
 
         return sonuc;
       };

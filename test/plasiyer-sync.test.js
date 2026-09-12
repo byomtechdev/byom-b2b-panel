@@ -508,3 +508,49 @@ test('ozetMesaji: hatalar da sayılır', (t) => {
   assert.match(mesaj, /2 adet bekleyen sipariş/);
   assert.match(mesaj, /2 kayıt gönderilemedi/);
 });
+
+/* =========================================================================
+ * FAZ 9 — NOT KÖPRÜSÜ: çevrimdışı müşteriye yazılan ziyaret notu da
+ * müşteri eşitlenince gerçek kimliğe bağlanır (eskiden 0 gidiyordu).
+ * ====================================================================== */
+
+test('notKoprusuKur: gecici musterili notun kimligi DEGISTIRILIR, izi kalir', (t) => {
+  const notlar = [
+    { durum: 'bekliyor', musteriId: S.GECICI_ONEK + 'a', not: 'x', yerelKimlik: 'n1' },
+    { durum: 'bekliyor', musteriId: 20, not: 'y', yerelKimlik: 'n2' },
+    { durum: 'bekliyor', musteriId: S.GECICI_ONEK + 'yok', not: 'z', yerelKimlik: 'n3' }
+  ];
+
+  const s = S.notKoprusuKur(notlar, { [S.GECICI_ONEK + 'a']: 77 });
+
+  assert.equal(s.koprulenen, 1);
+  assert.equal(s.bekleyen, 1, 'karsiligi olmayan not dokunulmadan bekler');
+  assert.equal(notlar[0].musteriId, 77);
+  assert.equal(notlar[0].geciciKimlik, S.GECICI_ONEK + 'a', 'teshis izi');
+  assert.equal(notlar[1].musteriId, 20, 'gercek kimlik degismez');
+  assert.equal(notlar[2].musteriId, S.GECICI_ONEK + 'yok');
+});
+
+test('notKoprusuKur: bozuk girdi cokertmez', (t) => {
+  assert.deepEqual(S.notKoprusuKur(null, {}), { koprulenen: 0, bekleyen: 0 });
+  assert.deepEqual(S.notKoprusuKur([null, {}, 5], null), { koprulenen: 0, bekleyen: 0 });
+});
+
+test('esitle: notlar da kopruden gecer — musteri esitlenince not gercek kimlikle gider', async (t) => {
+  const musteriler = [geciciMusteri('k', 'Kopru Ltd')];
+  const notlar = [{ durum: 'bekliyor', musteriId: S.GECICI_ONEK + 'k', etiketler: ['stok-dolu'], not: '', yerelKimlik: 'n-k' }];
+  const gidenNotlar = [];
+
+  const ozet = await S.esitle(
+    { musteriler, siparisler: [], notlar },
+    {
+      musteri: async () => ({ ok: true, durum: 200, veri: { user_id: 501 } }),
+      siparis: async () => ({ ok: true, durum: 200, veri: { siparisId: 1 } }),
+      not: async (n) => { gidenNotlar.push(n.musteriId); return { ok: true, durum: 200, veri: { notId: 9 } }; }
+    }
+  );
+
+  assert.equal(ozet.koprulenen, 1, 'not koprulendi');
+  assert.deepEqual(gidenNotlar, [501], 'not GERCEK kimlikle gitti (0 degil)');
+  assert.equal(notlar[0].durum, S.GONDERILDI);
+});

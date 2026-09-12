@@ -21,6 +21,17 @@
  *  geri bildirim verir. SON SÖZ SUNUCUDADIR
  *  (B2B_Plasiyer::iskonto_gecerli_mi). İki yerde kural olması bilinçli bir
  *  tekrar değil; biri hız, diğeri güvenlik.
+ *
+ *  BİLEŞİK İSKONTO (Faz 9) — TEK FORMÜL:
+ *      Net = Liste × (1 − bayi/100) × (1 − ödemeYöntemi/100)
+ *  `sepet.iskonto`      = BAYİ iskontosu (müşteri seçilince onun oranından
+ *                          gelir, tavana kırpılır; plasiyer düşürebilir)
+ *  `sepet.odemeIskonto` = ÖDEME YÖNTEMİ iskontosu (Nakit/Vade/Kart —
+ *                          müşterinin `odemeIskontolari` tablosundan, o tablo
+ *                          sunucunun ödeme matrisinden gelir)
+ *  İki oran TOPLANMAZ, ardışık uygulanır: %10 + %5 ≠ %15, = %14,5. Toplamak
+ *  müşteriye söylenen fiyatla sunucunun yazdığı fiyatı ayrıştırırdı; sunucu
+ *  da aynı sırayla iki ayrı ücret satırı yazar (class-b2b-rest-plasiyer.php).
  * ==========================================================================*/
 
 (function (kok) {
@@ -113,7 +124,8 @@
       odeme: '',
       vadeNotu: '',
       siparisNotu: '',
-      iskonto: 0
+      iskonto: 0,        // bayi iskontosu (%), tavana tabidir
+      odemeIskonto: 0    // ödeme yöntemi iskontosu (%) — bkz. odemeSec
     };
   }
 
@@ -206,11 +218,37 @@
     return Math.round((Number(n) || 0) * 100) / 100;
   }
 
+  /** Yüzdeyi 0-100 aralığına güvenli oturtur (bileşik formülün girdileri). */
+  function yuzde(n) {
+    n = Number(n);
+
+    if (!isFinite(n) || n < 0) return 0;
+
+    return Math.min(100, n);
+  }
+
   /**
-   * Sepet toplamları.
+   * BİLEŞİK NET FİYAT — Net = Liste × (1 − bayi/100) × (1 − ödeme/100).
    *
-   * İskonto TAVANLA sınırlanarak uygulanır: arayüzde bir hata olsa bile
-   * hesaplanan tutar yöneticinin izin verdiği sınırın altına inemez.
+   * Vitrin kartı, matris satırı ve sepet satırı fiyatı BU fonksiyondan basar;
+   * toplamlar da aynı iki oranla hesaplanır. Formül tek yerde durur.
+   */
+  function netFiyat(liste, bayiOrani, odemeOrani) {
+    var l = Number(liste) || 0;
+
+    return kurus(l * (1 - yuzde(bayiOrani) / 100) * (1 - yuzde(odemeOrani) / 100));
+  }
+
+  /**
+   * Sepet toplamları — bileşik iskonto.
+   *
+   * Bayi iskontosu TAVANLA sınırlanarak uygulanır: arayüzde bir hata olsa bile
+   * hesaplanan tutar yöneticinin izin verdiği sınırın altına inemez. Ödeme
+   * yöntemi iskontosu tavana TABİ DEĞİLDİR: o plasiyerin verdiği bir taviz
+   * değil, mağazanın ödeme matrisinde yazan şirket kuralıdır.
+   *
+   * Alan adları Faz 2 ile geriye uyumlu: `indirim`/`iskontoOrani` bayi
+   * katmanıdır, `genelToplam` her iki katmandan sonraki nettir.
    */
   function toplamlar(sepet, tavan) {
     var araToplam = 0;
@@ -227,6 +265,10 @@
 
     var oran = uygulanabilirIskonto(sepet.iskonto, tavan);
     var indirim = kurus(araToplam * (oran / 100));
+    var bayiSonrasi = kurus(araToplam - indirim);
+
+    var odemeOrani = yuzde(sepet.odemeIskonto);
+    var odemeIndirim = kurus(bayiSonrasi * (odemeOrani / 100));
 
     return {
       satir: sepet.satirlar.length,
@@ -235,8 +277,67 @@
       araToplam: kurus(araToplam),
       iskontoOrani: oran,
       indirim: indirim,
-      genelToplam: kurus(araToplam - indirim)
+      bayiSonrasi: bayiSonrasi,
+      odemeIskontoOrani: odemeOrani,
+      odemeIndirim: odemeIndirim,
+      genelToplam: kurus(bayiSonrasi - odemeIndirim)
     };
+  }
+
+  /**
+   * Müşterinin ödeme yöntemi iskontosu (%).
+   *
+   * Kaynak: bayi yükündeki `odemeIskontolari` = { nakit, vade, kart } —
+   * sunucu bunu müşterinin grubuna (bireysel/kurumsal) göre ödeme matrisinden
+   * hesaplayıp verir. Bilinmeyen yöntem ya da eksik tablo → 0 (iskonto yok).
+   */
+  function odemeIskontosu(musteri, yontem) {
+    var tablo = (musteri && musteri.odemeIskontolari) || {};
+
+    if (!odemeGecerliMi(yontem)) return 0;
+
+    return yuzde(tablo[yontem]);
+  }
+
+  /**
+   * Ödeme yöntemini seçer ve ödeme iskontosunu müşteriden okur.
+   *
+   * Yöntem geçersizse seçim TEMİZLENİR (boş) — "bilmiyorum" hâlinde eski
+   * yöntemin iskontosunu taşımak yanlış fiyat demekti.
+   */
+  function odemeSec(sepet, yontem) {
+    if (!odemeGecerliMi(yontem)) {
+      sepet.odeme = '';
+      sepet.odemeIskonto = 0;
+      return sepet;
+    }
+
+    sepet.odeme = String(yontem);
+    sepet.odemeIskonto = odemeIskontosu(sepet.musteri, sepet.odeme);
+
+    return sepet;
+  }
+
+  /**
+   * Müşteri seçilince sepete uygulanır: bayi iskontosu müşterinin oranıdır
+   * (tavana kırpılır), ödeme iskontosu seçili yönteme göre tazelenir.
+   *
+   * Müşteri `null` ise iki oran da SIFIRLANIR — müşterisiz sepet liste
+   * fiyatı gösterir.
+   */
+  function musteriIskontosuUygula(sepet, musteri, tavan) {
+    sepet.musteri = musteri || null;
+
+    if (!musteri) {
+      sepet.iskonto = 0;
+      sepet.odemeIskonto = 0;
+      return sepet;
+    }
+
+    sepet.iskonto = uygulanabilirIskonto(musteri.iskonto, tavan);
+    sepet.odemeIskonto = odemeIskontosu(musteri, sepet.odeme);
+
+    return sepet;
   }
 
   /* ------------------------------------------------------------------ *
@@ -401,6 +502,16 @@
 
     if (!unvan) return { ok: false, hata: 'Firma ünvanı zorunludur.', musteri: null };
 
+    /*
+     * ALGORİTMİK DOĞRULAMA BURADA DEĞİL: TCKN/VKN/GSM denetimi
+     * src/shared/dogrulama.js → musteriFormuDenetle'de yapılır ve arayüz onu
+     * bu çağrıdan ÖNCE koşturur (tüm hatalar birden gösterilir). Bu fonksiyon
+     * yalnızca kaydı ŞEKİLLENDİRİR; kimlik türü (tckn/vkn) formdan gelir.
+     */
+    var iskonto = Number(bilgi.iskonto);
+
+    if (!isFinite(iskonto) || iskonto < 0) iskonto = 0;
+
     return {
       ok: true,
       hata: '',
@@ -410,12 +521,20 @@
         senkron: false,
         unvan: unvan,
         ad: String(bilgi.yetkili || bilgi.ad || unvan).trim(),
-        vergiNo: String(bilgi.vergiNo || '').trim(),
+        vergiNo: String(bilgi.vergiNo || bilgi.kimlikNo || '').trim(),
+        kimlikTuru: String(bilgi.kimlikTuru || '').trim(),
         telefon: String(bilgi.telefon || '').trim(),
         eposta: String(bilgi.eposta || '').trim(),
         il: String(bilgi.il || '').trim(),
         ilce: String(bilgi.ilce || '').trim(),
         adres: String(bilgi.adres || '').trim(),
+        /* Bayi iskontosu (%) — plasiyerin verdiği; tavan denetimi formda ve
+           sunucuda. Ödeme iskontoları sunucudan gelir; çevrimdışı müşteride
+           henüz yoktur (boş tablo = 0). */
+        iskonto: Math.min(100, iskonto),
+        odemeIskontolari: (bilgi.odemeIskontolari && 'object' === typeof bilgi.odemeIskontolari)
+          ? bilgi.odemeIskontolari
+          : {},
         acikBakiye: 0,
         olusturma: new Date().toISOString()
       }
@@ -490,11 +609,20 @@
     return { ok: 0 === hatalar.length, hatalar: hatalar };
   }
 
-  /** Sunucuya gidecek gövde (Faz 2 eşitleme kuyruğu bunu saklar). */
+  /**
+   * Sunucuya gidecek gövde (eşitleme kuyruğu bunu saklar).
+   *
+   * `yerelKimlik` (Faz 9): sipariş DİSKE yazılırken bir kez üretilir ve
+   * sunucuya gider. Sunucu aynı kimlikle ikinci kez gelen isteğe var olan
+   * siparişi döner (`tekrar: true`). Bu olmadan ağ kesintisinde "sunucu
+   * yazdı ama yanıt kayboldu" hâli, sıradaki turda AYNI siparişi ikinci kez
+   * açıyordu — ciro ve cari iki kez işleniyordu.
+   */
   function siparisGovdesi(sepet, plasiyer, tavan) {
     var t = toplamlar(sepet, tavan);
 
     return {
+      yerelKimlik: 'sip-' + uuid(),
       plasiyerId: Number((plasiyer && plasiyer.id) || 0) || 0,
       musteriId: sepet.musteri ? sepet.musteri.id : 0,
       geciciMusteri: !!(sepet.musteri && geciciMi(sepet.musteri.id)) ? sepet.musteri : null,
@@ -502,6 +630,8 @@
       vadeNotu: String(sepet.vadeNotu || ''),
       siparisNotu: String(sepet.siparisNotu || ''),
       iskontoOrani: t.iskontoOrani,
+      bayiIskontoOrani: t.iskontoOrani,
+      odemeIskontoOrani: t.odemeIskontoOrani,
       toplamlar: t,
       kalemler: sepet.satirlar.map(function (s) {
         return {
@@ -533,6 +663,11 @@
     bosalt: bosalt,
     satirBul: satirBul,
     toplamlar: toplamlar,
+    /* bileşik iskonto (Faz 9) */
+    netFiyat: netFiyat,
+    odemeIskontosu: odemeIskontosu,
+    odemeSec: odemeSec,
+    musteriIskontosuUygula: musteriIskontosuUygula,
     /* iskonto */
     tavaniOku: tavaniOku,
     uygulanabilirIskonto: uygulanabilirIskonto,

@@ -298,6 +298,7 @@
           '</td>' +
           '<td class="py-4 pr-4 text-center font-bold">' + (Number(p.bayi) || 0) + '</td>' +
           '<td class="py-4 pr-4 text-center font-bold">' + (Number(p.siparis) || 0) + '</td>' +
+          '<td class="py-4 pr-4 text-center font-bold" title="İskonto tavanı">%' + kacis(String(Number(p.maxIskonto) || 0)) + '</td>' +
           '<td class="py-4 pr-4 min-w-56">' +
             '<div class="font-extrabold">' + kacis(paraYaz(ciro)) + '</div>' +
             '<div class="mt-2 h-2.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">' +
@@ -329,6 +330,7 @@
               '<th class="pb-3 pr-4">Bölge</th>' +
               '<th class="pb-3 pr-4 text-center">Bayi</th>' +
               '<th class="pb-3 pr-4 text-center">Sipariş</th>' +
+              '<th class="pb-3 pr-4 text-center">Tavan</th>' +
               '<th class="pb-3 pr-4">Ciro</th>' +
               '<th class="pb-3 text-right">İşlem</th>' +
             '</tr>' +
@@ -382,6 +384,10 @@
           .map(function (b) { return '<option value="' + b + '"></option>'; }).join('') +
       '</datalist>' +
 
+      '<label class="block mt-4 text-sm font-bold text-slate-600 dark:text-slate-300" for="pfTavan">İskonto tavanı (%) <span class="font-normal opacity-70">— sahada verebileceği en yüksek bayi iskontosu</span></label>' +
+      '<input id="pfTavan" type="number" min="0" max="100" step="0.5" class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold" value="' + kacis(String((mevcut && null !== mevcut.maxIskonto && undefined !== mevcut.maxIskonto) ? mevcut.maxIskonto : '')) + '" placeholder="0" />' +
+      '<p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Boş bırakılırsa mağazanın genel tavanı geçerlidir. Tanımsız tavan SINIRSIZ değil SIFIRDIR; son söz sunucudadır.</p>' +
+
       '<label class="block mt-4 text-sm font-bold text-slate-600 dark:text-slate-300" for="pfPin">PIN (4-6 rakam)</label>' +
       '<input id="pfPin" type="password" inputmode="numeric" autocomplete="off" maxlength="6" class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xl font-black tracking-[0.3em] text-center" placeholder="••••" />' +
       '<p class="mt-2 text-xs text-slate-500 dark:text-slate-400">' +
@@ -414,12 +420,27 @@
     var hata = el('pfHata');
     var pinAlan = el('pfPin');
 
+    var tavanAlan = el('pfTavan');
+    var tavanMetin = String((tavanAlan && tavanAlan.value) || '').trim();
+
     var govde = {
       plasiyer_id: mevcut ? Number(mevcut.id) : 0,
       ad: String(el('pfAd').value || '').trim(),
       bolge: String(el('pfBolge').value || '').trim(),
+      /* '' = tavanı kaldır (globale dön); sayı = kişiye özel tavan. */
+      maxIskonto: tavanMetin,
       pin: String((pinAlan && pinAlan.value) || '')
     };
+
+    if ('' !== tavanMetin) {
+      var tavanSayi = Number(tavanMetin.replace(',', '.'));
+
+      if (!isFinite(tavanSayi) || tavanSayi < 0 || tavanSayi > 100) {
+        return yaz(hata, 'İskonto tavanı 0-100 arasında olmalıdır.');
+      }
+
+      govde.maxIskonto = tavanSayi;
+    }
 
     if (!mevcut) {
       govde.kullanici = String((el('pfKullanici') || {}).value || '').trim();

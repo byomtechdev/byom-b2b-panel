@@ -10,6 +10,20 @@
 
 const { ipcRenderer } = require('electron');
 
+/*
+ * BOOT BAYRAĞI — KABUK YÖNLENDİRİCİSİ İÇİN (Faz 9).
+ *
+ * `olaylariBagla()` aşağıda NULL KORUMASIZ `$('#…').addEventListener`
+ * çağrılarıyla dolu ve iki IPC turu SONRA çalışır. Kabuk yönlendiricisi
+ * (src/renderer/kabuk-yonlendirici.js) o iş bitmeden bir yönetici düğümünü
+ * belgeden sökerse bağlayıcı patlar ve uygulama ölü ekranda kalır. Bu yüzden
+ * bayrak burada `false` başlar, `baslat()` içinde bağlayıcı bitince `true`
+ * olur ve `byom:hazir` olayı yayılır; yönlendirici o ana kadar gelen kabuk
+ * geçişini erteler. Test ortamında renderer.js yüklenmediği için bayrak
+ * tanımsızdır ve yönlendirici beklemez.
+ */
+window.__byomHazir = false;
+
 /* ==========================================================================
  *  BÖLÜM 1 — YARDIMCI FONKSİYONLAR
  * ========================================================================*/
@@ -565,6 +579,10 @@ const durum = {
   uyeler: [],
   yuklenenGorseller: [],    // Ürün ekleme penceresinde sürükle-bırak ile yüklenenler
   aktifSekme: 'siparisler',
+  /* Aktif KABUK (Faz 9): 'kapi' | 'admin' | 'plasiyer'. Tek yazıcısı
+     kabuk-yonlendirici.js → kabukGec(); okuyanlar rol kararı için buna
+     değil `durum.oturum.rol`e bakar — kabuk bir GÖRÜNÜM durumudur. */
+  kabuk: 'kapi',
   canliBaglantiTamam: false,
   urunAramaZaman: null,
   uyeAramaZaman: null,
@@ -2900,6 +2918,14 @@ function siparisleriCiz() {
     return;
   }
 
+  /*
+   * ROL KAPISI (Faz 9): plasiyer görünümünde kartta YALNIZCA ürün dökümü
+   * düğmesi kalır. Yönetici eylemleri (revize, durum, depo fişi, bayi kartı,
+   * iptal, kalıcı silme) sahanın işi değildir; modalları saha kabuğunda
+   * belgede de yoktur — düğme kalsaydı tıklama TypeError üretirdi.
+   */
+  const yoneticiEylemleri = !(durum.oturum && 'plasiyer' === durum.oturum.rol);
+
   kap.innerHTML = liste.map(function (s) {
     const d = durumBilgisi(s.durum);
     const etiket = s.durumEtiketi || d.etiket;
@@ -2958,7 +2984,7 @@ function siparisleriCiz() {
       '<div class="flex flex-wrap gap-3 pt-4 border-t-2 border-dashed border-slate-200 dark:border-slate-700">' +
 
         /* Depocu koli düzenlemesi: yalnızca henüz kargolanmamış siparişlerde. */
-        (revizeEdilebilirMi(s)
+        (yoneticiEylemleri && revizeEdilebilirMi(s)
           ? '<button data-eylem="siparis-revize" data-id="' + s.id + '" ' +
                     'title="Koliye fiilen konulan adetleri girin; tutar ve KDV yeniden hesaplanır." ' +
                     'class="h-14 px-5 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95 ' +
@@ -2967,15 +2993,17 @@ function siparisleriCiz() {
             '</button>'
           : '') +
 
-        DURUM_DUGMELERI.map(function (t) { return durumDugmesiHtml(s, t); }).join('') +
+        (yoneticiEylemleri ? DURUM_DUGMELERI.map(function (t) { return durumDugmesiHtml(s, t); }).join('') : '') +
 
-        '<button data-eylem="fis" data-id="' + s.id + '" ' +
-                'class="h-14 px-5 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
-                       'text-white text-lg font-extrabold shadow-md transition">' +
-          ikon('yazici') + ' DEPO FİŞİ' +
-        '</button>' +
+        (yoneticiEylemleri
+          ? '<button data-eylem="fis" data-id="' + s.id + '" ' +
+                    'class="h-14 px-5 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
+                           'text-white text-lg font-extrabold shadow-md transition">' +
+              ikon('yazici') + ' DEPO FİŞİ' +
+            '</button>'
+          : '') +
 
-        (s.bayiId
+        (yoneticiEylemleri && s.bayiId
           ? '<button data-eylem="siparis-bayi" data-id="' + s.bayiId + '" ' +
                     'class="h-14 px-5 rounded-2xl bg-slate-700 hover:bg-slate-800 active:scale-95 ' +
                            'text-white text-lg font-extrabold shadow-md transition">' + ikon('bina') + ' BAYİ KARTI</button>'
@@ -2983,7 +3011,7 @@ function siparisleriCiz() {
 
         /* İptal: sipariş silinmez, "Sipariş İptal Edildi" durumuna alınır.
            Zaten iptal/iade edilmiş siparişte düğme gösterilmez. */
-        (['cancelled', 'refunded'].indexOf(String(s.durum)) === -1
+        (yoneticiEylemleri && ['cancelled', 'refunded'].indexOf(String(s.durum)) === -1
           ? '<button data-eylem="siparis-iptal" data-id="' + s.id + '" ' +
                     'title="Siparişi iptal et (durum: Sipariş İptal Edildi)" ' +
                     'class="h-14 px-5 rounded-2xl border-2 border-red-300 dark:border-red-500/40 ' +
@@ -2995,7 +3023,7 @@ function siparisleriCiz() {
         /* Kalıcı silme — YALNIZCA iptal edilmiş siparişlerde görünür.
            Sipariş sitedeki veritabanından tamamen kaldırılır (force=true),
            çöp kutusuna bile düşmez; bu yüzden ayrı ve koyu kırmızıdır. */
-        (durumNormalle(s.durum) === 'cancelled'
+        (yoneticiEylemleri && durumNormalle(s.durum) === 'cancelled'
           ? '<button data-eylem="siparis-sil" data-id="' + s.id + '" ' +
                     'title="Siparişi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
                     'class="h-14 px-5 rounded-2xl bg-red-700 hover:bg-red-800 active:scale-95 ' +
@@ -3726,9 +3754,15 @@ function otoYenileyiAyarla() {
   durum.otoYenileZaman = setInterval(function () {
     if (durum.aktifSekme !== 'siparisler') return;   // Sadece sipariş ekranındayken
     if (document.hidden) return;
-    if (!$('#modalKatman').classList.contains('hidden')) return;       // Açık pencere varken karıştırma
-    if (!$('#kargoModalKatman').classList.contains('hidden')) return;
-    if (!$('#bayiModalKatman').classList.contains('hidden')) return;
+
+    /* Açık pencere varken karıştırma. Yönetici modalları saha kabuğunda
+       belgede DEĞİLDİR (Faz 9) — yoksa "kapalı" sayılır. */
+    const acikPencere = ['#modalKatman', '#kargoModalKatman', '#bayiModalKatman'].some(function (secici) {
+      const katman = $(secici);
+      return katman && !katman.classList.contains('hidden');
+    });
+
+    if (acikPencere) return;
     siparisleriYukle(true);
   }, saniye * 1000);
 }
@@ -4709,6 +4743,8 @@ function yeniUrunuVurgula(id) {
 function uyeSuzgecleriCiz() {
   const kap = $('#uyeSuzgecler');
 
+  if (!kap) return;   // saha kabuğunda üye sekmesi belgede yok (Faz 9)
+
   kap.innerHTML = UYE_SUZGECLERI.map(function (f) {
     const aktif = f.kod === durum.uyeSuzgec;
 
@@ -4736,6 +4772,11 @@ function uyeSuzgecleriCiz() {
 /** Sol menüdeki kırmızı bildirim sayacı. */
 function uyeSayaciTazele() {
   const sayac = $('#uyeSayaci');
+
+  /* Saha kabuğunda "B2B Üye Onayları" düğmesi belgede DEĞİLDİR (Faz 9);
+     yönetici oturumundan kalan zamanlayıcı burayı çağırabilir. */
+  if (!sayac) return;
+
   if (durum.bekleyenUyeSayisi > 0) {
     sayac.textContent = durum.bekleyenUyeSayisi;
     sayac.classList.remove('hidden');
@@ -7668,6 +7709,10 @@ async function baslat() {
   teslimSuzgecleriCiz();
   uyeSuzgecleriCiz();
   olaylariBagla();
+
+  /* Bağlayıcılar bitti: kabuk yönlendiricisi artık düğüm sökebilir. */
+  window.__byomHazir = true;
+  document.dispatchEvent(new CustomEvent('byom:hazir'));
 
   // Canlı moddaysak önce sitede B2B Core var mı diye bakalım
   if (!durum.ayarlar.demoModu && durum.ayarlar.wooUrl && durum.ayarlar.ck && durum.ayarlar.cs) {

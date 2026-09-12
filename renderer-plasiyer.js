@@ -26,7 +26,15 @@
  *  Oturum jetonu arayüze HİÇ GELMEZ (bkz. main.js § 3.6).
  *
  *  Yükleme sırası: renderer.js ve renderer-ek.js'ten SONRA (durum, $, bildir,
- *  sekmeAc, api kısayollarını kullanır).
+ *  sekmeAc, api kısayollarını kullanır); src/renderer/kabuk-yonlendirici.js'ten
+ *  SONRA (oturum geçişlerinde `KabukYonlendirici.kabukGec` çağırır).
+ *
+ *  KABUK (Faz 9): rol ayrımı artık iki katmanlı. Asıl katman KABUK SÖKMEDİR —
+ *  karşı rolün menü düğmeleri, sekme gövdeleri ve modalları belgede HİÇ
+ *  DURMAZ (`durum.kabuk`: kapi | admin | plasiyer). Buradaki öznitelik
+ *  gizlemesi (`data-rol-gizli`) kemer-askıdır: boot bitmeden önceki kısa
+ *  pencere ve gövde içi [data-rol-izin] kutuları için. Oturum kararı yine
+ *  `durum.oturum.rol`dedir; kabuk onun görünümüdür.
  * ==========================================================================*/
 
 'use strict';
@@ -42,7 +50,7 @@
    * değiştirmek değil. `satis` sekmesi aynı veriyi salt-okunur gösterir ve
    * sipariş yazar.
    */
-  var PLASIYER_SEKMELERI = ['satis', 'siparisler', 'notlarim'];
+  var PLASIYER_SEKMELERI = ['satis', 'siparisler', 'musterilerim'];
 
   /** Kısıtlama uygulanan roller. Bunların dışı (oturum yok) kısıtlanmaz. */
   var ROLLER = ['admin', 'plasiyer'];
@@ -96,25 +104,67 @@
       .trim().split(/\s+/).filter(Boolean);
   }
 
-  /** Sekme düğmesini adından bulur. */
+  /** Sekme düğmesini adından bulur (BELGEDE olanı — sökülü düğme bulunmaz). */
   function sekmeDugmesi(ad) {
     return document.querySelector('.menu-btn[data-sekme="' + String(ad) + '"]');
   }
 
   /**
+   * İZİN TABLOSU — sekme adı → izin listesi. Açılışta, HİÇBİR düğüm henüz
+   * sökülmemişken DOM'dan bir kez okunur.
+   *
+   * NEDEN TABLO (Faz 9): kabuk yönlendiricisi karşı rolün düğmelerini belgeden
+   * SÖKER. Eski kural "menüde olmayan sekme izinlidir" sökme ile TERS
+   * çalışırdı: plasiyer kabuğunda 'ayarlar' düğmesi belgede olmadığı için
+   * 'ayarlar' plasiyere İZİNLİ sayılır, kısıtlı sekmede kalınırsa yönlendirme
+   * çalışmaz, doğrudan `sekmeAc('ayarlar')` gövdeyi açardı — yetki deliği.
+   * Tablo, düğmenin belgede olup olmamasından bağımsız cevap verir.
+   *
+   * Tek doğruluk kaynağı yine DOM İŞARETLEMESİDİR (data-rol-izin); tablo onun
+   * açılıştaki fotoğrafıdır, ikinci bir liste değil.
+   */
+  var izinTablosu = null;
+
+  function izinTablosunuKur() {
+    izinTablosu = {};
+
+    document.querySelectorAll('.menu-btn').forEach(function (btn) {
+      var ad = btn.dataset.sekme;
+      if (ad) izinTablosu[ad] = rolIzinleri(btn);
+    });
+
+    return izinTablosu;
+  }
+
+  /** Sekmenin izin listesi — tablo yoksa kurulur; menüde yoksa null. */
+  function sekmeIzinListesi(ad) {
+    if (!izinTablosu) izinTablosunuKur();
+
+    ad = String(ad);
+
+    /* Tabloya girmemiş ama şu an belgede olan düğme (sonradan eklenmiş) —
+       tabloyu tazele. */
+    if (!Object.prototype.hasOwnProperty.call(izinTablosu, ad) && sekmeDugmesi(ad)) {
+      izinTablosunuKur();
+    }
+
+    return Object.prototype.hasOwnProperty.call(izinTablosu, ad) ? izinTablosu[ad] : null;
+  }
+
+  /**
    * Rol bu sekmeyi görebilir mi?
    *
-   * Kısıtlanmayan rol (oturum yok) → her şey görünür: mevcut açılış davranışı.
+   * Kısıtlanmayan rol (oturum yok) → yalnızca her role açık olanlar.
    * İşaretlenmemiş düğme → KAPALI. Yeni bir sekme eklenip öznitelik
    * unutulursa sekme yanlış rolde sızmak yerine hiç görünmez ve hemen
-   * fark edilir.
+   * fark edilir. Menüde HİÇ olmayan ad (alt sekme, takma ad) → kısıtlanmaz.
    */
   function sekmeIzinli(ad, rol) {
-    var btn = sekmeDugmesi(ad);
+    var izin = sekmeIzinListesi(ad);
 
-    if (!btn) return true;   // menüde olmayan sekme (ör. alt sekme) kısıtlanmaz
+    if (null === izin) return true;   // menüde olmayan sekme (ör. alt sekme) kısıtlanmaz
 
-    return dugumIzinli(btn, rol);
+    return izinListesiUygun(izin, rol);
   }
 
   /**
@@ -130,37 +180,52 @@
    * anlaşılır ve özel durum gerektirmez.
    */
   function dugumIzinli(dugum, rol) {
-    var izin = rolIzinleri(dugum);
+    return izinListesiUygun(rolIzinleri(dugum), rol);
+  }
 
-    if (!izin.length) return false;
+  /** Aynı kural, izin listesi üzerinden (tablo ve düğüm için ortak). */
+  function izinListesiUygun(izin, rol) {
+    if (!izin || !izin.length) return false;
 
     if (ROLLER.indexOf(rol) !== -1) return izin.indexOf(rol) !== -1;
 
     return ROLLER.every(function (r) { return izin.indexOf(r) !== -1; });
   }
 
-  /** Rolün GÖRECEĞİ sekmeler — DOM'dan türetilir. */
+  /** Rolün GÖRECEĞİ sekmeler — izin tablosundan (açılış DOM'unun fotoğrafı). */
   function rolSekmeleri(rol) {
-    var liste = [];
+    var tablo = izinTablosu || izinTablosunuKur();
 
-    document.querySelectorAll('.menu-btn').forEach(function (btn) {
-      var ad = btn.dataset.sekme;
-      if (ad && rolIzinleri(btn).indexOf(rol) !== -1) liste.push(ad);
+    return Object.keys(tablo).filter(function (ad) {
+      return tablo[ad].indexOf(rol) !== -1;
     });
-
-    return liste;
   }
 
-  /** Rolün GÖRMEYECEĞİ sekmeler — DOM'dan türetilir (testler okuyor). */
+  /** Rolün GÖRMEYECEĞİ sekmeler — izin tablosundan (testler okuyor). */
   function kisitliSekmeler(rol) {
-    var liste = [];
+    var tablo = izinTablosu || izinTablosunuKur();
 
-    document.querySelectorAll('.menu-btn').forEach(function (btn) {
-      var ad = btn.dataset.sekme;
-      if (ad && !sekmeIzinli(ad, rol)) liste.push(ad);
+    return Object.keys(tablo).filter(function (ad) {
+      return !izinListesiUygun(tablo[ad], rol);
     });
+  }
 
-    return liste;
+  /* ------------------------------------------------------------------ *
+   *  KABUK GEÇİŞİ (Faz 9)
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Rolü kabuğa çevirip yönlendiriciye verir.
+   *
+   * Yönlendirici yüklenmemişse (eski test ortamı, bozuk paket) öznitelik
+   * gizlemesi tek başına çalışmaya devam eder — sessizce çöker, sızdırmaz.
+   */
+  function kabuguUygula(rol) {
+    var Y = window.KabukYonlendirici;
+
+    if (!Y || 'function' !== typeof Y.kabukGec) return null;
+
+    return Y.kabukGec(Y.rolKabugu(rol));
   }
 
   /**
@@ -170,7 +235,7 @@
    * işi SATIŞ YAZMAK olduğu için onun dünyasında Katalog başa alınır. Flex
    * `order` kullanılıyor: DOM'u taşımak yöneticinin sırasını bozardı.
    */
-  var PLASIYER_SIRA = { satis: '1', siparisler: '2', notlarim: '3' };
+  var PLASIYER_SIRA = { satis: '1', siparisler: '2', musterilerim: '3' };
 
   /** Plasiyer oturumunda değişen menü etiketleri (çıkışta geri alınır). */
   var PLASIYER_ETIKET = { siparisler: 'Kendi Siparişlerim' };
@@ -320,6 +385,15 @@
       });
     }
 
+    /*
+     * 1) KABUK — asıl ayrım (Faz 9). Karşı rolün düğmeleri, gövdeleri ve
+     *    modalları belgeden SÖKÜLÜR; rol yoksa (kapı) iki taraf da sökülür,
+     *    yalnızca ortak iskelet kalır. Aşağıdaki öznitelik geçişi artık
+     *    yalnızca belgede KALAN düğmeleri görür.
+     */
+    kabuguUygula(rol);
+
+    /* 2) ÖZNİTELİK — kemer-askı (boot öncesi pencere + gövde içi kutular). */
     document.querySelectorAll('.menu-btn').forEach(function (btn) {
       var ad = btn.dataset.sekme;
       var kapat = !sekmeIzinli(ad, rol);
@@ -1416,6 +1490,13 @@
 
     kuruldu = true;
 
+    /* İzin tablosu ve kabuk kayıtları, HİÇBİR düğüm sökülmemişken alınır. */
+    izinTablosunuKur();
+
+    if (window.KabukYonlendirici && 'function' === typeof window.KabukYonlendirici.kur) {
+      window.KabukYonlendirici.kur(window);
+    }
+
     olaylariBagla();
 
     if (typeof durum !== 'undefined' && durum.ayarlar) {
@@ -1460,6 +1541,9 @@
     cihaz: cihaz,
 
     PLASIYER_SEKMELERI: PLASIYER_SEKMELERI,
+    PLASIYER_SIRA: PLASIYER_SIRA,
+    izinTablosunuKur: izinTablosunuKur,
+    kabuguUygula: kabuguUygula,
     rolSekmeleri: rolSekmeleri,
     kisitliSekmeler: kisitliSekmeler,
     sekmeIzinli: sekmeIzinli,
