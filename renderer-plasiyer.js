@@ -221,28 +221,76 @@
    *  PIN AKIŞI
    * ------------------------------------------------------------------ */
 
+  /** Plasiyer listesi için süre aşımı — modal ASLA asılı kalmamalı. */
+  var LISTE_SURE_ASIMI_MS = 3000;
+
+  /** Kayıtlı plasiyer yokken gösterilen tek mesaj. */
+  var PLASIYER_YOK_MESAJI =
+    'Henüz kayıtlı pazarlamacı bulunamadı. Lütfen Yönetici Girişi yaparak plasiyer tanımlayın.';
+
+  /**
+   * İsteği süre aşımıyla yarıştırır.
+   *
+   * `b2b()` ana sürece IPC ile gider ve oradaki süre aşımı 20+ saniyedir.
+   * Giriş ekranında 20 saniye beklemek "uygulama kilitlendi" demektir; kullanıcı
+   * 3 saniyede cevap görmeli ve her hâlde çıkış yolu açık kalmalı.
+   */
+  function sureAsimiyla(soz, ms) {
+    return Promise.race([
+      soz,
+      new Promise(function (coz) {
+        window.setTimeout(function () { coz({ ok: false, sureAsimi: true }); }, ms);
+      })
+    ]);
+  }
+
   async function plasiyerleriYukle() {
     var secim = el('pinPlasiyer');
 
     if (!secim) return;
 
     secim.innerHTML = '<option value="">Yükleniyor…</option>';
+    secim.disabled = true;
 
-    var cevap = await b2b('/admin/plasiyerler');
+    hataYaz(el('pinHata'), '');
 
-    if (!cevap || !cevap.ok || !cevap.veri || !cevap.veri.ok) {
-      secim.innerHTML = '<option value="">Liste alınamadı</option>';
-      hataYaz(el('pinHata'), (cevap && cevap.hata) || 'Pazarlamacı listesi alınamadı.');
-      return;
+    var cevap;
+
+    try {
+      cevap = await sureAsimiyla(b2b('/admin/plasiyerler'), LISTE_SURE_ASIMI_MS);
+    } catch (e) {
+      cevap = { ok: false, hata: (e && e.message) || '' };
     }
 
-    plasiyerListesi = (cevap.veri.plasiyerler || []).filter(function (p) { return p && p.pinTanimli; });
+    secim.disabled = false;
+
+    /*
+     * TEK MESAJ KURALI: süre aşımı, ağ hatası, yetki hatası ve "hiç kayıt yok"
+     * hâllerinin hepsi kullanıcı için AYNI şeydir — girilecek pazarlamacı yok.
+     * Ayrı ayrı teknik metinler göstermek sahada kimseye yardımcı olmuyor;
+     * yapılacak iş her durumda aynı: yönetici girişinden plasiyer tanımla.
+     */
+    var basarisiz = !cevap || !cevap.ok || !cevap.veri || !cevap.veri.ok;
+
+    plasiyerListesi = basarisiz
+      ? []
+      : (cevap.veri.plasiyerler || []).filter(function (p) { return p && p.pinTanimli; });
 
     if (!plasiyerListesi.length) {
-      secim.innerHTML = '<option value="">PIN tanımlı pazarlamacı yok</option>';
-      hataYaz(el('pinHata'), 'Henüz PIN tanımlı bir pazarlamacı yok. Yönetici girişinden "Pazarlamacılar" sekmesinde tanımlayın.');
+      secim.innerHTML = '<option value="">— kayıtlı pazarlamacı yok —</option>';
+
+      hataYaz(el('pinHata'), PLASIYER_YOK_MESAJI);
+
+      /* Giriş düğmesi kapatılır: basılacak bir şey yok, ama perde açık kalır
+         ve kullanıcı ✕ / Geri Dön / ESC ile çıkabilir. */
+      var giris = el('pinGiris');
+      if (giris) giris.disabled = true;
+
       return;
     }
+
+    var giris2 = el('pinGiris');
+    if (giris2) giris2.disabled = false;
 
     secim.innerHTML = plasiyerListesi.map(function (p) {
       var etiket = p.ad + (p.bolge ? ' — ' + p.bolge : '');
@@ -277,6 +325,24 @@
 
     var kod = el('pinKod');
     if (kod) kod.value = '';   // PIN ekranda bile bırakılmaz
+
+    /* Giriş düğmesi bir dahaki açılışta kullanılabilir olsun. */
+    var giris = el('pinGiris');
+    if (giris) giris.disabled = false;
+
+    hataYaz(el('pinHata'), '');
+  }
+
+  /**
+   * Modalı kapatıp DOĞRUDAN yönetici akışına geçer.
+   *
+   * "Geri Dön / Yönetici Girişi" düğmesi: pazarlamacı girişi mümkün olmadığında
+   * (hiç plasiyer tanımlı değil) kullanıcının tek yapabileceği iş bu, ve iki
+   * tıklamaya bölmek gereksiz.
+   */
+  function geriDonYonetici() {
+    pinPerdesiniKapat();
+    yoneticiSec();
   }
 
   async function pinGirisDene() {
@@ -357,8 +423,22 @@
     var kapat = el('pinKapat');
     if (kapat) kapat.addEventListener('click', pinPerdesiniKapat);
 
+    var geri = el('pinGeri');
+    if (geri) geri.addEventListener('click', geriDonYonetici);
+
     var giris = el('pinGiris');
     if (giris) giris.addEventListener('click', pinGirisDene);
+
+    /*
+     * PERDEYE TIKLAMA KAPATIR. Hedef denetimi şart: kartın İÇİNE tıklamak
+     * (select açmak, PIN yazmak) perdeyi kapatmamalı. `currentTarget`
+     * karşılaştırması tam bunu ayırır.
+     */
+    if (pinPerde) {
+      pinPerde.addEventListener('click', function (olay) {
+        if (olay.target === pinPerde) pinPerdesiniKapat();
+      });
+    }
 
     var kod = el('pinKod');
 
@@ -430,7 +510,14 @@
     kisitlamayiUygula: kisitlamayiUygula,
     cikisYap: cikisYap,
     kapiyiGoster: kapiyiGoster,
+    yoneticiSec: yoneticiSec,
+    pinPerdesiniAc: pinPerdesiniAc,
+    pinPerdesiniKapat: pinPerdesiniKapat,
+    geriDonYonetici: geriDonYonetici,
+    plasiyerleriYukle: plasiyerleriYukle,
     PLASIYER_SEKMELERI: PLASIYER_SEKMELERI,
-    KISITLI_SEKMELER: KISITLI_SEKMELER
+    KISITLI_SEKMELER: KISITLI_SEKMELER,
+    LISTE_SURE_ASIMI_MS: LISTE_SURE_ASIMI_MS,
+    PLASIYER_YOK_MESAJI: PLASIYER_YOK_MESAJI
   };
 })();

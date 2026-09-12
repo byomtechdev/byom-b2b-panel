@@ -458,6 +458,44 @@ test('ozetMesaji: yapılan işi insan diliyle söyler', (t) => {
   assert.match(mesaj, /1 ziyaret notu gönderildi/);
 });
 
+/* =========================================================================
+ * 8. OTOMATİK TETİKLEME KARARI (Faz 4)
+ * ====================================================================== */
+
+test('esitlemeGerekliMi: bekleyen kayıt varsa EVET', (t) => {
+  assert.equal(S.esitlemeGerekliMi({ ok: true, siparis: 1, musteri: 0, not: 0, hatali: 0 }), true, 'siparis bekliyor');
+  assert.equal(S.esitlemeGerekliMi({ ok: true, siparis: 0, musteri: 2, not: 0, hatali: 0 }), true, 'musteri bekliyor');
+  assert.equal(S.esitlemeGerekliMi({ ok: true, siparis: 0, musteri: 0, not: 3, hatali: 0 }), true, 'not bekliyor');
+});
+
+test('esitlemeGerekliMi: KUYRUK BOŞSA ağa çıkılmaz', (t) => {
+  /*
+   * Her 60 saniyede boşa istek atmak müşterinin sitesini gereksiz yorar ve
+   * sahada veri kotasını yakar.
+   */
+  assert.equal(S.esitlemeGerekliMi({ ok: true, siparis: 0, musteri: 0, not: 0, hatali: 0 }), false);
+});
+
+test('esitlemeGerekliMi: eşitleme SÜRÜYORSA ikinci tur başlamaz', (t) => {
+  assert.equal(S.esitlemeGerekliMi({ ok: true, suruyor: true, siparis: 5, hatali: 0 }), false);
+});
+
+test('esitlemeGerekliMi: HEPSİ kalıcı hatalıysa denenmez', (t) => {
+  /*
+   * 4xx almış bir kayıt yüzünden dakikada bir boşa istek atılmamalı; kuyruk
+   * hiç boşalmaz ve kullanıcı o kayıtları zaten listede görüyor.
+   */
+  assert.equal(S.esitlemeGerekliMi({ ok: true, siparis: 2, musteri: 0, not: 0, hatali: 2 }), false, 'ikisi de kalici');
+  assert.equal(S.esitlemeGerekliMi({ ok: true, siparis: 3, musteri: 0, not: 0, hatali: 2 }), true, 'biri hala denenebilir');
+  assert.equal(S.esitlemeGerekliMi({ ok: true, siparis: 1, musteri: 1, not: 0, hatali: 1 }), true, 'musteri denenebilir');
+});
+
+test('esitlemeGerekliMi: bozuk/başarısız durum yanıtı EVET demez', (t) => {
+  [null, undefined, {}, { ok: false, siparis: 5 }, 'bozuk', 0].forEach((x) => {
+    assert.equal(S.esitlemeGerekliMi(x), false, 'girdi: ' + String(x));
+  });
+});
+
 test('ozetMesaji: hatalar da sayılır', (t) => {
   const mesaj = S.ozetMesaji({
     toplamGonderilen: 2,

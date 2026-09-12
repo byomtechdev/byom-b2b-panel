@@ -1821,6 +1821,9 @@ function urunNormalle(u) {
     kdv: kdvOraniCoz(u),
     /* "Sadece koli olarak satılır" — kural eklentide, rozet burada. */
     sadeceKoli: sadeceKoliCoz(u),
+    /* "SPOT / FIRSAT" — patronun öne çıkardığı ürün. Plasiyer vitrininde
+       rozet basılır ve kategorinin en tepesine sabitlenir. */
+    spot: spotCoz(u),
     koliAdedi: koliAdediCoz(u),
     kategoriler: (u.categories || []).map(function (k) {
       return { id: Number(k.id || 0), ad: String(k.name || '') };
@@ -1861,6 +1864,31 @@ function kdvOraniCoz(u) {
  * b2b-core hazır `only_box` alanı verir; WooCommerce yolunda meta_data
  * içindeki `_byom_only_box` okunur.
  */
+/**
+ * "SPOT / FIRSAT" bayrağını çözer.
+ *
+ * b2b-core hazır `byom.spot` alanı verir (B2B_REST_Hooks::prepare_product);
+ * WooCommerce yolunda meta_data içindeki `_byom_spot` okunur. İki kaynağın
+ * sırası `sadeceKoliCoz` ile birebir aynı — aynı işin iki farklı biçimde
+ * yazılması kafa karıştırırdı.
+ */
+function spotCoz(u) {
+  if (u && u.byom && u.byom.spot !== undefined && u.byom.spot !== null && u.byom.spot !== '') {
+    return u.byom.spot === true || u.byom.spot === 'yes' || u.byom.spot === 1 || u.byom.spot === '1';
+  }
+
+  const meta = (u && u.meta_data) || [];
+
+  for (let i = 0; i < meta.length; i++) {
+    if (meta[i] && meta[i].key === '_byom_spot') {
+      const v = String(meta[i].value);
+      return v === 'yes' || v === '1' || v === 'true';
+    }
+  }
+
+  return false;
+}
+
 function sadeceKoliCoz(u) {
   if (u && u.only_box !== undefined && u.only_box !== null && u.only_box !== '') {
     return u.only_box === true || u.only_box === 'yes' || u.only_box === 1 || u.only_box === '1';

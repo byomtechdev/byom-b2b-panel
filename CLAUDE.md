@@ -87,6 +87,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/harita-veri.js`** | **DOM'suz 81 il kütüğü + ziyaret notu mantığı** (Faz 3): plaka/ad/bölge/konum, durum geçişleri, filtreler, yoğunluk. **Gerçek sınır yolları YOK** — gerekçe dosya başlığında (→ §4.8) | — |
 | **`src/renderer/modules/harita-kokpit.js`** | **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. `sekmeAc`'ı SARAR | — |
 | **`src/renderer/modules/plasiyer-ziyaret.js`** | **Saha ziyaret notu** (Faz 3): plasiyerin not girişi (İSTEĞE BAĞLI) + patron yanıtlarının düştüğü bildirim zili. `PlasiyerMusteri.seridiCiz`'i SARAR | — |
+| **`src/renderer/modules/plasiyer-otosync.js`** | **Otomatik eşitleme tetikleyicisi** (Faz 4): `online` olayı + 60 sn hafif yoklama + `visibilitychange`. Kuyruk boşsa **ağa çıkmaz**, hata sessizdir (→ §4.7) | — |
 | `lisans/lisans.html` + `lisans/lisans.js` | Lisans/aktivasyon penceresi — ana pencereden bağımsız | — |
 | `vendor/tailwind.js` | Yerel Tailwind kopyası (internetsiz sunum). Bulunamazsa CDN, o da olmazsa yedek CSS | — |
 
@@ -108,18 +109,30 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 ## 2. Betik yükleme sırası (index.html sonu) — bozulmaz
 
 ```
-src/renderer/telemetry.js   ← <head>, EN ÖNCE: sonraki her betiğin hatasını yakalar
-vendor/tailwind.js
-renderer.js                 ← çekirdek: durum, $, bildir, api/woo/b2b, sekmeAc
-renderer-ek.js              ← renderer.js'i sarar
-src/renderer/sira-motor.js  ← ızgaradan ÖNCE (DOM'suz motor)
-renderer-izgara.js
-renderer-excel.js           ← ızgaranın olay bağlamasını sarar
-renderer-byom.js
-src/renderer/vitrin-motor.js
-renderer-vitrin.js
-renderer-plasiyer.js        ← kapı + rol kısıtlaması (durum, $, bildir, sekmeAc, kacis)
-src/renderer/modules/plasiyer-yonetimi.js  ← EN SON: sekmeAc'ı SARAR
+src/renderer/telemetry.js   ← <head>:16, EN ÖNCE: sonraki her betiğin hatasını yakalar
+vendor/tailwind.js                                    (49)
+renderer.js                 ← çekirdek: durum, $, bildir, api/woo/b2b, sekmeAc   (4190)
+renderer-ek.js              ← renderer.js'i sarar     (4193)
+src/renderer/sira-motor.js  ← ızgaradan ÖNCE (DOM'suz motor)   (4201)
+renderer-izgara.js                                    (4202)
+renderer-excel.js           ← ızgaranın olay bağlamasını sarar  (4207)
+renderer-byom.js                                      (4209)
+src/renderer/vitrin-motor.js                          (4214)
+renderer-vitrin.js                                    (4215)
+─── Plasiyer Faz 1 ────────────────────────────────────────────
+renderer-plasiyer.js        ← kapı + rol kısıtlaması (durum, $, bildir, sekmeAc, kacis)  (4225)
+modules/plasiyer-yonetimi.js   ← sekmeAc'ı SARAR      (4226)
+─── Plasiyer Faz 2 ────────────────────────────────────────────
+src/renderer/plasiyer-siparis-motor.js  ← DOM'suz; vitrinden ÖNCE  (4233)
+modules/plasiyer-vitrin.js  ← sekmeAc'ı SARAR         (4234)
+modules/plasiyer-musteri.js ← vitrinin sepetini okur → ondan SONRA (4235)
+─── Plasiyer Faz 3 ────────────────────────────────────────────
+src/renderer/plasiyer-sync-motor.js  ← DOM'suz        (4245)
+src/renderer/harita-veri.js          ← DOM'suz; kokpitten ÖNCE (4246)
+modules/harita-kokpit.js    ← sekmeAc'ı SARAR         (4247)
+modules/plasiyer-ziyaret.js ← PlasiyerMusteri.seridiCiz'i SARAR → musteri'den SONRA (4248)
+─── Plasiyer Faz 4 ────────────────────────────────────────────
+modules/plasiyer-otosync.js ← EN SON: sync-motor + durum.oturum hazır olmalı  (4252)
 ```
 
 **`src/renderer/` alt dizin anlamı — karıştırma:**
@@ -241,10 +254,65 @@ lisans doğrulandı → index.html açıldı
   iki kez gönderir ve kaba kuvvet sayacı boşuna ilerlerdi.
 
 ### Plasiyer oturumunda açık kalan sekmeler
-`PLASIYER_SEKMELERI = ['urunler', 'siparisler']` · kapananlar:
-`KISITLI_SEKMELER = ['ayarlar','iskonto','vitrin-editor','uyeler','destek','plasiyerler']`
+`PLASIYER_SEKMELERI = ['satis', 'siparisler']` · kapananlar:
+`KISITLI_SEKMELER = ['ayarlar','iskonto','vitrin-editor','uyeler','destek','plasiyerler','urunler','harita']`
 (ikisi de `renderer-plasiyer.js` başında; değiştirirsen
 `plasiyer-kapi.dom.test.js` içindeki `IZINLI`/`KISITLI` listelerini de güncelle).
+
+**`urunler` Faz 2'de KISITLIYA GEÇTİ:** plasiyer artık yönetici ürün ızgarasını
+değil `satis` (Satış Vitrini) sekmesini görür. Izgarada fiyat/stok **yazma**
+yetkisi var; plasiyerin işi satmak, katalog düzenlemek değil. `harita` Faz 3'te
+eklendi — kokpit bütün illerin cirosunu gösterir, yani **diğer plasiyerlerin
+verisi**.
+
+### 4.5.1 Giriş kapısı hata düzeltmesi (Faz 4) — OKUMADAN DEĞİŞTİRME
+
+`npm start` ile gerçek Electron'da panel **açılışta kilitleniyordu**: altı
+kaplama (`girisKapisi`, `pinPerde`, `urunPerde`, `satisPerde`, `ziyaretPerde`,
+`plasiyerFormPerde`) üst üste görünüyordu.
+
+**Sebep — Tailwind özgüllük tuzağı:**
+```
+Tailwind preflight:  [hidden] { display: none }      ← (0,1,0), ÖNCE gelir
+Tailwind utility:    .grid   { display: grid }       ← (0,1,0), SONRA gelir
+```
+Özgüllükler **eşit**; kaynak sırası gereği utility kazanır. Yani
+`<div hidden class="… grid …">` **görünür**. Aynı tuzağa bu depoda daha önce de
+düşülmüş (`index.html:2573`, vitrin editörü).
+
+**Çözüm (`index.html`, satır içi `<style>`):**
+```css
+[hidden] { display: none !important; }
+```
+Tek satır, bütün kaplamaları birden kurtarır. **KALDIRMA.** `hidden` özniteliği
+ile `display` utility'sini aynı etikete koyan her yeni kaplama bu satır olmadan
+açılışta ekranda patlar.
+
+**jsdom bunu NEDEN yakalamadı:** `el.hidden` değeri doğruydu; yanlış olan
+yalnızca hesaplanmış CSS'ti ve jsdom basamaklı stili (cascade) tam
+uygulamaz. Bu yüzden test artık **kaynak düzeyinde** denetliyor: kuralın
+`index.html` içinde bulunduğunu ve `hidden` ile başlayan her kaplamayı
+(`plasiyer-kapi.dom.test.js`).
+
+**Modalın kapalı başlaması + çıkışlar:**
+- Pazarlamacı modalı (`#pinPerde`) açılışta **`display:none`**; ekranda yalnızca
+  iki büyük kart vardır.
+- **`[👑 Yönetici Girişi]` HİÇBİR İSTEK ATMAZ.** Kaplama anında kalkar; plasiyer
+  listesi/ağ beklenmez. Test bunu `rest.asla` ile kilitler — sunucusu kapalı
+  bir mağazada yönetici paneli açamamak kabul edilemezdi.
+- Modalın **üç çıkışı** var: sağ üst `[✕]`, altta
+  `[← Geri Dön / Yönetici Girişi]` (`#pinGeri`), perdeye (backdrop) tıklama ve
+  **ESC**. Backdrop denetimi `if (olay.target === pinPerde)` — karta tıklayınca
+  kapanmaz.
+- **Kapanışta alanlar sıfırlanır** (seçim, PIN, hata metni); yarım kalmış bir
+  PIN denemesi bir sonraki açılışa taşınmaz.
+- **3 SANİYE SÜRE AŞIMI:** `LISTE_SURE_ASIMI_MS = 3000`, `sureAsimiyla()` ile
+  `Promise.race`. Sunucu yanıt vermezse **veya kayıtlı plasiyer yoksa** tek
+  mesaj gösterilir: *"Henüz kayıtlı pazarlamacı bulunamadı. Lütfen Yönetici
+  Girişi yaparak plasiyer tanımlayın."* Modal **asılı kalmaz**.
+  Süre aşımı yarışını kaldıran mutasyon testte **donma** ürettiği için
+  (kullanıcının bildirdiği belirtinin aynısı) bu yarış korunmalıdır.
+- **PIN'i olmayan plasiyer listede gösterilmez** — seçilse giriş yapamazdı.
 
 ---
 
@@ -327,6 +395,26 @@ değil **görünür** biçimde başarısız olur.
 - **KALICI HATALI KAYIT KUYRUKTA KALIR.** Sessizce silmek, plasiyerin yazdığı
   siparişin kaybolduğunu kimsenin fark etmemesi olurdu.
 
+### Otomatik eşitleme (Faz 4) — `modules/plasiyer-otosync.js`
+Plasiyerin "Eşitle" düğmesine basmayı hatırlaması gerekmez. **Dört tetik:**
+```
+1) window 'online' olayı   → 1500 ms gecikmeyle (ONLINE_GECIKME_MS)
+2) 60 sn hafif yoklama      → YOKLAMA_MS
+3) 'visibilitychange'       → uygulamaya geri dönünce (uyku/kilit sonrası)
+4) açılıştan 8 sn sonra     → tek sefer
+```
+- **`online` olayına 1500 ms GECİKME bilinçlidir.** Windows olayı ateşlediğinde
+  DNS/yönlendirici henüz hazır olmayabilir; anında denemek ilk turu boşa yakar.
+- **Yoklama HAFİFTİR, AĞA ÇIKMAZ:** `sync:durum` yerel kuyruk sayılarını okur;
+  `PlasiyerSyncMotor.esitlemeGerekliMi()` bekleyen kayıt yoksa **hiç istek
+  atılmaz**. Boş kuyrukta 60 saniyede bir sunucuyu dürtmek sahadaki mobil
+  bağlantıyı bedava tüketirdi.
+- **SESSİZ BAŞARISIZLIK.** Eşitleme patlarsa kullanıcıya bildirim **çıkmaz**;
+  bildirim yalnızca `ozetMesaji` doluyken gösterilir
+  (*"X adet bekleyen sipariş merkeze iletildi"*). Ağı olmayan plasiyere her
+  dakika kırmızı uyarı basmak paneli kullanılamaz hâle getirirdi.
+- **Yalnızca plasiyer oturumunda çalışır** — yönetici oturumunda kuyruk yoktur.
+
 ### Kuyruklar (`ayarlar.json`)
 `plasiyerYerelMusteriler` · `plasiyerSiparisKuyrugu` · `plasiyerZiyaretKuyrugu`
 Diskte olmaları bilinçli: uygulama kapanırsa sahada yazılmış sipariş kaybolmaz.
@@ -351,7 +439,22 @@ HaritaVeri.yollariYukle({ 35: 'M180,230 L…', 'Ankara': 'M…' });
 ```
 `il.yol` dolu olduğunda kokpit `<rect>` yerine `<path>` basar. **Başka hiçbir
 yer değişmez**: hover, ipucu, bölünmüş ekran, zoom, uyarı ikonu, filtreler iki
-kaynakta da aynı çalışır.
+kaynakta da aynı çalışır. Yol **beslenmediği sürece** kokpit ekranda
+*"Şematik görünüm"* notu gösterir — kullanıcı gerçek sınır sanmasın.
+
+### Kutu boyutu (Faz 4) — ÇAKIŞMA DÜZELTMESİ
+`harita-kokpit.js → var KUTU = { w: 22, h: 13 }` (önce 26×15'ti).
+26×15'te **7 il çifti üst üste biniyordu** (Ağrı/Iğdır, Bingöl/Tunceli,
+Kastamonu/Karabük, Kocaeli/Yalova, Nevşehir/Aksaray, Siirt/Batman,
+Zonguldak/Bartın) — haritada iller birbirini yiyordu. Kutu küçültüldü ve kalan
+üç çakışma için konum düzeltildi:
+`Tunceli → 752,203` · `Yalova → 262,136` · `Aksaray → 494,236`.
+
+**`KUTU`'yu büyütürsen çakışmayı geri getirirsin.** `harita-kokpit.dom.test.js`
+81 kutunun hepsini çiftler hâlinde karşılaştırır (`cakisan kutu YOK`) ve
+kaynaktan `KUTU` sabitini okur — sabiti değiştirmek testi kandırmaz, çakışan
+çifti **adıyla** yüzüne söyler. Aynı test kutuların `1000×420` tuvalin içinde
+kaldığını da kilitler.
 
 ### Davranış
 - **Harici bağımlılık SIFIR.** İnternet ya da Google Maps gerekmez; SVG yerel.
@@ -392,16 +495,17 @@ plasiyer 🔔 bildirim zili → patron yanıtını okur
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (294 test).
+İkisini birden `../scripts/check-all.js` koşar (**325 test**: panel 155 + kök 170).
 
 ```bash
-# Bu submodule'un kendi birim testleri (119 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (155 test) — Electron GEREKMEZ
 npm test
-node --test test/telemetri.test.js
-node --test test/katalog-depo.test.js       # cevrimdisi katalog: arama, indeks, disk, esitleme
-node --test test/plasiyer-siparis.test.js   # koli matematigi, sepet, son siparis, UUID, tavan
-node --test test/plasiyer-sync.test.js      # outbox: sira, kimlik koprusu, hata toleransi
-node --test test/harita-notlar.test.js      # 81 il kutugu, durum gecisleri, filtreler
+node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
+node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
+node --test test/plasiyer-siparis.test.js   # 34 — koli matematigi, sepet, son siparis, UUID, tavan
+node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprusu, hata toleransi,
+                                            #      esitlemeGerekliMi (Faz 4 oto-esitleme karari)
+node --test test/harita-notlar.test.js      # 35 — 81 il kutugu, durum gecisleri, filtreler
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
 
@@ -426,7 +530,8 @@ node --test scripts/tests/depo-fisi.test.js           # fiş muhasebe dökümü
 node --test scripts/tests/odeme-matrisi.dom.test.js   # matris arayüzü
 node --test scripts/tests/checkout-masasi.dom.test.js
 node --test scripts/tests/sifre-goz.dom.test.js
-node --test scripts/tests/plasiyer-kapi.dom.test.js   # çift kapılı giriş + rol kısıtlaması
+node --test scripts/tests/plasiyer-kapi.dom.test.js   # 28 — çift kapı, [hidden] kuralı, 3 sn süre aşımı, çıkışlar
+node --test scripts/tests/harita-kokpit.dom.test.js   # 15 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
 node --test scripts/tests/registry-parity.test.js     # 3 registry kopyası eşit mi
@@ -437,7 +542,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (294 test)
+# Bitirirken: üç katmanın tamamı (325 test)
 node scripts/check-all.js
 ```
 
@@ -446,6 +551,16 @@ node scripts/check-all.js
 Testler ihtiyaç duydukları dosyayı `fs.readFileSync` + `new Function` ile
 kendileri enjekte eder. Bu yüzden `index.html`'e yeni bir `<script src>`
 eklemek DOM testlerini **etkilemez**; satır içi betik eklemek **etkiler**.
+
+**⚠️ jsdom'un GÖRMEDİĞİ şey — pahalıya öğrenildi:** jsdom basamaklı stili
+(CSS cascade) tam uygulamaz; Tailwind'in `[hidden]` ile `.grid` arasındaki
+özgüllük yarışı jsdom'da **doğru** görünür, gerçek Chromium'da **yanlış**
+(→ §4.5.1). Yani `el.hidden === true` geçen bir test, ekranda görünen bir
+kaplamayı ispatlamaz. **Görünürlük sözünü sınıf/stil kuralı üzerinden değil,
+kaynak metni üzerinden denetle** (`plasiyer-kapi.dom.test.js` `[hidden]`
+kuralının `index.html` içinde var olduğunu regex ile doğrular). Düzen/geometri
+sözleri de aynı şekilde hesaplanmış CSS'e değil **özniteliklere** bakmalı —
+`harita-kokpit.dom.test.js` çakışmayı `x/y/width/height` üzerinden ölçer.
 
 **Test edilebilir kod yazma kalıbı:** saf mantığı `src/renderer/` altına
 DOM'suz bir motor olarak koy ve çift modlu dışa ver (`sira-motor.js`,
@@ -499,7 +614,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 156 php / 67 js / 294 test
+cd .. && node scripts/check-all.js     # 0 hata / 156 php / 69 js / 325 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

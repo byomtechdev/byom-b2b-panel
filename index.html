@@ -269,6 +269,24 @@
   input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
 
+  /* ==================================================================
+     [hidden] HER ZAMAN KAZANIR — KALDIRMA, OKU
+     ------------------------------------------------------------------
+     Tailwind'in preflight'ında `[hidden]{display:none}` vardır AMA
+     `.grid` / `.flex` / `.block` gibi display utility'leri SONRA gelir ve
+     ÖZGÜLLÜKLERİ EŞİTTİR (0,1,0). Kaynak sırası gereği utility kazanır.
+
+     Sonuç: `<div hidden class="… grid …">` yazan her kaplama AÇIK başlar.
+     Faz 1-3'te eklenen altı perde (giriş kapısı, PIN, ürün detay, satış,
+     ziyaret notu, plasiyer formu) tam bu yüzden açılışta üst üste binip
+     ekranı kilitliyordu. jsdom testleri bunu YAKALAYAMADI: `el.hidden`
+     özelliği doğruydu, sorun yalnızca hesaplanmış CSS'teydi.
+
+     Aynı tuzağa vitrin editöründe de düşülmüş ve orada yerel olarak
+     çözülmüştü (aşağıda `.ve-frame[hidden]`); bu kural onu küresel yapar.
+     ================================================================== */
+  [hidden] { display: none !important; }
+
   .sekme-govde { display: none; }
   .sekme-govde.acik { display: block; animation: girisAnimasyon .14s ease-out; }
 
@@ -1600,6 +1618,14 @@
             class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold
                    hover:bg-marka-600 disabled:opacity-50 disabled:cursor-not-allowed transition">
       Giriş Yap
+    </button>
+
+    <!-- ÇIKIŞ YOLU: modal hiçbir koşulda çıkmazı olmamalı. Üç yol birden
+         var — ✕ düğmesi, bu düğme, ESC ve perdeye tıklama. -->
+    <button type="button" id="pinGeri"
+            class="mt-3 w-full px-6 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                   font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+      ← Geri Dön / Yönetici Girişi
     </button>
   </div>
 </div>
@@ -3476,6 +3502,21 @@
             </span>
           </span>
         </label>
+
+        <!-- SPOT / FIRSAT ÜRÜNÜ (Faz 4)
+             Plasiyer vitrininde kartın sol üstüne "🔥 SPOT / FIRSAT" rozeti
+             basılır ve ürün kategorisinin EN TEPESİNE sabitlenir.
+             Bayrak `_byom_spot` metasında durur; eklenti okurken
+             B2B_REST_Hooks::prepare_product ile `byom.spot` olarak verir. -->
+        <label class="mt-3 flex items-start gap-3 cursor-pointer select-none">
+          <input id="duzenleSpot" type="checkbox" class="w-6 h-6 mt-0.5 accent-orange-500 shrink-0" />
+          <span class="text-base leading-relaxed">
+            <b>🔥 SPOT / FIRSAT ürünü</b>
+            <span class="block text-sm text-slate-500 dark:text-slate-400">
+              Pazarlamacı vitrininde turuncu rozetle görünür ve kategorisinin en üstüne sabitlenir.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div>
@@ -4205,5 +4246,9 @@
 <script src="src/renderer/harita-veri.js"></script>
 <script src="src/renderer/modules/harita-kokpit.js"></script>
 <script src="src/renderer/modules/plasiyer-ziyaret.js"></script>
+
+<!-- Faz 4 — otomatik eşitleme tetikleyicisi. EN SONA yüklenir: PlasiyerZiyaret
+     ve PlasiyerSyncMotor tanımlı olduktan sonra dinleyicileri kurar. -->
+<script src="src/renderer/modules/plasiyer-otosync.js"></script>
 </body>
 </html>

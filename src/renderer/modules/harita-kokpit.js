@@ -30,7 +30,7 @@
 (function () {
 
   /** İl kutusunun yarı genişliği/yüksekliği (şematik mod). */
-  var KUTU = { w: 26, h: 15 };
+  var KUTU = { w: 22, h: 13 };
 
   var durumH = {
     iller: [],

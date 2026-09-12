@@ -1459,6 +1459,10 @@ async function urunDuzenleAc(id) {
     const sadeceKoliKutu = $('#duzenleSadeceKoli');
     if (sadeceKoliKutu) sadeceKoliKutu.checked = !!urun.sadeceKoli;
 
+    /* SPOT / FIRSAT bayrağı (Faz 4) — kutucuk yoksa dokunulmaz. */
+    const spotKutu = $('#duzenleSpot');
+    if (spotKutu) spotKutu.checked = !!urun.spot;
+
     /* KDV oranı: üründe yoksa mağaza varsayılanı (20) gösterilir. */
     const kdvAlani = $('#duzenleKdv');
     if (kdvAlani) {
@@ -1663,6 +1667,10 @@ async function urunDuzenleKaydet() {
   const sadeceKoliKutu = $('#duzenleSadeceKoli');
   const sadeceKoli = sadeceKoliKutu ? !!sadeceKoliKutu.checked : null;
 
+  /* SPOT / FIRSAT bayrağı (Faz 4). `null` = kutucuk yok, dokunulmaz. */
+  const spotKutu = $('#duzenleSpot');
+  const spot = spotKutu ? !!spotKutu.checked : null;
+
   /* KDV oranı (isteğe bağlı alan; boşsa ürünün oranına dokunulmaz). */
   const kdvAlani = $('#duzenleKdv');
   const kdvYazi = kdvAlani ? String(kdvAlani.value).replace('%', '').trim() : '';
@@ -1789,6 +1797,7 @@ async function urunDuzenleKaydet() {
         kayit.koliAdedi = koli;
         kayit.stok = stok;
         if (sadeceKoli !== null) kayit.sadeceKoli = sadeceKoli;
+        if (spot !== null) kayit.spot = spot;
         if (kdv !== null) kayit.kdv = Math.round(kdv * 100) / 100;
         kayit.durum = yayinDurumu;
         kayit.gorsel = yeniGorsel;
@@ -1839,6 +1848,14 @@ async function urunDuzenleKaydet() {
     if (sadeceKoli !== null) {
       govde.meta_data = govde.meta_data.concat([
         { key: '_byom_only_box', value: sadeceKoli ? 'yes' : 'no' }
+      ]);
+    }
+
+    /* SPOT / FIRSAT — `_byom_only_box` ile AYNI yolla yazılır; eklenti
+       tarafında B2B_REST_Hooks::SPOT_META ile okunan meta budur. */
+    if (spot !== null) {
+      govde.meta_data = govde.meta_data.concat([
+        { key: '_byom_spot', value: spot ? 'yes' : 'no' }
       ]);
     }
 

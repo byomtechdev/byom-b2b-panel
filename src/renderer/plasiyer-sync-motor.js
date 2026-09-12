@@ -425,7 +425,47 @@
     return mesaj;
   }
 
+  /* ------------------------------------------------------------------ *
+   *  OTOMATİK TETİKLEME KARARI (Faz 4)
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Şimdi eşitleme denenmeli mi?
+   *
+   * `sync:durum` çıktısına bakar. Karar SAF tutuldu ki test edilebilsin;
+   * dinleyiciyi kuran taraf (plasiyer-otosync.js) yalnızca bunu çağırır.
+   *
+   * YAPILACAK İŞ YOKSA AĞA ÇIKILMAZ: her 60 saniyede boşa istek atmak
+   * müşterinin sitesini gereksiz yorar ve sahada veri kotasını yakar.
+   *
+   * @param {object} durum { suruyor, siparis, musteri, not, hatali }
+   * @returns {boolean}
+   */
+  function esitlemeGerekliMi(durum) {
+    if (!durum || !durum.ok) return false;
+    if (durum.suruyor) return false;
+
+    var siparis = Number(durum.siparis) || 0;
+    var musteri = Number(durum.musteri) || 0;
+    var not = Number(durum.not) || 0;
+    var hatali = Number(durum.hatali) || 0;
+
+    var bekleyen = siparis + musteri + not;
+
+    if (bekleyen <= 0) return false;
+
+    /*
+     * HEPSİ KALICI HATALIYSA DENEMEYİZ. Aksi halde 4xx almış bir kayıt
+     * yüzünden dakikada bir boşa istek atılır ve kuyruk hiç boşalmaz.
+     * Kullanıcı o kayıtları zaten listede görüyor.
+     */
+    if (hatali >= bekleyen) return false;
+
+    return true;
+  }
+
   var Sync = {
+    esitlemeGerekliMi: esitlemeGerekliMi,
     musterileriEsitle: musterileriEsitle,
     kimlikKoprusuKur: kimlikKoprusuKur,
     siparisleriGonder: siparisleriGonder,
