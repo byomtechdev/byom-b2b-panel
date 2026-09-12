@@ -33,11 +33,19 @@
 
 (function () {
 
-  /** Plasiyer oturumunda GÖRÜNECEK sekmeler. Geri kalan her şey kapanır. */
-  var PLASIYER_SEKMELERI = ['urunler', 'siparisler'];
+  /**
+   * Plasiyer oturumunda GÖRÜNECEK sekmeler.
+   *
+   * FAZ 2'DE DEĞİŞTİ: "Ürün & Stok Yönetimi" (urunler) plasiyere KAPANDI,
+   * yerine "Katalog & Sipariş Yazma" (satis) geldi. Sebebi yetki: `urunler`
+   * sekmesi fiyat ve stok DÜZENLER; plasiyerin işi satmak, katalogu
+   * değiştirmek değil. `satis` sekmesi aynı veriyi salt-okunur gösterir ve
+   * sipariş yazar.
+   */
+  var PLASIYER_SEKMELERI = ['satis', 'siparisler'];
 
   /** Plasiyer oturumunda gizlenecek sekmeler (beyaz liste dışı olanlar). */
-  var KISITLI_SEKMELER = ['ayarlar', 'iskonto', 'vitrin-editor', 'uyeler', 'destek', 'plasiyerler'];
+  var KISITLI_SEKMELER = ['ayarlar', 'iskonto', 'vitrin-editor', 'uyeler', 'destek', 'plasiyerler', 'urunler'];
 
   var kapi = null;
   var pinPerde = null;
@@ -85,7 +93,10 @@
       rol: rol,
       id: Number(bilgi.id || 0) || 0,
       ad: String(bilgi.ad || ''),
-      bolge: String(bilgi.bolge || '')
+      bolge: String(bilgi.bolge || ''),
+      /* İskonto tavanı (Faz 2). Yalnızca GÖSTERİM ve anında uyarı içindir;
+         son sözü sunucu söyler (B2B_Plasiyer::iskonto_gecerli_mi). */
+      maxIskonto: Number(bilgi.maxIskonto || 0) || 0
     };
 
     return durum.oturum;

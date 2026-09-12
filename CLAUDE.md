@@ -57,9 +57,12 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | `src/main/byom-destek-servisi.js` | Destek masası (ticket) servisi |
 | `src/main/byom-excel.js` | Excel motoru — `.xlsx` yazar, `.xlsx/.xls/.csv` okur. **Harici bağımlılık yok** |
 | **`src/main/byom-telemetri.js`** | **Telemetri (sessiz hata avcısı) · ana süreç.** Bkz. §4 |
+| **`src/main/byom-katalog-depo.js`** | **Çevrimdışı katalog deposu** (Faz 2). `<userData>/byom-data/katalog.json` + bellekte SKU/barkod/ad/kategori indeksleri. SQLite DEĞİL — gerekçe dosya başlığında. `kur({ dizin })` ile test edilebilir | — |
+| **`src/main/byom-gorsel-onbellek.js`** | **Görsel indirme kuyruğu** (Faz 2). `<userData>/byom-gorseller/`, SHA-256 dosya adı ile tekrar indirme yok, en çok 3 eşzamanlı | — |
 
-`main.js` bölüm haritasına eklenen: **`3.6)` Plasiyer kimlik ve veri kapısı** —
-`plasiyer:*` IPC kanalları, oturum belleği. Bkz. §5.
+`main.js` bölüm haritasına eklenenler:
+**`3.6)` Plasiyer kimlik ve veri kapısı** (`plasiyer:*` IPC, oturum belleği → §5) ·
+**`3.7)` Çevrimdışı katalog ve görsel önbelleği** (`katalog:*` / `gorsel:*` IPC → §4.6).
 
 ### 1.2 Arayüz
 | Dosya | Sorumluluk | İç bölüm haritası (satır) |
@@ -76,6 +79,9 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/telemetry.js`** | **Telemetri · arayüz.** EN ÖNCE yüklenir (→ §4) | — |
 | **`renderer-plasiyer.js`** | **Çift kapılı giriş + rol kısıtlaması.** Kapı kaplaması, `durum.oturum`, menü daraltma, üst bar, çıkış. EN SONA yüklenir (→ §5) | — |
 | **`src/renderer/modules/plasiyer-yonetimi.js`** | **Yöneticinin "Pazarlamacılar" sekmesi:** tanımlama, PIN, bayi atama, performans tablosu + ciro çubuğu. `sekmeAc`'ı SARAR (→ §5) | — |
+| **`src/renderer/plasiyer-siparis-motor.js`** | **DOM'suz sipariş motoru** (Faz 2): koli matematiği, sepet indirgeyici, "son siparişi kopyala", geçici müşteri UUID, iskonto tavanı, sipariş gövdesi. `node --test` altında koşar (→ §4.6) | — |
+| **`src/renderer/modules/plasiyer-vitrin.js`** | **Satış vitrini** (Faz 2): daraltılabilir kategori kenar çubuğu, filtre barı, çift görünüm (Vitrin/Matris), SPOT rozeti, ürün detay penceresi, sepet. `sekmeAc`'ı SARAR | — |
+| **`src/renderer/modules/plasiyer-musteri.js`** | **Müşteri ve sipariş akışı** (Faz 2): seçim/arama, cari risk uyarısı, çevrimdışı müşteri, son siparişi kopyala, üç ödeme yöntemi + notlar | — |
 | `lisans/lisans.html` + `lisans/lisans.js` | Lisans/aktivasyon penceresi — ana pencereden bağımsız | — |
 | `vendor/tailwind.js` | Yerel Tailwind kopyası (internetsiz sunum). Bulunamazsa CDN, o da olmazsa yedek CSS | — |
 
@@ -86,6 +92,10 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | `byom-ayarlar.json` | Hub adresi, çevrimdışı izin günü, oto kontrol saati, süre aşımı |
 | `byom-lisans.json` | Lisans kaydı — safeStorage ile şifreli ya da HWID HMAC imzalı |
 | `byom-telemetri-kuyruk.json` | Gönderilemeyen telemetri kayıtları (en çok 50) |
+| `byom-data/katalog.json` | **Çevrimdışı ürün kataloğu** (Faz 2). Şema sürümü uyuşmazsa yok sayılır; geçici dosya + rename ile yazılır |
+| `byom-gorseller/<sha256>.jpg` | İndirilmiş ürün görselleri. Dosya adı ADRESİN özetidir — aynı görsel tek kez iner |
+| `ayarlar.json → plasiyerYerelMusteriler` | Çevrimdışı eklenen müşteriler (`temp_musteri_<uuid>`) |
+| `ayarlar.json → plasiyerSiparisKuyrugu` | Yazılmış ama sunucuya gönderilmemiş siparişler (Faz 3 eşitleyecek) |
 
 ---
 
@@ -141,6 +151,8 @@ listeye **elle** eklemen gerekir.
 | `byom:` | `src/main/byom.js` | `byom:hwid`, `byom:durum`, `byom:aktive`, `byom:yeniden-dogrula`, `byom:lisans-sil`, `byom:hwid-yenile`, `byom:api-url:oku/yaz`, `byom:baglanti-testi`, `byom:uygulamayi-ac`, `byom:cikis`, `byom:panoya-kopyala`, `byom:dis-baglanti`, `byom:destek:liste/detay/olustur/yanit/secenekler` |
 | `byom:telemetri` | `src/main/byom-telemetri.js` | **Tek yönlü** (`ipcMain.on` + `ipcRenderer.send`) — cevap beklenmez |
 | `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout` |
+| `katalog:` | `main.js` § 3.7 | `katalog:guncelle` (sunucudan eşitle + görsel kuyruğu), `katalog:ara` (**AĞA ÇIKMAZ**, yerel indeks), `katalog:kategoriler`, `katalog:urun`, `katalog:barkod`, `katalog:durum` |
+| `gorsel:` | `main.js` § 3.7 | `gorsel:onbellege-al` (indirmeyi tetikle), `gorsel:yol` (yerel `file://` ya da uzak adres — **base64 DÖNMEZ**) |
 
 **Kural:** veri isteyen kanal `handle`/`invoke` (Promise), ateşle-ve-unut olan
 kanal `on`/`send`. Telemetri bilinçli olarak `on`/`send`'dir: arayüz beklemez.
@@ -228,6 +240,58 @@ lisans doğrulandı → index.html açıldı
 
 ---
 
+## 4.6 Plasiyer Faz 2 — çevrimdışı katalog ve satış vitrini
+
+Eklenti tarafı (`byom` REST eki, iskonto tavanı): **`../CLAUDE.md` §10**.
+
+### Veri akışı
+```
+[Kataloğu Eşitle]  → katalog:guncelle → wc/v3/products (100'lük sayfalar)
+                      → byom-data/katalog.json + indeksler
+                      → görsel kuyruğu (3 eşzamanlı, SHA-256 dedupe)
+[Arama / filtre]   → katalog:ara  →  YEREL indeks   (AĞA ÇIKMAZ)
+[Sipariş yaz]      → ayarlar.json → plasiyerSiparisKuyrugu  (Faz 3 gönderir)
+```
+
+### Bozmaman gereken sözler
+- **BOŞ YANIT KATALOĞU SİLMEZ.** Sunucu yetki sorunu yüzünden boş liste
+  döndürürse eşitleme BAŞARISIZ sayılır ve mevcut katalog korunur. Aksi hâlde
+  internetsiz kalan plasiyer elinde hiçbir ürün olmadan müşterinin karşısında
+  kalırdı. (`katalog-depo.test.js` bunu kilitler.)
+- **YEREL GÖRSEL YOLLARI EŞİTLEMEDE KORUNUR** — yoksa her eşitlemede bütün
+  görseller yeniden inerdi.
+- **ŞEMA SÜRÜMÜ UYUŞMAZSA dosya yok sayılır.** Yarı okunmuş bir kayıtla yanlış
+  fiyat göstermek, boş başlayıp eşitlemekten kötüdür.
+- **KOLİ MATEMATİĞİ YUKARI TAMAMLAR:** 25 adet isteyen bayiye 24 göndermek
+  eksik sevkiyattır. `koli_ici_adet ≤ 1` ise tekil adet.
+- **SON SİPARİŞ KOPYALANIRKEN BUGÜNÜN FİYATI kullanılır.** Siparişteki fiyat
+  geçmişe aittir; onu kopyalamak zam görmüş ürünü zararına satmaktır.
+  Katalogda bulunamayan kalem ATLANIR ve kullanıcıya **söylenir**.
+- **İSKONTO TAVANI İKİ YERDE:** motor arayüzde anında kırpar,
+  `B2B_Plasiyer::iskonto_gecerli_mi` sunucuda son sözü söyler. Bilinçli tekrar:
+  biri hız, diğeri güvenlik. Tavan **tanımsızsa SIFIRDIR**, sınırsız değil.
+- **GEÇİCİ MÜŞTERİ KİMLİĞİ METİNDİR:** `temp_musteri_<uuid v4>`. Sayısal
+  WordPress kimliğiyle karışmaz; eşitleme bu öneke bakar.
+- **GPU DOSTU:** kenar çubuğu `translateX` ile kayar (grid sütunu
+  animasyonlanmaz), ciro/ilerleme çubukları `scaleX`, kartlar `translateY`.
+  Liste `EN_COK_KART` (60) ile kırpılır — 5.000 kartı birden basmak ilk
+  boyamayı saniyelere çıkarırdı.
+- **GÖRSELLER base64 OLARAK IPC'DEN GEÇMEZ.** Renderer `file://` yolunu
+  doğrudan kullanır.
+
+### Klavye akışı (matris modu)
+Arama kutusunda **Enter** → matris moduna geç + ilk adet kutusuna odak →
+adet yaz → **Enter** → sepete eklenir, odak aramaya döner.
+Alan dışında **Tab** görünümü değiştirir; **Esc** ürün/satış penceresini kapatır.
+
+### Faz 2 sınırı — açıkça
+Sipariş **yerel kuyruğa** yazılır (`ayarlar.json → plasiyerSiparisKuyrugu`).
+Sunucuya gönderen uç (`POST /plasiyer/siparis`) ve eşitleme **Faz 3'tedir**.
+Yarım bir gönderim denemek, plasiyerin "kaydettim" sanıp siparişin kaybolmasına
+yol açardı; bu yüzden kuyruk açıkça yerel ve görünür tutuluyor.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -235,12 +299,14 @@ lisans doğrulandı → index.html açıldı
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (174 test).
+İkisini birden `../scripts/check-all.js` koşar (233 test).
 
 ```bash
-# Bu submodule'un kendi birim testleri (31 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (59 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js
+node --test test/katalog-depo.test.js       # cevrimdisi katalog: arama, indeks, disk, esitleme
+node --test test/plasiyer-siparis.test.js   # koli matematigi, sepet, son siparis, UUID, tavan
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
 
@@ -276,7 +342,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (174 test)
+# Bitirirken: üç katmanın tamamı (233 test)
 node scripts/check-all.js
 ```
 
@@ -338,7 +404,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 154 php / 53 js / 174 test
+cd .. && node scripts/check-all.js     # 0 hata / 154 php / 60 js / 233 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

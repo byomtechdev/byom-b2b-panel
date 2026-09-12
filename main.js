@@ -954,6 +954,7 @@ function plasiyerOturumOzeti() {
     id: plasiyerOturumu.id,
     ad: plasiyerOturumu.ad,
     bolge: plasiyerOturumu.bolge,
+    maxIskonto: plasiyerOturumu.maxIskonto,
     bitis: plasiyerOturumu.bitis,
     bayiSayisi: plasiyerOturumu.bayiSayisi
   };
@@ -1011,6 +1012,7 @@ ipcMain.handle('plasiyer:auth', async function (olay, veri) {
     id: Number(v.id) || 0,
     ad: String(v.ad || ''),
     bolge: String(v.bolge || ''),
+    maxIskonto: Number(v.maxIskonto) || 0,
     bayiSayisi: Number(v.bayiSayisi) || 0,
     token: String(v.token || ''),     // ARAYÜZE DÖNMEZ
     bitis: Number(v.bitis) || 0
@@ -1110,6 +1112,152 @@ ipcMain.handle('plasiyer:logout', async function () {
   }
 
   return { ok: true };
+});
+
+/* ==========================================================================
+ *  3.7) ÇEVRİMDIŞI KATALOG VE GÖRSEL ÖNBELLEĞİ (Plasiyer Faz 2)
+ *  ---------------------------------------------------------------------------
+ *  Plasiyer sahada internetsiz çalışır: katalog diske yazılır, görseller
+ *  arka planda indirilir. İki modülün de ağ katmanı BURADAN enjekte edilir
+ *  (apiIstek), böylece kendileri ağdan habersiz ve test edilebilir kalır.
+ * ========================================================================*/
+
+const katalogDepo = require('./src/main/byom-katalog-depo');
+const gorselOnbellek = require('./src/main/byom-gorsel-onbellek');
+
+/** Katalog eşitlemesi sürüyor mu? (ikinci tur başlatılmasın) */
+let katalogEsitlemeSuruyor = false;
+
+/**
+ * Depoyu ve önbelleği açar.
+ *
+ * Görsel indirmesi bitince yerel yol DOĞRUDAN depoya yazılır; arayüzün
+ * aradaki adımı bilmesi gerekmez.
+ */
+function katalogKur() {
+  katalogDepo.kur({});
+
+  gorselOnbellek.kur({
+    bitti: function (id, yol) {
+      if (id && yol) katalogDepo.gorselYoluYaz(id, yol);
+    }
+  });
+}
+
+/** WooCommerce ürün sayfasını çeken getirici (modüle enjekte edilir). */
+function urunGetirici(sayfa) {
+  return apiIstek({
+    alan: 'woo',
+    yol: '/products',
+    metod: 'GET',
+    sorgu: {
+      per_page: 100,
+      page: sayfa,
+      status: 'publish',
+      orderby: 'id',
+      order: 'asc'
+    },
+    sureAsimi: 60000
+  }).then(function (cevap) {
+    if (!cevap || !cevap.ok) {
+      return { ok: false, hata: (cevap && cevap.hata) || 'Ürünler alınamadı.' };
+    }
+
+    const gelen = Array.isArray(cevap.veri) ? cevap.veri : [];
+
+    return { ok: true, urunler: gelen, devam: gelen.length >= 100 };
+  });
+}
+
+/** Kataloğu sunucudan eşitler ve görsel kuyruğunu başlatır. */
+ipcMain.handle('katalog:guncelle', async function (olay, veri) {
+  veri = veri || {};
+
+  if (katalogEsitlemeSuruyor) {
+    return { ok: false, hata: 'Eşitleme zaten sürüyor.', durum: katalogDepo.durum() };
+  }
+
+  katalogEsitlemeSuruyor = true;
+
+  try {
+    const sonuc = await katalogDepo.kataloguGuncelle(urunGetirici);
+
+    /* Eşitleme başarılıysa eksik görseller arka plana alınır. Bilinçli olarak
+       BEKLENMEZ: plasiyer kataloğu hemen kullanmaya başlayabilir, görseller
+       damla damla gelir. */
+    if (sonuc.ok && false !== veri.gorsel) {
+      gorselOnbellek.baslat(katalogDepo.gorselsizUrunler(1000));
+    }
+
+    return Object.assign({}, sonuc, { durum: katalogDepo.durum() });
+  } finally {
+    katalogEsitlemeSuruyor = false;
+  }
+});
+
+/** Yerel katalogda arar — AĞA ÇIKMAZ. */
+ipcMain.handle('katalog:ara', function (olay, veri) {
+  veri = veri || {};
+
+  return {
+    ok: true,
+    urunler: katalogDepo.ara(String(veri.sorgu || ''), {
+      kategori: veri.kategori ? String(veri.kategori) : '',
+      adet: Number(veri.adet) || 0,
+      yalnizSpot: !!veri.yalnizSpot
+    })
+  };
+});
+
+ipcMain.handle('katalog:kategoriler', function () {
+  return { ok: true, kategoriler: katalogDepo.kategoriler() };
+});
+
+ipcMain.handle('katalog:urun', function (olay, veri) {
+  veri = veri || {};
+
+  return { ok: true, urun: katalogDepo.urunGetir(veri.id) };
+});
+
+ipcMain.handle('katalog:barkod', function (olay, veri) {
+  veri = veri || {};
+
+  return { ok: true, urun: katalogDepo.barkodBul(veri.barkod) };
+});
+
+ipcMain.handle('katalog:durum', function () {
+  return { ok: true, durum: katalogDepo.durum(), gorsel: gorselOnbellek.durum() };
+});
+
+/** Eksik görseller için indirmeyi elle tetikler. */
+ipcMain.handle('gorsel:onbellege-al', function (olay, veri) {
+  veri = veri || {};
+
+  const eklenen = gorselOnbellek.baslat(
+    Array.isArray(veri.isler) ? veri.isler : katalogDepo.gorselsizUrunler(Number(veri.adet) || 1000)
+  );
+
+  return { ok: true, eklenen: eklenen, durum: gorselOnbellek.durum() };
+});
+
+/**
+ * Tek görselin arayüzde kullanılacak adresi.
+ *
+ * Diskte varsa `file://` yolu döner, yoksa uzak adres. Base64 DÖNMEZ:
+ * binlerce görseli IPC üzerinden taşımak belleği gereksiz iki kez dolaşırdı.
+ */
+ipcMain.handle('gorsel:yol', function (olay, veri) {
+  veri = veri || {};
+
+  const urun = katalogDepo.urunGetir(veri.id);
+
+  if (!urun) return { ok: false, adres: '' };
+
+  if (urun.local_image_path) {
+    return { ok: true, adres: 'file://' + String(urun.local_image_path).replace(/\\/g, '/'), yerel: true };
+  }
+
+  return { ok: true, adres: urun.image_url, yerel: false };
 });
 
 /* ==========================================================================
@@ -1345,6 +1493,11 @@ if (!tekKopyaKilidi) {
     else Menu.setApplicationMenu(null);
     sertifikaDenetiminiGevset();   // SSL katılığı: bkz. bölüm 0
     otomatikGuncellemeyiBaslat(); // Sessiz güncelleme: açılışta + 30 dk.da bir (bkz. bölüm 3.5)
+
+    /* Çevrimdışı katalog deposu ve görsel önbelleği (bölüm 3.7).
+       Yalnızca dizin açar ve diskteki kataloğu belleğe alır — AĞA ÇIKMAZ.
+       Eşitleme kararını arayüz verir (katalog:guncelle). */
+    katalogKur();
 
     /* ---- BYOM BRAIN AÇILIŞ KONTROLÜ ----
        Ana pencere doğrudan açılmaz. Önce lisans penceresi (splash) gelir,

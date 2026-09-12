@@ -305,6 +305,70 @@
 
   /* Ciro dağılım çubuğu — genişlik yerine transform ile büyür (reflow yok). */
   .ciro-cubuk { transform-origin: left center; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+
+  /* ==================================================================
+     PLASİYER SATIŞ VİTRİNİ (Faz 2)
+     ------------------------------------------------------------------
+     DARALTILABİLİR KENAR ÇUBUĞU — neden `grid-template-columns` değil:
+     grid sütununu animasyonlamak her karede düzen hesabı (reflow) tetikler.
+     Burada kenar çubuğu SABİT genişlikte durur ve `translateX` ile kayar;
+     vitrin ise negatif `margin-left` ile boşluğu kapatır. Kayma
+     kompozitörde çalışır, kapanış 60 FPS kalır.
+
+     Marjin de animasyonlanıyor ama TEK seferlik ve tek elemanda: kapanış
+     sırasında yalnızca vitrin kabı yeniden yerleşir, içindeki yüzlerce kart
+     yerleşmez (kartlar kendi grid'i içinde akar).
+     ================================================================== */
+  .kat-kenar {
+    width: 17rem;
+    flex: 0 0 17rem;
+    transition: transform .22s ease, opacity .22s ease;
+    transform: translateX(0);
+    will-change: transform;
+  }
+  .kat-kenar.kapali { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+
+  .vitrin-kab { transition: margin-left .22s ease; margin-left: 0; }
+  .vitrin-kab.genis { margin-left: -17rem; }
+
+  /* Ürün kartı — yalnızca transform/box-shadow animasyonlanır. */
+  .urun-kart {
+    transition: transform .16s ease, box-shadow .16s ease;
+    transform: translateZ(0);
+    contain: layout paint;
+  }
+  .urun-kart:hover { transform: translateY(-3px); }
+  .urun-kart:active { transform: translateY(-1px); }
+
+  /* SPOT / FIRSAT rozeti — kartın sol üst köşesi. */
+  .spot-rozet {
+    position: absolute; top: .5rem; left: .5rem; z-index: 2;
+    padding: .25rem .6rem; border-radius: .6rem;
+    font-size: .75rem; font-weight: 900; letter-spacing: .02em;
+    color: #fff; white-space: nowrap;
+    background: linear-gradient(135deg, #f97316, #dc2626);
+    box-shadow: 0 2px 8px rgba(220,38,38,.45);
+  }
+
+  /* Matris (hızlı liste) satırı — kompakt, klavye odaklı. */
+  .matris-satir { transition: background-color .12s ease; }
+  .matris-satir:focus-within { background-color: rgb(241 245 249); }
+  .karanlik .matris-satir:focus-within,
+  html.dark .matris-satir:focus-within { background-color: rgb(30 41 59); }
+
+  /* Ürün detay/büyütme penceresi — scale + opacity (GPU). */
+  .urun-modal { transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .18s ease; }
+  .urun-modal.kapali { transform: scale(.96); opacity: 0; }
+
+  /* Görsel yer tutucusu: görsel inmemişse kart zıplamasın. */
+  .gorsel-kutu { aspect-ratio: 1 / 1; background: rgb(248 250 252); overflow: hidden; }
+  html.dark .gorsel-kutu { background: rgb(15 23 42); }
+  .gorsel-kutu img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kat-kenar, .vitrin-kab, .urun-kart, .urun-modal, .matris-satir { transition: none; }
+    .urun-kart:hover, .urun-kart:active { transform: none; }
+  }
   @keyframes girisAnimasyon { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
   .donuyor { animation: donme .9s linear infinite; display: inline-block; }
@@ -1660,6 +1724,14 @@
         <span class="align-middle">Siparişler & Depo Fişi</span>
       </button>
 
+      <!-- Plasiyer Faz 2 — saha satış ekranı: çevrimdışı katalog, vitrin,
+           müşteri seçimi ve sipariş yazma (src/renderer/modules/plasiyer-vitrin.js
+           + plasiyer-musteri.js). Yöneticiye de açıktır. -->
+      <button data-sekme="satis" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg>
+        <span class="align-middle">Katalog &amp; Sipariş Yazma</span>
+      </button>
+
       <button data-sekme="urunler" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg>
         <span class="align-middle">Ürün & Stok Yönetimi</span>
@@ -2856,6 +2928,92 @@
  ve adminin cevaplarını görür.
  ============================================================ -->
       <!-- ============================================================
+ SEKME — KATALOG & SİPARİŞ YAZMA (PLASİYER SATIŞ VİTRİNİ)
+ ------------------------------------------------------------
+ İçerik iki modül tarafından çizilir:
+   plasiyer-vitrin.js  → kategori kenar çubuğu, filtre barı, çift görünüm,
+                         ürün kartları/matris, ürün detay penceresi, sepet
+   plasiyer-musteri.js → müşteri seçimi/ekleme, bakiye uyarısı,
+                         son siparişi kopyala, ödeme + notlar
+ Burada yalnızca KAPLAR durur.
+ ============================================================ -->
+      <section id="sekme-satis" class="sekme-govde">
+
+        <!-- ÜST ŞERİT: müşteri + katalog durumu + görünüm anahtarı -->
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <button type="button" id="katMenuAnahtar"
+                  class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold
+                         hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  aria-expanded="true" aria-controls="katKenar" title="Kategori menüsünü aç/kapat">☰</button>
+
+          <div id="musteriSerit" class="flex-1 min-w-64"></div>
+
+          <button type="button" id="gorunumAnahtar"
+                  class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold
+                         hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  title="Görünümü değiştir (Tab)">🛍️ Vitrin</button>
+
+          <button type="button" id="katalogEsitle"
+                  class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold
+                         hover:bg-slate-100 dark:hover:bg-slate-700 transition">⟳ Kataloğu Eşitle</button>
+        </div>
+
+        <!-- FİLTRE BARI: aktif filtre etiketi + arama -->
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <div id="filtreEtiket" class="text-base font-bold text-slate-600 dark:text-slate-300"></div>
+
+          <div class="ml-auto flex items-center gap-2">
+            <input id="urunArama" type="search" autocomplete="off" placeholder="Ad, SKU ya da barkod…"
+                   class="w-72 px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                          bg-white dark:bg-slate-900 font-semibold" />
+            <span id="katalogKunye" class="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap"></span>
+          </div>
+        </div>
+
+        <div class="flex gap-5 items-start min-h-0">
+
+          <!-- SOL: daraltılabilir kategori kenar çubuğu -->
+          <aside id="katKenar"
+                 class="kat-kenar bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-4 max-h-[70vh] overflow-y-auto">
+            <button type="button" id="tumUrunler"
+                    class="w-full text-left px-4 py-3 rounded-xl font-extrabold mb-3
+                           bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition">
+              Tüm Ürünleri Gör
+            </button>
+            <div id="katListe" class="flex flex-col gap-1"></div>
+          </aside>
+
+          <!-- SAĞ: vitrin + sepet -->
+          <div id="vitrinKab" class="vitrin-kab flex-1 min-w-0 flex gap-5 items-start">
+            <div class="flex-1 min-w-0">
+              <div id="urunVitrin" class="min-h-40"></div>
+              <div id="vitrinDaha" class="mt-4 text-center"></div>
+            </div>
+
+            <!-- SEPET -->
+            <aside id="sepetKutu"
+                   class="w-80 shrink-0 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-4 max-h-[70vh] overflow-y-auto"></aside>
+          </div>
+        </div>
+
+        <!-- ÜRÜN DETAY / BÜYÜTME PENCERESİ -->
+        <div id="urunPerde" hidden
+             class="fixed inset-0 z-[68] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6">
+          <div id="urunModal"
+               class="urun-modal w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+                      border-2 border-slate-200 dark:border-slate-700 p-6"></div>
+        </div>
+
+        <!-- MÜŞTERİ EKLE / SİPARİŞİ TAMAMLA PENCERESİ -->
+        <div id="satisPerde" hidden
+             class="fixed inset-0 z-[69] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6 overflow-y-auto">
+          <div id="satisModal"
+               class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+                      border-2 border-slate-200 dark:border-slate-700 p-8"></div>
+        </div>
+      </section>
+
+      <!-- ============================================================
  SEKME — PAZARLAMACILAR (PLASİYER YÖNETİMİ)
  ------------------------------------------------------------
  İçerik src/renderer/modules/plasiyer-yonetimi.js tarafından çizilir.
@@ -3950,5 +4108,14 @@
        andan sonra yüklenir. -->
 <script src="renderer-plasiyer.js"></script>
 <script src="src/renderer/modules/plasiyer-yonetimi.js"></script>
+
+<!-- Plasiyer Faz 2 — saha satışı.
+     SIRA ZORUNLU: siparis-motor DOM'suz ve bağımsızdır, ama vitrin ve müşteri
+     modülleri onu `window.PlasiyerSiparisMotor` üzerinden çağırdığı için
+     ONLARDAN ÖNCE yüklenir. Müşteri modülü de vitrinin sepetini paylaştığı
+     (PlasiyerVitrin.sepetAl) için vitrinden SONRA gelir. -->
+<script src="src/renderer/plasiyer-siparis-motor.js"></script>
+<script src="src/renderer/modules/plasiyer-vitrin.js"></script>
+<script src="src/renderer/modules/plasiyer-musteri.js"></script>
 </body>
 </html>
