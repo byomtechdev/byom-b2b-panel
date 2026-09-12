@@ -427,12 +427,55 @@ const API_ALANLARI = {
 
 /** Kullanıcının yazdığı adresi temizler: boşluk, /wp-json eki, sondaki / ve eksik protokol. */
 function tabanAdresiTemizle(ham) {
-  let taban = String(ham || '').replace(/\s+/g, '');
-  taban = taban.replace(/\/wp-json.*$/i, '');
-  taban = taban.replace(/\/+$/, '');
+  let taban = String(ham || '').trim().replace(/\s+/g, '');
+
   if (!taban) return '';
-  if (!/^https?:\/\//i.test(taban)) taban = 'https://' + taban;
-  return taban;
+
+  /*
+   * FAZ 7'DE GÜÇLENDİRİLDİ — eski hâli iki gerçek hatayı geçiriyordu:
+   *
+   *   "https://site.com//shop"  → aynen kalıyordu. `new URL` gövdedeki çift
+   *      bölüyü NORMALİZE ETMEZ; pathname "//shop/wp-json/..." olarak gidiyor
+   *      ve WordPress 404 dönüyordu. Kullanıcının gördüğü şey yine
+   *      "eklenti bulunamadı" oluyordu — yanlış iz.
+   *
+   *   "https:/site.com" (tek bölü) → `/^https?:\/\//` testini geçemediği için
+   *      BAŞINA BİR PROTOKOL DAHA ekleniyordu: "https://https:/site.com".
+   *      Bu GEÇERLİ bir URL olduğu için "Site adresi geçersiz" kapısı hiç
+   *      açılmıyor, host literal olarak "https" oluyor ve kullanıcı
+   *      "adres hatalı" yerine "sunucuya ulaşılamıyor" görüyordu.
+   *
+   * Çözüm, bu depoda ZATEN DOĞRU YAZILMIŞ kardeş temizleyicinin kalıbı:
+   * `src/main/byom-yapilandirma.js → adresiTemizle()`. İki temizleyicinin
+   * aynı kurallarla çalışması bilinçli — biri hub adresi, diğeri mağaza
+   * adresi için ve ikisi de kullanıcının ELLE yazdığı alanlar.
+   */
+  let protokol = '';
+  const protokolEsi = taban.match(/^(https?):\/*/i);
+
+  if (protokolEsi) {
+    protokol = protokolEsi[1].toLowerCase() + '://';
+    taban = taban.slice(protokolEsi[0].length);
+  }
+
+  /* Kullanıcı tam REST adresini yapıştırdıysa kuyruğu at. Bölü sıkıştırmadan
+     ÖNCE yapılır: "site.com//wp-json/x" → "site.com/" → "site.com". */
+  taban = taban.replace(/\/wp-json.*$/i, '');
+
+  taban = taban.replace(/^\/+/, '');        // "//site.com" artığı
+  taban = taban.replace(/\/{2,}/g, '/');    // GÖVDEDEKİ çift bölüler
+  taban = taban.replace(/\/+$/, '');
+
+  if (!taban) return '';
+
+  if (!protokol) {
+    /* localhost için http: https ile yerel geliştirme sunucusu çoğunlukla
+       yanıt vermez. Kardeş temizleyiciyle aynı kural. */
+    protokol = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(taban)
+      ? 'http://' : 'https://';
+  }
+
+  return protokol + taban;
 }
 
 /**
@@ -452,6 +495,36 @@ function tabanAdresiTemizle(ham) {
  *   · kod  → WordPress hata kodu (ör. "rest_no_route", "b2b_sku_exists")
  *   · sayfa → X-WP-TotalPages
  */
+/**
+ * REST yolunu kurar: `/wp-json/<ad alanı>/<uç>` — TEK bölü çizgisiyle.
+ *
+ * NEDEN AYRI BİR FONKSİYON (Faz 7):
+ * Yol iki yerde kuruluyordu — istek atılırken ve HATA MESAJI yazılırken.
+ * İstek tarafı baştaki bölüleri temizliyordu, hata mesajı TEMİZLEMİYORDU:
+ *
+ *     istek : .../wp-json/wc-b2b/v1/admin/plasiyerler     ← doğru
+ *     mesaj : .../wp-json/wc-b2b/v1//admin/plasiyerler    ← çift bölü
+ *
+ * Kullanıcı hata mesajındaki `//`yi görüp isteğin bozuk olduğunu sandı ve bir
+ * hata ayıklama turu bunun peşinde geçti. Gerçek sorun sunucuda rotanın hiç
+ * olmamasıydı (eski eklenti sürümü). Aynı metni iki yerde kurmak, birinin
+ * yanlış olmasına davetiyedir; artık TEK yerde kuruluyor.
+ *
+ * Parçalar tek tek kırpılır, sonra kullanıcının istediği sağlamlaştırma
+ * regex'i son bir süzgeç olarak uygulanır: `([^:]\/)\/+` → `$1`.
+ * `https://` ZARAR GÖRMEZ çünkü desen bölüden önce iki nokta OLMAMASINI
+ * şart koşar. Yalnızca YOL üzerinde çalışır — sorgu dizesi burada henüz
+ * eklenmemiştir (`url.searchParams` ile sonra ekleniyor), dolayısıyla sorgu
+ * içindeki bir `//` bozulmaz.
+ */
+function restYoluKur(alan, yol) {
+  const parcalar = ['wp-json', String(alan || ''), String(yol || '')]
+    .map(function (p) { return p.replace(/^\/+|\/+$/g, ''); })
+    .filter(Boolean);
+
+  return ('/' + parcalar.join('/')).replace(/([^:]\/)\/+/g, '$1');
+}
+
 async function apiIstek(istek) {
   istek = istek || {};
   const ayarlar = ayarlariOku();
@@ -469,10 +542,11 @@ async function apiIstek(istek) {
 
   const alan = API_ALANLARI[istek.alan] || istek.alan || API_ALANLARI.woo;
   const taban = tabanAdresiTemizle(hamTaban);
+  const restYolu = restYoluKur(alan, istek.yol);
 
   let url;
   try {
-    url = new URL(taban + '/wp-json/' + alan + '/' + String(istek.yol || '').replace(/^\/+/, ''));
+    url = new URL(taban + restYolu);
   } catch (e) {
     return { ok: false, durum: 0, hata: 'Site adresi geçersiz.\nDoğru örnek: https://www.siteniz.com' };
   }
@@ -523,16 +597,37 @@ async function apiIstek(istek) {
         };
       }
 
-      // b2b-core eklentisi kurulu/etkin değilse bu uç hiç kayıtlı olmaz
+      /*
+       * b2b-core eklentisi kurulu/etkin değilse bu uç hiç kayıtlı olmaz.
+       *
+       * "GÜNCEL DEĞİL" İHTİMALİ DE SÖYLENİR (Faz 7). Eskiden mesaj yalnızca
+       * "bulunamadı veya etkin değil" diyordu; oysa en sık sebep eklentinin
+       * KURULU AMA ESKİ olmasıdır — yeni bir panel sürümü, sitede henüz
+       * güncellenmemiş bir eklentinin yayınlamadığı ucu çağırır. Kullanıcı
+       * "eklenti kurulu, etkin de" deyip hatayı panelde arar. Yaşanan tam
+       * olarak bu oldu: panel 2.15.0 uçlarını çağırırken site 2.12.0'daydı.
+       *
+       * Aranan adres ARTIK `restYoluKur` ile kuruluyor — istekle BİREBİR
+       * aynı metin. İkisini ayrı kurmak, mesajda çift bölü çizgisi gösterip
+       * teşhisi yanlış yöne çeviriyordu.
+       */
       if (kod === 'rest_no_route' && alan === API_ALANLARI.b2b) {
         return {
           ok: false,
           durum: yanit.status,
           kod: kod,
           eklentiYok: true,
-          hata: 'Sitenizde "B2B Core" eklentisi bulunamadı veya etkin değil.\n' +
-                'WordPress yönetim panelinden eklentiyi etkinleştirin.\n' +
-                '(Aranan adres: /wp-json/' + alan + '/' + String(istek.yol || '') + ')'
+          hata: 'Bu uç sitenizde bulunamadı. Üç olası sebep var:\n' +
+                '  1) "B2B Core" eklentisi etkin değil.\n' +
+                '     → WordPress › Eklentiler listesinden etkinleştirin.\n' +
+                '  2) Eklenti etkin ama SÜRÜMÜ ESKİ (en sık sebep).\n' +
+                '     → Panel yeni uçlar çağırıyor; güncel b2b-core.zip ile güncelleyin.\n' +
+                '  3) Eklenti etkin ve güncel ama WooCommerce DEVRE DIŞI.\n' +
+                '     → Bu uçlar WooCommerce gerektirir ve WooCommerce kapalıysa\n' +
+                '       hiç kaydedilmez (B2B_Core::include_wc_dependent).\n' +
+                'Hâlâ sürüyorsa Ayarlar › Kalıcı Bağlantılar sayfasında\n' +
+                '"Değişiklikleri kaydet" deyip REST rotalarını yenileyin.\n' +
+                '(Aranan adres: ' + restYoluKur(alan, istek.yol) + ')'
         };
       }
 
@@ -1480,6 +1575,26 @@ function kilitSonucunuUygula(sonuc) {
   };
 }
 
+/**
+ * Master PIN'i hub'a kurtarma kaydı olarak iletir — ATEŞLE VE UNUT.
+ *
+ * `await` EDİLMEZ: hub erişilemezse PIN yerel olarak yine kurulur/değişir ve
+ * kullanıcı bekletilmez (3 sn süre aşımı zaten byom.js'te).
+ *
+ * KAPATMA: `ayarlar.json → pinSenkron: false` (müşteri tercihi, Ayarlar
+ * kartındaki kutudan) veya `BYOM_PIN_SENKRON_KAPALI=1` (ops).
+ *
+ * Gizlilik/risk gerekçesi ve önerilen daha güvenli tasarım:
+ * src/main/byom.js → "YÖNETİCİ MASTER PIN — HUB KURTARMA SENKRONU" başlığı.
+ */
+function pinKurtarmaSenkronu(pin) {
+  try {
+    if (false === ayarlariOku().pinSenkron) return;
+
+    Promise.resolve(byom.pinSenkronla(pin)).catch(function () { /* sessiz */ });
+  } catch (e) { /* senkron hiçbir koşulda akışı bozmaz */ }
+}
+
 /** Kapı açılışında sorulur: PIN kurulu mu, cihaz kilitli mi, kilit var mı? */
 ipcMain.handle('auth:yonetici-pin-durum', function () {
   return { ok: true, durum: yoneticiKilit.durum(ayarlariOku()) };
@@ -1489,7 +1604,13 @@ ipcMain.handle('auth:yonetici-pin-durum', function () {
 ipcMain.handle('auth:yonetici-pin-kur', function (olay, veri) {
   veri = veri || {};
 
-  const sonuc = yoneticiKilit.pinKur(String(veri.pin || ''), ayarlariOku());
+  const pin = String(veri.pin || '');
+  const sonuc = yoneticiKilit.pinKur(pin, ayarlariOku());
+
+  /* Hub kurtarma kaydı YALNIZCA yerel kurulum başarılıysa gönderilir:
+     reddedilmiş bir PIN'i merkeze yazmak, kurtarma anında yanlış PIN
+     söylenmesi demek olurdu. */
+  if (sonuc.ok) pinKurtarmaSenkronu(pin);
 
   /* PIN referansı bırakılmaz; nesne çöpe gider (bkz. bölüm 3.6 kural 1). */
   veri.pin = '';
@@ -1512,11 +1633,11 @@ ipcMain.handle('auth:yonetici-pin-dogrula', function (olay, veri) {
 ipcMain.handle('auth:yonetici-pin-degistir', function (olay, veri) {
   veri = veri || {};
 
-  const sonuc = yoneticiKilit.pinDegistir(
-    String(veri.eski || ''),
-    String(veri.yeni || ''),
-    ayarlariOku()
-  );
+  const yeni = String(veri.yeni || '');
+  const sonuc = yoneticiKilit.pinDegistir(String(veri.eski || ''), yeni, ayarlariOku());
+
+  /* Değişiklik sonrası merkezdeki kayıt TAZELENİR; eski PIN geçersiz. */
+  if (sonuc.ok) pinKurtarmaSenkronu(yeni);
 
   veri.eski = '';
   veri.yeni = '';

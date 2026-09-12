@@ -2344,9 +2344,21 @@ function sekmeAc(ad) {
 
   $$('.menu-btn').forEach(function (btn) {
     const aktifMi = btn.dataset.sekme === ad;
-    // 'uyeler' ve 'destek' düğmelerinde köşedeki kırmızı sayaç mutlak konumlanır;
-    // bu yüzden 'relative' sınıfı korunmalı.
-    const sayacli = btn.dataset.sekme === 'uyeler' || btn.dataset.sekme === 'destek';
+    /*
+     * ⚠️ BU ATAMA BÜTÜN SINIF LİSTESİNİ DEĞİŞTİRİR — bilmeden dokunma.
+     *
+     * Düğmeye başka bir yerden eklenen her SINIF burada SİLİNİR. Rol gizlemesi
+     * tam bu yüzden sınıf değil ÖZNİTELİK kullanır (`data-rol-gizli`, bkz.
+     * renderer-plasiyer.js). Öznitelikler ve `disabled` özelliği sağ kalır.
+     *
+     * `relative` SINIFI da siliniyordu: köşedeki kırmızı sayaç `absolute`
+     * konumlandığı için, `relative` gidince sayaç düğmenin değil <nav>'ın
+     * köşesine kaçıyordu. Eskiden liste ELLE yazılıydı ('uyeler'/'destek') ve
+     * sonradan eklenen rozetli düğmeler (notlarim, plasiyerler) listeye
+     * girmediği için sessizce bozuluyordu. Artık işaretleme kendini söylüyor:
+     * rozet taşıyan düğme `data-sayacli="1"` alır.
+     */
+    const sayacli = '1' === btn.dataset.sayacli;
     btn.className = 'menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 ' +
       (sayacli ? 'relative ' : '') + (aktifMi ? AKTIF_MENU : PASIF_MENU);
   });

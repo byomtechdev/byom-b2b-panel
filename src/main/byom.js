@@ -135,6 +135,102 @@ function lisansOzeti() {
   };
 }
 
+/* ==========================================================================
+ *  YÖNETİCİ MASTER PIN — HUB KURTARMA SENKRONU
+ *  -------------------------------------------------------------------------
+ *  İş gerekçesi: patron 6 haneli Yönetici Master PIN'ini unutursa kilitli bir
+ *  saha cihazını açmanın başka yolu yok. Bu uç, PIN'i lisans anahtarıyla
+ *  birlikte BYOM Brain'e iletir ki merkez destek verebilsin.
+ *
+ *  ┌────────────────────────────────────────────────────────────────────────┐
+ *  │ ⚠️ GÜVENLİK SÖZLEŞMESİNİ DEĞİŞTİREN BİR KARAR — OKUMADAN DOKUNMA      │
+ *  │                                                                        │
+ *  │ Panel PIN'i tuzlu scrypt ile saklar ve o özet GERİ DÖNDÜRÜLEMEZ        │
+ *  │ (BYOM-REGISTRY.md §5.28 A). Bu senkron o sözün BİR İSTİSNASIDIR:       │
+ *  │ düz metin PIN hub'a gider, orada okunabilir durur.                     │
+ *  │                                                                        │
+ *  │ Bunun bedeli gerçek ve kabul edilmiştir:                               │
+ *  │   · Hub veritabanına/günlüklerine düşerse okunabilir.                  │
+ *  │   · Hub erişimi olan BYOM personeli her müşterinin yönetici PIN'ini    │
+ *  │     görebilir ve kilitli her cihazı açabilir.                          │
+ *  │   · Kullanıcılar PIN'i başka yerde de kullanıyorsa etki yayılır.       │
+ *  │                                                                        │
+ *  │ Bu yüzden ZORUNLU üç önlem:                                            │
+ *  │   1) KULLANICIYA SÖYLENİR. Ayarlar'daki PIN kartında açık uyarı var;   │
+ *  │      kimsenin PIN'i haberi olmadan dışarı çıkmaz.                      │
+ *  │   2) KAPATILABİLİR. `ayarlar.json → pinSenkron: false` ya da           │
+ *  │      `BYOM_PIN_SENKRON_KAPALI=1` ortam değişkeni kapatır.              │
+ *  │   3) AKIŞI BEKLETMEZ. 3 sn süre aşımı, tek deneme, sessiz hata —       │
+ *  │      hub erişilemezse PIN yerel olarak yine kurulur/değişir.           │
+ *  │                                                                        │
+ *  │ DAHA İYİSİ VAR (önerilen sertleştirme, ayrı iş):                       │
+ *  │ Hub'ın PIN'i hiç görmediği bir SIFIRLAMA akışı. Patron merkezi arar,   │
+ *  │ merkez o lisans+HWID için sıfırlama yetkisi verir, panel PIN'i YEREL   │
+ *  │ olarak siler ve patron yenisini kurar. Aynı iş hedefini ("unutursa     │
+ *  │ kurtarılsın") PIN'i hiç sızdırmadan karşılar ve hub sızıntısı bütün    │
+ *  │ müşterileri açık hâle getirmez. Ayrıntı: BYOM-REGISTRY.md §5.30 D.     │
+ *  └────────────────────────────────────────────────────────────────────────┘
+ * ========================================================================*/
+
+/** Hub ucu. Sunucu tarafı yoksa istek sessizce başarısız olur — akış sürer. */
+const PIN_SENKRON_UC = '/api/v1/license/pin-sync';
+
+/** Senkron akışı ASLA bekletmez: 3 sn, tek deneme. */
+const PIN_SENKRON_SURE_ASIMI = 3000;
+
+/**
+ * Master PIN'i hub'a iletir (kurtarma kaydı).
+ *
+ * Lisans anahtarı BU MODÜLDEN ÇIKMAZ: fonksiyon burada durur ki anahtar
+ * `lisansOzeti()` dışına (maskesiz) sızmasın.
+ *
+ * Her zaman ÇÖZÜLÜR, asla throw etmez. `{ ok, atlandi? }` döner.
+ */
+async function pinSenkronla(pin) {
+  /* Ortam değişkeni kill switch'i — kurumsal dağıtımda tek satırla kapatılır. */
+  if ('1' === String(process.env.BYOM_PIN_SENKRON_KAPALI || '')) {
+    return { ok: false, atlandi: 'ortam-kapali' };
+  }
+
+  const anahtar = String((durum.lisans && durum.lisans.lisansAnahtari) || '').trim();
+
+  /* Lisans yoksa kurtarma kaydının bağlanacağı bir kimlik de yok. */
+  if (!anahtar) return { ok: false, atlandi: 'lisans-yok' };
+
+  const temiz = String(pin === null || pin === undefined ? '' : pin).trim();
+
+  /* Biçimi burada da denetliyoruz: yanlış bir değeri hub'a yazmak, kurtarma
+     anında yanlış PIN söylenmesi demek olurdu. */
+  if (!/^[0-9]{6}$/.test(temiz)) return { ok: false, atlandi: 'bicim' };
+
+  try {
+    /* GEÇ YÜKLEME — dosyanın geri kalanındaki desenle aynı (bkz. satır ~835).
+       Hub istemcisi `adresBirlestir` kullandığı için çift bölü çizgisi orada
+       da sanitize edilir; burada elle birleştirme YAPILMAZ. */
+    const api = require('./byom-api');
+
+    const cevap = await api.istekAt({
+      yol: PIN_SENKRON_UC,
+      metod: 'POST',
+      sureAsimi: PIN_SENKRON_SURE_ASIMI,
+      govde: {
+        lisansAnahtari: anahtar,
+        /* HWID kaydı CİHAZA bağlar: aynı lisansın iki makinesi ayrı ayrı
+           kurtarılabilir ve merkez hangi cihazdan geldiğini bilir. */
+        hwid: durum.hwid || '',
+        pin: temiz,
+        kaynak: 'b2b-yonetim-paneli',
+        surum: uygulamaSurumu()
+      }
+    });
+
+    return { ok: !!(cevap && cevap.ok), durum: (cevap && cevap.durum) || 0 };
+  } catch (e) {
+    /* SESSİZ: hub erişilemese bile PIN yerel olarak kuruldu/değişti. */
+    return { ok: false, atlandi: 'hata' };
+  }
+}
+
 /** Sunucudan gelen çözümü hem belleğe hem diske yazar. */
 function sonucuKaydet(anahtar, cozum, ekstra) {
   const simdi = new Date().toISOString();
@@ -953,6 +1049,7 @@ function acilisTamamMi() {
 
 module.exports = {
   baslat,
+  pinSenkronla,
   odakla,
   anaPencereHazir,
   acilisTamamMi,

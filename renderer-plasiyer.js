@@ -44,55 +44,123 @@
    */
   var PLASIYER_SEKMELERI = ['satis', 'siparisler', 'notlarim'];
 
-  /**
-   * ROL → GÖRÜNECEK SEKMELER (Faz 6) — TEK DOĞRULUK KAYNAĞI.
-   *
-   * Eskiden iki liste vardı: `PLASIYER_SEKMELERI` (izinli) ve
-   * `KISITLI_SEKMELER` (yasak). Birbirinin tümleyeni olmak ZORUNDA olan iki
-   * liste, bu depoda tekrar tekrar canımızı yakmış hata sınıfıdır: yeni bir
-   * sekme eklendiğinde yalnızca birine yazılır ve sekme sessizce yanlış rolde
-   * görünür. Artık tek beyaz liste var; yasak listesi DOM'dan türetilir
-   * (`kisitliSekmeler`), yani menüye eklenen her yeni düğme varsayılan olarak
-   * KAPALI başlar — güvenli taraf.
-   *
-   * YÖNETİCİ DE KISITLANIR (Faz 6'nın asıl değişikliği): "Katalog & Sipariş
-   * Yazma" plasiyerin saha ekranıdır, yöneticinin depo/onay dünyasına ait
-   * değil. İkisi iç içe geçtiği için menü karmaşıktı.
-   */
-  var ROL_SEKMELERI = {
-    /* Şirket yönetimi: sipariş/depo, ürün/stok, üye onayı, iskonto, vitrin,
-       pazarlamacılar (+ içindeki harita alt sekmesi), destek, ayarlar. */
-    admin: ['siparisler', 'urunler', 'uyeler', 'iskonto', 'vitrin-editor', 'plasiyerler', 'destek', 'ayarlar'],
-
-    /* Saha: katalog + kendi siparişleri + kendi notları. Başka hiçbir şey. */
-    plasiyer: PLASIYER_SEKMELERI
-  };
+  /** Kısıtlama uygulanan roller. Bunların dışı (oturum yok) kısıtlanmaz. */
+  var ROLLER = ['admin', 'plasiyer'];
 
   /**
-   * Plasiyer oturumunda KAPANAN sekmeler — DOM'dan türetilir.
+   * Rol girişte hangi sekmeye düşer.
    *
-   * Testler bu listeyi okuyor; elle yazılmış bir kopya tutmak yerine menüyü
-   * tarıyoruz ki liste asla gerçeklikten ayrışamasın.
+   * DOM'dan türetilemez: "ilk sekme" bir ÜRÜN kararıdır. Plasiyerin ilk işi
+   * satış yazmak, yöneticinin ilk işi siparişlere bakmak.
    */
-  function kisitliSekmeler(rol) {
-    var izinli = ROL_SEKMELERI[rol || 'plasiyer'] || [];
-    var hepsi = [];
+  var ILK_SEKME = { admin: 'siparisler', plasiyer: 'satis' };
+
+  /**
+   * ROL İZNİ ARTIK DOM ÖZNİTELİĞİNDE — `data-rol-izin` (Faz 7).
+   * ═══════════════════════════════════════════════════════════════════
+   *
+   * 🔴 NEDEN DEĞİŞTİ — ÜRETİM HATASI, OKUMADAN GERİ ALMA:
+   *
+   * Faz 6'da izin bir JS listesindeydi (`ROL_SEKMELERI`) ve gizleme
+   * `plasiyer-gizli` SINIFI ile yapılıyordu. Bu sessizce BOZULUYORDU:
+   *
+   *     renderer.js → sekmeAc():
+   *         btn.className = 'menu-btn text-left px-5 py-6 ...'   ← ATAMA
+   *
+   * `className` ATAMASI bütün sınıf listesini DEĞİŞTİRİR. Yani kullanıcı
+   * herhangi bir menü düğmesine tıkladığı anda `plasiyer-gizli` SİLİNİYOR ve
+   * gizlenmiş sekmeler geri geliyordu. `disabled` (özellik) ve `aria-hidden`
+   * (öznitelik) sağ kalıyordu — o yüzden sekmeler "görünür ama tıklanamaz"
+   * hâle geliyordu; kullanıcının bildirdiği belirti tam olarak buydu.
+   *
+   * Testler yakalamıyordu çünkü DOM harness'ı kendi `sekmeAc` taklidini
+   * kuruyordu ve o taklit `className`'i yeniden kurmuyordu. (Artık kuruyor.)
+   *
+   * ÇÖZÜM: izin ve gizleme ÖZNİTELİKLE taşınır — öznitelikler `className`
+   * atamasından SAĞ KALIR:
+   *     izin    : <button data-rol-izin="admin">        (işaretleme)
+   *     gizleme : <button data-rol-gizli="1">           (çalışma zamanı)
+   *     CSS     : [data-rol-gizli="1"] { display:none !important }
+   *
+   * `siparisler` İKİ ROLE DE AİT (yönetici "Siparişler & Depo Fişi",
+   * plasiyer "Kendi Siparişlerim" olarak görür) — bu yüzden öznitelik
+   * BOŞLUKLA AYRILMIŞ LİSTE kabul eder: `data-rol-izin="admin plasiyer"`.
+   *
+   * TEK DOĞRULUK KAYNAĞI DOM'DUR. JS tarafında ikinci bir izin listesi
+   * TUTULMAZ — iki listeyi tümleyen tutmak bu depoda üç kez canımızı yaktı
+   * (§5.13, §5.14, Faz 6). İşaretlenmemiş düğme KAPALI sayılır (güvenli
+   * taraf) ve bir test her `.menu-btn`'de özniteliğin varlığını kilitler.
+   */
+  function rolIzinleri(btn) {
+    return String((btn && btn.dataset && btn.dataset.rolIzin) || '')
+      .trim().split(/\s+/).filter(Boolean);
+  }
+
+  /** Sekme düğmesini adından bulur. */
+  function sekmeDugmesi(ad) {
+    return document.querySelector('.menu-btn[data-sekme="' + String(ad) + '"]');
+  }
+
+  /**
+   * Rol bu sekmeyi görebilir mi?
+   *
+   * Kısıtlanmayan rol (oturum yok) → her şey görünür: mevcut açılış davranışı.
+   * İşaretlenmemiş düğme → KAPALI. Yeni bir sekme eklenip öznitelik
+   * unutulursa sekme yanlış rolde sızmak yerine hiç görünmez ve hemen
+   * fark edilir.
+   */
+  function sekmeIzinli(ad, rol) {
+    var btn = sekmeDugmesi(ad);
+
+    if (!btn) return true;   // menüde olmayan sekme (ör. alt sekme) kısıtlanmaz
+
+    return dugumIzinli(btn, rol);
+  }
+
+  /**
+   * TEK KURAL, ÜÇ DURUM — düğüm bu rolde görünür mü?
+   *
+   *   rol = 'admin' | 'plasiyer' → izin listesi o rolü içeriyorsa görünür.
+   *   rol = '' (oturum yok)      → YALNIZCA bütün rollere açık olanlar görünür.
+   *   izin listesi boş           → GÖRÜNMEZ (işaretleme unutulmuş).
+   *
+   * Oturumsuz dal neden böyle: o anda kapı kaplaması ekranı kaplıyor, ama
+   * role ÖZEL bir sekmenin arkada görünür durması belirsiz bir duruma
+   * güvenmek olurdu. "Role özel olan, rol bilinmiyorsa görünmez" tek cümleyle
+   * anlaşılır ve özel durum gerektirmez.
+   */
+  function dugumIzinli(dugum, rol) {
+    var izin = rolIzinleri(dugum);
+
+    if (!izin.length) return false;
+
+    if (ROLLER.indexOf(rol) !== -1) return izin.indexOf(rol) !== -1;
+
+    return ROLLER.every(function (r) { return izin.indexOf(r) !== -1; });
+  }
+
+  /** Rolün GÖRECEĞİ sekmeler — DOM'dan türetilir. */
+  function rolSekmeleri(rol) {
+    var liste = [];
 
     document.querySelectorAll('.menu-btn').forEach(function (btn) {
       var ad = btn.dataset.sekme;
-      if (ad && izinli.indexOf(ad) === -1) hepsi.push(ad);
+      if (ad && rolIzinleri(btn).indexOf(rol) !== -1) liste.push(ad);
     });
 
-    return hepsi;
+    return liste;
   }
 
-  /** Rol bu sekmeyi görebilir mi? Bilinmeyen rol → kısıtlama yok (eski davranış). */
-  function sekmeIzinli(ad, rol) {
-    var izinli = ROL_SEKMELERI[rol];
+  /** Rolün GÖRMEYECEĞİ sekmeler — DOM'dan türetilir (testler okuyor). */
+  function kisitliSekmeler(rol) {
+    var liste = [];
 
-    if (!izinli) return true;
+    document.querySelectorAll('.menu-btn').forEach(function (btn) {
+      var ad = btn.dataset.sekme;
+      if (ad && !sekmeIzinli(ad, rol)) liste.push(ad);
+    });
 
-    return izinli.indexOf(ad) !== -1;
+    return liste;
   }
 
   /**
@@ -241,7 +309,7 @@
    */
   function kisitlamayiUygula() {
     var rol = (durum.oturum && durum.oturum.rol) || '';
-    var izinliListe = ROL_SEKMELERI[rol] || null;
+    var kisitla = ROLLER.indexOf(rol) !== -1;
 
     /* Etiketleri bir kez sakla: çıkışta geri yazmak için. */
     if (!ozgunEtiketler) {
@@ -254,10 +322,22 @@
 
     document.querySelectorAll('.menu-btn').forEach(function (btn) {
       var ad = btn.dataset.sekme;
-      var kapat = !!izinliListe && !sekmeIzinli(ad, rol);
+      var kapat = !sekmeIzinli(ad, rol);
 
-      /* Üç katlı kapatma: gizli + disabled + aria-hidden. Yalnızca CSS ile
-         gizlemek klavyeyle (Tab) erişimi açık bırakırdı. */
+      /*
+       * DÖRT KATLI KAPATMA — her biri ayrı bir kaçağı kapatır:
+       *   data-rol-gizli : ASIL gizleme. ÖZNİTELİK olması hayati —
+       *                    `sekmeAc` className'i yeniden kurduğu için sınıf
+       *                    tabanlı gizleme siliniyordu (bkz. yukarıdaki
+       *                    "ÜRETİM HATASI" notu).
+       *   plasiyer-gizli : geriye dönük uyum (eski CSS ve dış kod için).
+       *                    Tek başına GÜVENİLMEZ.
+       *   disabled       : klavyeyle (Tab) erişimi de kapatır.
+       *   aria-hidden    : ekran okuyucudan da gizler.
+       */
+      if (kapat) btn.setAttribute('data-rol-gizli', '1');
+      else btn.removeAttribute('data-rol-gizli');
+
       btn.classList.toggle('plasiyer-gizli', kapat);
       btn.disabled = kapat;
       if (kapat) btn.setAttribute('aria-hidden', 'true');
@@ -276,25 +356,27 @@
     });
 
     /*
-     * `data-rol` İKİ YÖNLÜ ÇALIŞIR (Faz 6'da genişledi).
+     * MENÜ DIŞINDAKİ rol işaretli öğeler (sekme gövdesi içindeki kutular vb.).
      *
-     * Eskiden yalnızca `data-rol="admin"` vardı ve plasiyerde gizleniyordu.
-     * Artık `data-rol="plasiyer"` de var (Saha Notlarım); her işaretli düğüm
-     * YALNIZCA kendi rolünde görünür. Oturum yoksa (kapı ekranı) ikisi de
-     * gizlenir — arkadaki panelde rol etiketli bir düğmenin yanıp sönmesi
-     * kullanıcıya yanlış ipucu verirdi.
+     * FAZ 7: eski `data-rol` şeması kaldırıldı; tek öznitelik `data-rol-izin`.
+     * İki ayrı şema tutmak, hangisinin geçerli olduğunu soran bir sonraki
+     * geliştiriciyi yanıltırdı. Aynı kural (`dugumIzinli`) hem menü
+     * düğmelerine hem bunlara uygulanır.
      */
-    document.querySelectorAll('[data-rol]').forEach(function (d) {
-      var hedef = d.dataset.rol;
+    document.querySelectorAll('[data-rol-izin]:not(.menu-btn)').forEach(function (d) {
+      var kapat = !dugumIzinli(d, rol);
 
-      d.classList.toggle('plasiyer-gizli', !rol || hedef !== rol);
+      if (kapat) d.setAttribute('data-rol-gizli', '1');
+      else d.removeAttribute('data-rol-gizli');
+
+      d.classList.toggle('plasiyer-gizli', kapat);
     });
 
     ustBariTazele();
 
-    /* Kısıtlı bir sekmede kalındıysa izinli İLK sekmeye geç. */
-    if (izinliListe && !sekmeIzinli(durum.aktifSekme, rol)) {
-      sekmeAc(izinliListe[0]);
+    /* Kısıtlı bir sekmede kalındıysa rolün İLK sekmesine geç. */
+    if (kisitla && !sekmeIzinli(durum.aktifSekme, rol)) {
+      sekmeAc(ILK_SEKME[rol] || rolSekmeleri(rol)[0]);
     }
   }
 
@@ -911,7 +993,7 @@
      * yeniden çizimde çalışır ve gereksiz sekme değişimi veri yükleme turu
      * tetiklerdi (`plasiyer-kapi.dom.test.js` bunu ayrıca kilitliyor).
      */
-    sekmeAc(PLASIYER_SEKMELERI[0]);
+    sekmeAc(ILK_SEKME.plasiyer);
 
     kapiyiKapat();
 
@@ -1186,9 +1268,12 @@
     cihaz: cihaz,
 
     PLASIYER_SEKMELERI: PLASIYER_SEKMELERI,
-    ROL_SEKMELERI: ROL_SEKMELERI,
+    rolSekmeleri: rolSekmeleri,
     kisitliSekmeler: kisitliSekmeler,
     sekmeIzinli: sekmeIzinli,
+    rolIzinleri: rolIzinleri,
+    ROLLER: ROLLER,
+    ILK_SEKME: ILK_SEKME,
     LISTE_SURE_ASIMI_MS: LISTE_SURE_ASIMI_MS,
     PLASIYER_YOK_MESAJI: PLASIYER_YOK_MESAJI,
     YPIN_UZUNLUK: YPIN_UZUNLUK

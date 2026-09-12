@@ -589,19 +589,19 @@ cevaplar. `ortamKurAyarsiz()` yardımcısı artık üretim sırasını test eder
 
 ## 4.10 Menü hiyerarşisi, rol izolasyonu ve çıkış (Faz 6)
 
-### İKİ FARKLI DÜNYA — tek beyaz liste
-```js
-renderer-plasiyer.js → ROL_SEKMELERI = {
-  admin:    ['siparisler','urunler','uyeler','iskonto','vitrin-editor','plasiyerler','destek','ayarlar'],  // 8
-  plasiyer: ['satis','siparisler','notlarim']                                                              // 3
-}
+### İKİ FARKLI DÜNYA
+> **FAZ 7'DE TAŞINDI:** izin listesi artık JS'te değil **DOM özniteliğinde**
+> (`data-rol-izin`). Sebebi ve tam kural **§4.11.1**'de — önce onu oku.
+
+```html
+<!-- index.html, sol menü -->
+<button data-sekme="siparisler" data-rol-izin="admin plasiyer">  <!-- ikisine de -->
+<button data-sekme="urunler"    data-rol-izin="admin">           <!-- 8 yönetici -->
+<button data-sekme="satis"      data-rol-izin="plasiyer">        <!-- 3 saha -->
 ```
-**TEK DOĞRULUK KAYNAĞI.** Eskiden `PLASIYER_SEKMELERI` (izinli) +
-`KISITLI_SEKMELER` (yasak) diye **iki liste** vardı ve birbirinin tümleyeni
-olmak zorundaydı; yeni bir sekme eklendiğinde yalnızca birine yazılır ve sekme
-sessizce yanlış rolde görünürdü. Artık yasak liste **DOM'dan türetilir**
-(`kisitliSekmeler`): menüye eklenen her yeni düğme varsayılan olarak **KAPALI**
-başlar — güvenli taraf.
+Yönetici 8 sekme · Plasiyer 3 sekme. İzinli/yasak iki ayrı liste **yok**;
+ikisi de DOM'dan türetilir (`rolSekmeleri` / `kisitliSekmeler`), yani asla
+birbirinden ayrışamaz.
 
 **YÖNETİCİ DE KISITLANIR** (Faz 6'nın asıl değişikliği): `satis` yöneticiden
 gizlenir. O ekran plasiyerin saha dünyasıdır; yöneticinin depo/onay dünyasında
@@ -688,6 +688,145 @@ döndürmediği için panel bu bilgiyi hiçbir yerden öğrenemiyordu).
 
 ---
 
+## 4.11 Faz 7 — canlı hata düzeltmeleri (REST adres, kart düzeni, rol özniteliği, PIN)
+
+### 4.11.1 🔴 `sekmeAc` rol gizlemesini SİLİYORDU — en önemli düzeltme
+Kullanıcı yönetici girişinde sol menüde "Katalog & Sipariş Yazma" ve
+"Saha Notlarım / CRM" görüyordu. Sebep:
+
+```js
+renderer.js → sekmeAc():
+    btn.className = 'menu-btn text-left px-5 py-6 ...'   ← ATAMA
+```
+**`className` ataması bütün sınıf listesini değiştirir.** Faz 6'da gizleme
+`plasiyer-gizli` SINIFI ile yapılıyordu; kullanıcı herhangi bir menüye
+tıkladığı anda sınıf siliniyor ve gizli sekmeler geri geliyordu. `disabled`
+(özellik) sağ kaldığı için sekmeler "görünür ama tıklanamaz" oluyordu.
+
+**Çözüm — izin ve gizleme ÖZNİTELİKTE** (öznitelikler atamadan sağ kalır):
+```
+izin    : <button data-rol-izin="admin">           ← işaretleme, TEK KAYNAK
+          <button data-rol-izin="admin plasiyer">  ← boşlukla ayrılmış liste
+gizleme : <button data-rol-gizli="1">              ← çalışma zamanı
+CSS     : [data-rol-gizli="1"] { display:none !important }
+```
+- **TEK DOĞRULUK KAYNAĞI DOM'DUR.** JS'te ikinci bir izin listesi tutulmaz
+  (`ROL_SEKMELERI` kaldırıldı); `rolSekmeleri()` / `kisitliSekmeler()` DOM'dan
+  türetir. İşaretlenmemiş düğme **KAPALI** sayılır ve bir test her `.menu-btn`'de
+  özniteliğin varlığını kilitler — unutulan öznitelik commit'te görünür.
+- **TEK KURAL, ÜÇ DURUM** (`dugumIzinli`): rol bilinirse izin listesi o rolü
+  içermeli; **rol bilinmiyorsa yalnızca bütün rollere açık olanlar görünür**;
+  izin listesi boşsa görünmez. Faz 1'in "oturum yoksa kısıtlama kalkar" sözü
+  bilinçli olarak daraltıldı — role özel bir sekmenin belirsiz bir durumda
+  arkada görünür kalması, kapı kaplamasının her zaman üstte olduğuna güvenmek
+  olurdu.
+- Eski `data-rol` şeması **kaldırıldı**; iki şema tutmak sıradaki geliştiriciyi
+  yanıltırdı.
+
+**Testler neden görmüyordu:** DOM harness'ı kendi `sekmeAc` taklidini kuruyordu
+ve o taklit `className`'i yeniden kurmuyordu. Artık **üretime sadık** tek bir
+taklit var: `../scripts/tests/yardimci/sekme-ac-taklidi.js`. **Yeni DOM testi
+yazarken `w.sekmeAc`'ı elle kurma, onu kullan.**
+
+### 4.11.2 Rozet konumu — `data-sayacli`
+`sekmeAc`, `relative` sınıfını da yeniden kuruyor ve eskiden listeyi **elle**
+yazıyordu (`'uyeler' || 'destek'`). Sonradan eklenen rozetli düğmeler
+(`notlarim`, ve çalışma zamanında rozet alan `plasiyerler`) listeye girmediği
+için rozetleri `<nav>`'ın köşesine kaçıyordu. Artık işaretleme kendini söylüyor:
+rozet taşıyan düğme **`data-sayacli="1"`** alır.
+
+### 4.11.3 REST adresi — çift bölü çizgisi ve bozuk taban
+Kullanıcının gördüğü `/wp-json/wc-b2b/v1//admin/plasiyerler` **yalnızca hata
+mesajındaydı**; gerçek istek zaten temizdi. Mesaj ile istek adresi İKİ AYRI
+yerde kuruluyordu, biri temizliyordu diğeri temizlemiyordu — ve bu bir hata
+ayıklama turunu yanlış ize soktu. Artık tek kaynak: **`restYoluKur(alan, yol)`**.
+
+`tabanAdresiTemizle()` de **güçlendirildi** (gerçek iki hata):
+| Girdi | Eski | Yeni |
+|---|---|---|
+| `https://site.com//shop` | aynen kalıyordu → `new URL` normalize etmez, path `//shop/...` → 404 | `https://site.com/shop` |
+| `https:/site.com` | `https://https:/site.com` → **host literal olarak `https`**, kullanıcı "adres hatalı" yerine "ulaşılamıyor" görüyordu | `https://site.com` |
+
+Kalıp, bu depoda **zaten doğru yazılmış** kardeş temizleyiciden alındı:
+`src/main/byom-yapilandirma.js → adresiTemizle()`. İkisi artık aynı kuralla
+çalışıyor (ikisi de kullanıcının ELLE yazdığı alan).
+
+**Şartnamenin `([^:]\/)\/+` regex'i** `restYoluKur` içinde son süzgeç olarak
+duruyor. `https://` zarar görmez (bölüden önce iki nokta şartı). **Ama TAM URL
+üzerinde koşturulmamalı:** `?search=a//b` → `a/b` olur ve sorgu değeri bozulur.
+Bu yüzden sıkıştırma yalnızca YOL üzerinde, sorgu `url.searchParams` ile
+eklenmeden önce yapılıyor. Bir test bu sırayı kilitliyor.
+
+**"Eklenti bulunamadı" mesajı üç olasılığı birden söylüyor** artık: etkin değil /
+**sürümü eski** / **WooCommerce devre dışı**. Üçüncüsü gerçek bir tuzak: plasiyer
+uçları `B2B_Core::include_wc_dependent()` içinde, yani WooCommerce kapalıysa hiç
+kaydedilmiyor ve kullanıcı "eklenti etkin zaten" deyip mesaja güvenini
+kaybediyordu.
+
+> **Canlı hatanın ASIL sebebi paketti:** `b2b-core.zip` 2.12.0'da kalmış ve
+> içinde hiç plasiyer dosyası yoktu. Site o sürümü çalıştırdığı için
+> `/admin/plasiyerler` rotası gerçekten yoktu. Zip `scripts/zip-theme.js` ile
+> 2.15.0'dan yeniden üretildi. **Zip'ler `.gitignore`dadır** (izlenmez) —
+> yeni sürüm yayınlarken YENİDEN ÜRETİLMELİDİR.
+
+### 4.11.4 Giriş kartlarında metin taşması
+Kartlar `<button>` ve yoğunluk katmanında **koşulsuz** bir global kural var:
+```css
+button { display: inline-flex; align-items: center;
+         justify-content: center; white-space: nowrap; }
+```
+Üç etki birden: çocuklar yan yana dizilir, ortalanır ve **metin hiç sarmaz**.
+`.kapi-kart` üçünü de ezer (`flex-direction: column`, `align-items: flex-start`,
+**`white-space: normal`**) + `min-width: 0` (grid öğesi küçülebilsin) +
+`overflow-wrap: anywhere`. `.kapi-kart` (0,1,0) global `button` (0,0,1)'den
+özgül olduğu için `!important` gerekmiyor.
+
+**`white-space: normal` en kritik ezme:** yalnızca `flex-direction: column`
+vermek yetmez, metin yine sarmaz ve taşar.
+
+Ayrıca kart içindeki `<div>`/`<p>` → `<span>`: `<button>` içerik modeli yalnızca
+**phrasing content** kabul eder, blok etiket geçersiz HTML'di.
+
+**Şartnamenin `text-white` / `text-slate-400` önerisi uyarlandı:** kart zemini
+`bg-white dark:bg-slate-800`, yani düz `text-white` **açık temada beyaz üzerine
+beyaz** olurdu. Tema duyarlı çiftler kullanıldı (`text-slate-900 dark:text-white`
+/ `text-slate-500 dark:text-slate-400`). Bir test `text-white`ın geri dönmesini
+engelliyor.
+
+### 4.11.5 Yönetici PIN değiştirme + hub kurtarma
+| Parça | Yer |
+|---|---|
+| Kart işaretlemesi | `index.html` → Ayarlar sağ sütunu, "🔑 Yönetici Master PIN" |
+| Kart mantığı | `src/renderer/modules/yonetici-pin.js` (`sekmeAc`'ı SARAR) |
+| Doğrulama | `auth:yonetici-pin-degistir` → `byom-yonetici-kilit.js → pinDegistir` |
+| Hub senkronu | `src/main/byom.js → pinSenkronla()`, `main.js → pinKurtarmaSenkronu()` |
+
+- **PIN kurulu değilse kart kapalı** ve kullanıcıya ilk PIN'i **giriş kapısında**
+  kuracağı söylenir. Aynı işi iki yerde yapmak "PIN zaten tanımlı" hatasını
+  kullanıcıya gösteren bir yol açardı.
+- Biçim/eşitlik/aynılık denetimi **yerel** (ana sürece gürültü gitmez); son söz
+  ana süreçte.
+- PIN alanları **her denemeden sonra** (başarılı ya da değil) temizlenir.
+
+> ### ⚠️ HUB PIN SENKRONU — GÜVENLİK SÖZLEŞMESİNİN BİLİNÇLİ İSTİSNASI
+> Panel PIN'i tuzlu scrypt ile saklar ve özet geri döndürülemez
+> (`../BYOM-REGISTRY.md §5.28 A`). Kurtarma senkronu bu sözün istisnasıdır:
+> **düz metin PIN hub'a gider ve orada okunabilir durur.** Bedeli gerçektir —
+> hub erişimi olan BYOM personeli her müşterinin yönetici PIN'ini görebilir ve
+> kilitli her cihazı açabilir.
+>
+> Bu yüzden üç önlem **zorunlu**: (1) kullanıcıya hem Ayarlar kartında hem
+> **ilk kurulum ekranında** yazılı olarak söylenir, (2) kapatılabilir
+> (`ayarlar.json → pinSenkron: false` / `BYOM_PIN_SENKRON_KAPALI=1`),
+> (3) akışı bekletmez (3 sn, tek deneme, sessiz hata).
+>
+> **Daha iyisi var (önerilen, ayrı iş):** hub'ın PIN'i hiç görmediği bir
+> SIFIRLAMA akışı — merkez o lisans+HWID için sıfırlama yetkisi verir, panel
+> PIN'i yerel olarak siler, patron yenisini kurar. Aynı iş hedefini PIN'i
+> sızdırmadan karşılar. Gerekçe: `byom.js` başlığı + `§5.30 D`.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -695,10 +834,10 @@ döndürmediği için panel bu bilgiyi hiçbir yerden öğrenemiyordu).
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**411 test**: panel 196 + kök 215).
+İkisini birden `../scripts/check-all.js` koşar (**449 test**: panel 209 + kök 240).
 
 ```bash
-# Bu submodule'un kendi birim testleri (196 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (209 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
@@ -708,6 +847,7 @@ node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprus
                                             #      esitlemeGerekliMi (Faz 4 oto-esitleme karari)
 node --test test/harita-notlar.test.js      # 35 — 81 il kutugu, durum gecisleri, filtreler
 node --test test/cihaz-kilidi.test.js       # 35 — Master PIN hash/kilit, cihaz tahsisi, KAYNAK denetimi
+node --test test/rest-adres.test.js         # 13 — restYoluKur, tabanAdresiTemizle, sorgu korunmasi
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
 
@@ -732,8 +872,9 @@ node --test scripts/tests/depo-fisi.test.js           # fiş muhasebe dökümü
 node --test scripts/tests/odeme-matrisi.dom.test.js   # matris arayüzü
 node --test scripts/tests/checkout-masasi.dom.test.js
 node --test scripts/tests/sifre-goz.dom.test.js
-node --test scripts/tests/plasiyer-kapi.dom.test.js   # 58 — çift kapı, [hidden], Master PIN, cihaz kilidi, ÇIKIŞ
+node --test scripts/tests/plasiyer-kapi.dom.test.js   # 66 — çift kapı, [hidden], Master PIN, cihaz kilidi, ÇIKIŞ, rol dayanıklılığı
 node --test scripts/tests/plasiyer-menu.dom.test.js   # 15 — menü hiyerarşisi, alt sekmeler, Saha Notlarım
+node --test scripts/tests/yonetici-pin.dom.test.js    # 17 — PIN değiştirme kartı + giriş kartı düzeni
 node --test scripts/tests/harita-kokpit.dom.test.js   # 15 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
@@ -745,7 +886,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (411 test)
+# Bitirirken: üç katmanın tamamı (449 test)
 node scripts/check-all.js
 ```
 
@@ -812,6 +953,9 @@ if (typeof window !== 'undefined') window.X = X;
 | Geliştirici kilidi şifresi (tuzsuz SHA-256, `renderer.js`) | **Kabul edilmiş risk** (`../BYOM-REGISTRY.md §5.20 madde 18`): yerel kaza önleyici, saldırı savunması değil. Değiştirmek mevcut kurulumların şifresini geçersiz kılar |
 | `main.js` içindeki küresel hata kancaları | Davranışları (diyalog + günlük) müşteri deneyiminin parçası. Telemetri bunlara **satır ekler**, davranışı değiştirmez |
 | **`ayar:oku` → `maskele()` / `ayar:yaz` → `suz()`** | **Cihaz kilidinin tamamı bu iki çağrıya dayanıyor.** Biri kaldırılırsa kilit sessizce işlevsiz kalır: PIN özeti arayüze sızar ya da kilitli cihazdaki biri `ayar:yaz` ile `cihazRolu`'nü kendisi değiştirir. Davranış testleri bunu YAKALAMAZ (main.js Electron gerektirir, `node --test` altında yüklenmez) — bu yüzden `cihaz-kilidi.test.js` **kaynak metnini** denetler. → §4.9 |
+| **`[data-rol-gizli="1"] { display:none !important }` (index.html)** | Rol izolasyonunun TAMAMI bu kurala dayanıyor. Kural kalkarsa öznitelik bir şey ifade etmez ve her iki rol birbirinin sekmelerini görür. Sınıf tabanlı gizleme DENENDİ ve `sekmeAc` tarafından siliniyordu (→ §4.11.1) |
+| **`.kapi-kart` düzen ezmeleri (index.html)** | Global `button { display:inline-flex; white-space:nowrap }` kuralını ezer. Biri (özellikle `white-space: normal`) kalkarsa giriş kartlarındaki metin tek satıra sıkışıp taşar (→ §4.11.4) |
+| **`scripts/tests/yardimci/sekme-ac-taklidi.js`** | DOM testlerinin `sekmeAc` taklidi. Üretimdeki `className` ATAMASINI birebir yapar; bu satır kaldırılırsa rol gizlemesi regresyonları yeniden görünmez olur (411 test bir kez böyle kaçırdı) |
 | **`byom-yonetici-kilit.js` scrypt parametreleri** | `N=16384, r=8, p=1`. Düşürmenin tek kazancı ölçülemeyecek bir hız, bedeli 6 haneli PIN'e kaba kuvvetin kolaylaşması. Parametreler özetin **içinde** saklanır, yani ileride artırmak sahadaki PIN'leri geçersiz kılmaz |
 
 ---
@@ -819,7 +963,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 156 php / 72 js / 411 test
+cd .. && node scripts/check-all.js     # 0 hata / 156 php / 76 js / 449 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.
