@@ -101,6 +101,67 @@
    * ------------------------------------------------------------------ */
 
   /* ------------------------------------------------------------------ *
+   *  ALT SEKMELER — Ciro/Performans  |  Saha Ziyaret Haritası  (Faz 6)
+   *  ---------------------------------------------------------------
+   *  Saha Haritası eskiden sol ANA menüde bağımsız bir düğmeydi ve menüyü
+   *  10 satıra çıkarıyordu. Harita, pazarlamacı verisinin bir GÖRÜNÜMÜ olduğu
+   *  için buraya taşındı.
+   *
+   *  `sekmeAc('harita')` GERİYE DÖNÜK ÇALIŞMAYA DEVAM EDER (aşağıdaki sarmal):
+   *  Pazarlamacılar sekmesini açar ve harita alt sekmesini seçer. Eski bir
+   *  çağrının sessizce hiçbir şey yapmaması, en kötü hata türüdür.
+   * ------------------------------------------------------------------ */
+
+  /** Seçili alt sekme — 'performans' | 'harita'. */
+  var altSekme = 'performans';
+
+  function altSekmeAc(ad) {
+    altSekme = ('harita' === ad) ? 'harita' : 'performans';
+
+    document.querySelectorAll('.plasiyer-alt').forEach(function (d) {
+      /* Durum `aria-selected`'de taşınır, stil onu izler (bkz. index.html).
+         Tek kaynak: ekran ve ekran okuyucu asla ayrışmaz. */
+      d.setAttribute('aria-selected', d.dataset.alt === altSekme ? 'true' : 'false');
+    });
+
+    var perf = el('plasiyerAltPerformans');
+    var harita = el('plasiyerAltHarita');
+
+    if (perf) perf.hidden = ('performans' !== altSekme);
+    if (harita) harita.hidden = ('harita' !== altSekme);
+
+    /* "+ Yeni Pazarlamacı" / "Yenile" haritada işe yaramaz — gizlenir.
+       Görünür ama işlevsiz düğme, kullanıcıya yalan söyler. */
+    var araclar = el('plasiyerAraclar');
+    if (araclar) araclar.hidden = ('performans' !== altSekme);
+
+    if ('harita' === altSekme) {
+      /* harita-kokpit.js BU DOSYADAN SONRA yükleniyor; bu yüzden çağrı
+         yükleme anında değil TIKLAMA anında yapılır ve yine de korunur. */
+      if (window.HaritaKokpit && 'function' === typeof window.HaritaKokpit.sekmeyiAc) {
+        window.HaritaKokpit.sekmeyiAc();
+      }
+    }
+  }
+
+  /**
+   * Çözülmemiş saha notu sayısını harita alt sekmesindeki rozete yazar.
+   *
+   * Sol menüdeki "Pazarlamacılar" rozetinde de durmaya devam eder: yönetici
+   * sekmeyi hiç açmadan da acil bir not olduğunu görmeli.
+   */
+  function haritaRozetiYaz(sayi) {
+    var rozet = el('haritaAltSayaci');
+
+    if (!rozet) return;
+
+    var n = Number(sayi) || 0;
+
+    rozet.textContent = n > 99 ? '99+' : String(n);
+    rozet.classList.toggle('hidden', n <= 0);
+  }
+
+  /* ------------------------------------------------------------------ *
    *  CİHAZ TAHSİSİ (saha terminali kilidi)
    *  ---------------------------------------------------------------
    *  Ayrıntı ve tehdit modeli: src/main/byom-yonetici-kilit.js başlığı.
@@ -507,6 +568,11 @@
     var yeni = el('plasiyerYeni');
     if (yeni) yeni.addEventListener('click', function () { formuAc(null); });
 
+    /* Alt sekme anahtarı (Ciro | Harita). */
+    document.querySelectorAll('.plasiyer-alt').forEach(function (d) {
+      d.addEventListener('click', function () { altSekmeAc(d.dataset.alt); });
+    });
+
     /* Satır düğmeleri tabloyla birlikte yeniden çizildiği için OLAY
        DELEGASYONU kullanılır; her çizimde yeniden bağlamak çift tetiklemeye
        yol açardı. */
@@ -551,10 +617,23 @@
     var ozgun = window.sekmeAc;
 
     window.sekmeAc = function (ad) {
+      /*
+       * GERİYE DÖNÜK TAKMA AD: 'harita' artık bir ana sekme değil, bu sekmenin
+       * alt sekmesi. Eski çağrıları (ve `durum.aktifSekme === 'harita'` kalmış
+       * bir oturumu) sessizce yutmak yerine doğru yere yönlendiriyoruz.
+       */
+      var haritaIstendi = ('harita' === ad);
+
+      if (haritaIstendi) {
+        ad = 'plasiyerler';
+        arguments[0] = 'plasiyerler';
+      }
+
       var sonuc = ozgun.apply(this, arguments);
 
       if ('plasiyerler' === ad) {
         olaylariBagla();
+        altSekmeAc(haritaIstendi ? 'harita' : altSekme);
         if (!kayit.plasiyerler.length) listeyiGetir();
       }
 
@@ -575,6 +654,9 @@
     formuKapat: formuKapat,
     cihaziTahsisEt: cihaziTahsisEt,
     tahsisliId: tahsisliId,
+    altSekmeAc: altSekmeAc,
+    haritaRozetiYaz: haritaRozetiYaz,
+    altSekme: function () { return altSekme; },
     kayit: kayit
   };
 })();

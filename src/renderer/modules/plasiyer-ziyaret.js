@@ -377,9 +377,88 @@
    *  KURULUM
    * ------------------------------------------------------------------ */
 
+  /* ------------------------------------------------------------------ *
+   *  "SAHA NOTLARIM / CRM" SEKMESİ (Faz 6)
+   *  ---------------------------------------------------------------
+   *  Plasiyerin üçüncü sekmesi. Kartlar bildirim zilindeki `zilKarti` ile
+   *  AYNI çiziciden gelir: iki ayrı kart tasarımı bakmak zorunda kalmayalım.
+   *  Yöneticinin karşılığı Pazarlamacılar › Saha Ziyaret Haritası'dır.
+   * ------------------------------------------------------------------ */
+
+  function notlarimiCiz() {
+    var kap = el('notlarimKab');
+
+    if (!kap) return;
+
+    var ozet = el('notlarimOzet');
+    var notlar = durumZ.notlar || [];
+
+    if (ozet) {
+      ozet.textContent = notlar.length
+        ? (notlar.length + ' not · ' + okunmamisSayisi() + ' yeni yanıt')
+        : 'Son 30 günde not yok';
+    }
+
+    /* Menü düğmesindeki kırmızı sayaç: okunmamış patron yanıtı sayısı. */
+    var sayac = el('notlarimSayaci');
+
+    if (sayac) {
+      var yeni = okunmamisSayisi();
+
+      sayac.textContent = yeni > 99 ? '99+' : String(yeni);
+      sayac.classList.toggle('hidden', yeni <= 0);
+    }
+
+    if (!notlar.length) {
+      kap.innerHTML =
+        '<div class="py-12 text-center">' +
+          '<div class="text-5xl mb-4" aria-hidden="true">📝</div>' +
+          '<div class="text-xl font-bold">Henüz saha notu yok</div>' +
+          '<p class="mt-2 text-slate-500 dark:text-slate-400">' +
+            'Not girmek ZORUNLU DEĞİLDİR. Bir müşteri seçip ' +
+            '"📝 Saha Ziyaret Notu" düğmesiyle istediğinizde ekleyebilirsiniz.</p>' +
+        '</div>';
+      return;
+    }
+
+    /* En yenisi üstte: sahada en son ne olduğu en çok ilgilendiren şeydir. */
+    var sirali = notlar.slice().sort(function (a, b) {
+      return String(b.zaman || '').localeCompare(String(a.zaman || ''));
+    });
+
+    kap.innerHTML = '<div class="grid gap-3">' + sirali.map(zilKarti).join('') + '</div>';
+
+    /* Sekme görüldüyse yanıtlar okunmuş sayılır — zil de sussun. */
+    notlar.forEach(function (n) { durumZ.okunan[n.id] = true; });
+    ziliTazele();
+  }
+
+  /** Sekme açıldığında tazeler (ağ yoksa elde olanı çizer). */
+  function sekmeyiAc() {
+    notlarimiCiz();
+
+    notlariGetir().then(notlarimiCiz).catch(function () { /* sessiz: eldeki liste duruyor */ });
+  }
+
   function kur() {
     if (bagli) return;
     bagli = true;
+
+    /* "Saha Notlarım" sekmesi: sekmeAc'ı SARAR (renderer.js'e dokunmadan). */
+    if ('function' === typeof window.sekmeAc) {
+      var ozgunSekme = window.sekmeAc;
+
+      window.sekmeAc = function (ad) {
+        var sonuc = ozgunSekme.apply(this, arguments);
+
+        if ('notlarim' === ad) sekmeyiAc();
+
+        return sonuc;
+      };
+    }
+
+    var yenile = el('notlarimYenile');
+    if (yenile) yenile.addEventListener('click', sekmeyiAc);
 
     document.addEventListener('keydown', function (olay) {
       var perde = el('ziyaretPerde');
@@ -432,6 +511,9 @@
     ziliTazele: ziliTazele,
     okunmamisSayisi: okunmamisSayisi,
     dugmeyiEkle: dugmeyiEkle,
+    notlarimiCiz: notlarimiCiz,
+    sekmeyiAc: sekmeyiAc,
+    zilKarti: zilKarti,
     durum: durumZ
   };
 })();

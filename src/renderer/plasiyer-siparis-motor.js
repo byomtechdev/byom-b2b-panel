@@ -432,6 +432,37 @@
    * ------------------------------------------------------------------ */
 
   /** Ödeme yöntemi geçerli mi? */
+  /**
+   * "KENDİ SİPARİŞLERİM" SÜZGECİ (Faz 6)
+   *
+   * Plasiyer oturumunda sipariş listesi YALNIZCA o plasiyerin YAZDIĞI
+   * siparişleri göstermeli. Damga `_b2b_plasiyer_id`'dir ve panele eklentinin
+   * `plasiyer_id` alanıyla gelir (eklenti 2.15.0).
+   *
+   * Bayinin kendi sitesinden verdiği sipariş bu listede YOKTUR — aynı kural
+   * ciro istatistiğinde de geçerli (`B2B_Plasiyer::get_plasiyer_stats`). İki
+   * yerde iki farklı "benim siparişim" tanımı üretmemek için bilinçli olarak
+   * aynı damga kullanılıyor.
+   *
+   * KİMLİK BİLİNMİYORSA BOŞ LİSTE DÖNER. "Bilmiyorum" hâlinde her şeyi
+   * göstermek, tam olarak engellemeye çalıştığımız sızıntı olurdu.
+   *
+   * ⚠️ Bu bir GÖRÜNÜM süzgecidir, yetki sınırı DEĞİLDİR: panel mağaza
+   * anahtarlarını taşır, veri cihaza zaten iniyor (bkz. kök CLAUDE.md §10).
+   * Sunucu tarafında daraltılmış bir uç ayrı iştir.
+   */
+  function kendiSiparisleri(liste, plasiyerId) {
+    if (!Array.isArray(liste)) return [];
+
+    var benim = Number(plasiyerId) || 0;
+
+    if (!benim) return [];
+
+    return liste.filter(function (s) {
+      return Number((s && s.plasiyerId) || 0) === benim;
+    });
+  }
+
   function odemeGecerliMi(yontem) {
     return ODEME_YONTEMLERI.indexOf(String(yontem || '')) !== -1;
   }
@@ -514,6 +545,7 @@
     geciciMusteri: geciciMusteri,
     geciciMi: geciciMi,
     /* siparis */
+    kendiSiparisleri: kendiSiparisleri,
     odemeGecerliMi: odemeGecerliMi,
     siparisDenetle: siparisDenetle,
     siparisGovdesi: siparisGovdesi,

@@ -42,10 +42,73 @@
    * değiştirmek değil. `satis` sekmesi aynı veriyi salt-okunur gösterir ve
    * sipariş yazar.
    */
-  var PLASIYER_SEKMELERI = ['satis', 'siparisler'];
+  var PLASIYER_SEKMELERI = ['satis', 'siparisler', 'notlarim'];
 
-  /** Plasiyer oturumunda gizlenecek sekmeler (beyaz liste dışı olanlar). */
-  var KISITLI_SEKMELER = ['ayarlar', 'iskonto', 'vitrin-editor', 'uyeler', 'destek', 'plasiyerler', 'urunler', 'harita'];
+  /**
+   * ROL → GÖRÜNECEK SEKMELER (Faz 6) — TEK DOĞRULUK KAYNAĞI.
+   *
+   * Eskiden iki liste vardı: `PLASIYER_SEKMELERI` (izinli) ve
+   * `KISITLI_SEKMELER` (yasak). Birbirinin tümleyeni olmak ZORUNDA olan iki
+   * liste, bu depoda tekrar tekrar canımızı yakmış hata sınıfıdır: yeni bir
+   * sekme eklendiğinde yalnızca birine yazılır ve sekme sessizce yanlış rolde
+   * görünür. Artık tek beyaz liste var; yasak listesi DOM'dan türetilir
+   * (`kisitliSekmeler`), yani menüye eklenen her yeni düğme varsayılan olarak
+   * KAPALI başlar — güvenli taraf.
+   *
+   * YÖNETİCİ DE KISITLANIR (Faz 6'nın asıl değişikliği): "Katalog & Sipariş
+   * Yazma" plasiyerin saha ekranıdır, yöneticinin depo/onay dünyasına ait
+   * değil. İkisi iç içe geçtiği için menü karmaşıktı.
+   */
+  var ROL_SEKMELERI = {
+    /* Şirket yönetimi: sipariş/depo, ürün/stok, üye onayı, iskonto, vitrin,
+       pazarlamacılar (+ içindeki harita alt sekmesi), destek, ayarlar. */
+    admin: ['siparisler', 'urunler', 'uyeler', 'iskonto', 'vitrin-editor', 'plasiyerler', 'destek', 'ayarlar'],
+
+    /* Saha: katalog + kendi siparişleri + kendi notları. Başka hiçbir şey. */
+    plasiyer: PLASIYER_SEKMELERI
+  };
+
+  /**
+   * Plasiyer oturumunda KAPANAN sekmeler — DOM'dan türetilir.
+   *
+   * Testler bu listeyi okuyor; elle yazılmış bir kopya tutmak yerine menüyü
+   * tarıyoruz ki liste asla gerçeklikten ayrışamasın.
+   */
+  function kisitliSekmeler(rol) {
+    var izinli = ROL_SEKMELERI[rol || 'plasiyer'] || [];
+    var hepsi = [];
+
+    document.querySelectorAll('.menu-btn').forEach(function (btn) {
+      var ad = btn.dataset.sekme;
+      if (ad && izinli.indexOf(ad) === -1) hepsi.push(ad);
+    });
+
+    return hepsi;
+  }
+
+  /** Rol bu sekmeyi görebilir mi? Bilinmeyen rol → kısıtlama yok (eski davranış). */
+  function sekmeIzinli(ad, rol) {
+    var izinli = ROL_SEKMELERI[rol];
+
+    if (!izinli) return true;
+
+    return izinli.indexOf(ad) !== -1;
+  }
+
+  /**
+   * Plasiyer oturumunda sol menüdeki sıra.
+   *
+   * DOM sırası yöneticiye göre dizilmiş (Siparişler en üstte). Plasiyerin ilk
+   * işi SATIŞ YAZMAK olduğu için onun dünyasında Katalog başa alınır. Flex
+   * `order` kullanılıyor: DOM'u taşımak yöneticinin sırasını bozardı.
+   */
+  var PLASIYER_SIRA = { satis: '1', siparisler: '2', notlarim: '3' };
+
+  /** Plasiyer oturumunda değişen menü etiketleri (çıkışta geri alınır). */
+  var PLASIYER_ETIKET = { siparisler: 'Kendi Siparişlerim' };
+
+  /** Özgün etiketler — ilk kısıtlamada bir kez saklanır. */
+  var ozgunEtiketler = null;
 
   var kapi = null;
   var pinPerde = null;
@@ -177,28 +240,61 @@
    * klavyeyle (Tab) erişimi açık bırakırdı.
    */
   function kisitlamayiUygula() {
-    var kisit = plasiyerMi();
+    var rol = (durum.oturum && durum.oturum.rol) || '';
+    var izinliListe = ROL_SEKMELERI[rol] || null;
+
+    /* Etiketleri bir kez sakla: çıkışta geri yazmak için. */
+    if (!ozgunEtiketler) {
+      ozgunEtiketler = {};
+      document.querySelectorAll('.menu-btn').forEach(function (btn) {
+        var etiket = btn.querySelector('span.align-middle');
+        if (btn.dataset.sekme && etiket) ozgunEtiketler[btn.dataset.sekme] = etiket.textContent;
+      });
+    }
 
     document.querySelectorAll('.menu-btn').forEach(function (btn) {
       var ad = btn.dataset.sekme;
-      var kapat = kisit && KISITLI_SEKMELER.indexOf(ad) !== -1;
+      var kapat = !!izinliListe && !sekmeIzinli(ad, rol);
 
+      /* Üç katlı kapatma: gizli + disabled + aria-hidden. Yalnızca CSS ile
+         gizlemek klavyeyle (Tab) erişimi açık bırakırdı. */
       btn.classList.toggle('plasiyer-gizli', kapat);
       btn.disabled = kapat;
       if (kapat) btn.setAttribute('aria-hidden', 'true');
       else btn.removeAttribute('aria-hidden');
+
+      /* Sıra ve etiket yalnızca plasiyer dünyasında değişir. */
+      var etiket = btn.querySelector('span.align-middle');
+
+      if ('plasiyer' === rol) {
+        btn.style.order = PLASIYER_SIRA[ad] || '';
+        if (etiket && PLASIYER_ETIKET[ad]) etiket.textContent = PLASIYER_ETIKET[ad];
+      } else {
+        btn.style.order = '';
+        if (etiket && ozgunEtiketler[ad]) etiket.textContent = ozgunEtiketler[ad];
+      }
     });
 
-    /* "Pazarlamacılar" sekmesi yalnızca yöneticide. */
-    document.querySelectorAll('[data-rol="admin"]').forEach(function (d) {
-      d.classList.toggle('plasiyer-gizli', kisit);
+    /*
+     * `data-rol` İKİ YÖNLÜ ÇALIŞIR (Faz 6'da genişledi).
+     *
+     * Eskiden yalnızca `data-rol="admin"` vardı ve plasiyerde gizleniyordu.
+     * Artık `data-rol="plasiyer"` de var (Saha Notlarım); her işaretli düğüm
+     * YALNIZCA kendi rolünde görünür. Oturum yoksa (kapı ekranı) ikisi de
+     * gizlenir — arkadaki panelde rol etiketli bir düğmenin yanıp sönmesi
+     * kullanıcıya yanlış ipucu verirdi.
+     */
+    document.querySelectorAll('[data-rol]').forEach(function (d) {
+      var hedef = d.dataset.rol;
+
+      d.classList.toggle('plasiyer-gizli', !rol || hedef !== rol);
     });
 
     ustBariTazele();
 
-    /* Kısıtlı bir sekmede kalındıysa izinli ilk sekmeye geç. */
-    if (kisit && KISITLI_SEKMELER.indexOf(durum.aktifSekme) !== -1) {
-      sekmeAc(PLASIYER_SEKMELERI[0]);
+    /* Kısıtlı bir sekmede kalındıysa izinli İLK sekmeye geç. */
+    if (izinliListe && !sekmeIzinli(durum.aktifSekme, rol)) {
+      sekmeAc(izinliListe[0]);
     }
   }
 
@@ -223,17 +319,21 @@
     var ad = durum.oturum.ad || 'Pazarlamacı';
     var bolge = durum.oturum.bolge ? (durum.oturum.bolge + ' Bölgesi') : 'Bölge atanmamış';
 
+    /*
+     * YALNIZCA KİMLİK KÜNYESİ — çıkış düğmesi BURADA DEĞİL (Faz 6).
+     *
+     * Faz 1'de üst bara bir "Çıkış Yap" konmuştu; Faz 6'da sol menüye her iki
+     * rol için kalıcı bir çıkış düğmesi eklendi ve ikisi aynı işi yapan iki
+     * düğme hâline geldi. Aynı eylemin iki yerde durması, bu görevde
+     * düzeltmemiz istenen karmaşanın ta kendisi: kullanıcı hangisinin "gerçek"
+     * olduğunu sorgulamaya başlar. Çıkış TEK yerde (sol menü altı), her rolde
+     * AYNI yerde. Üst barda kalan şey bir BİLGİ, eylem değil.
+     */
     kutu.innerHTML =
       '<span class="px-4 py-2 rounded-xl bg-marka-700 text-white font-extrabold text-base">' +
         '<span aria-hidden="true">💼</span> ' + kacis(ad) +
         ' <span class="font-semibold opacity-80">— ' + kacis(bolge) + '</span>' +
-      '</span>' +
-      '<button type="button" id="plasiyerCikis" ' +
-              'class="px-4 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-600 ' +
-                     'font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Çıkış Yap</button>';
-
-    var cikis = el('plasiyerCikis');
-    if (cikis) cikis.addEventListener('click', cikisYap);
+      '</span>';
   }
 
   /* ------------------------------------------------------------------ *
@@ -716,12 +816,19 @@
 
   function pinPerdesiniKapat() {
     /*
-     * KİLİTLİ CİHAZDA PENCERE KAPANMAZ.
+     * KİLİTLİ CİHAZDA KİMLİK DOĞRULANMADAN PENCERE KAPANMAZ.
      *
      * Tek satır, üç kaçış yolunu birden kapatır: ✕ düğmesi, perdeye tıklama
      * ve ESC. Kapanabilseydi plasiyer PIN girmeden panele düşerdi.
+     *
+     * ⚠️ `!durum.oturum` KOŞULU ZORUNLU — KALDIRMA.
+     * Faz 5'te koşul yalnızca `cihaz.kilitli` idi ve bu ÜRÜNDE KİLİTLENMEYE
+     * yol açıyordu: plasiyer DOĞRU PIN'i girince oturum açılıyor, kapı
+     * kaplaması kalkıyor, ama bu pencere ekranda kalıp paneli kapatıyordu —
+     * kimliğini doğruladığı uygulamayı kullanamıyordu. Koruma "kaçışı
+     * engelle" demek, "doğrulandıktan sonra da kapatma" demek değil.
      */
-    if (cihaz.kilitli) return;
+    if (cihaz.kilitli && !durum.oturum) return;
 
     gorunur(pinPerde, false);
 
@@ -791,6 +898,21 @@
 
     pinPerdesiniKapat();
     kisitlamayiUygula();
+
+    /*
+     * GİRİŞTE AÇILAN SEKME: plasiyerin ilk işi SATIŞ YAZMAK.
+     *
+     * `kisitlamayiUygula()` yalnızca KISITLI bir sekmede kalındıysa sekme
+     * değiştirir; "Kendi Siparişlerim" plasiyere açık olduğu için orada
+     * kalıyordu ve saha satışçısı girişte sipariş listesine düşüyordu. Menüde
+     * Katalog'u başa aldığımız hâlde ikinci maddeye inmek tutarsızdı.
+     *
+     * Karar BURADA verilir, `kisitlamayiUygula` içinde DEĞİL: o fonksiyon her
+     * yeniden çizimde çalışır ve gereksiz sekme değişimi veri yükleme turu
+     * tetiklerdi (`plasiyer-kapi.dom.test.js` bunu ayrıca kilitliyor).
+     */
+    sekmeAc(PLASIYER_SEKMELERI[0]);
+
     kapiyiKapat();
 
     bildir('Hoş geldiniz ' + cevap.ad + (cevap.bolge ? ' — ' + cevap.bolge + ' Bölgesi' : ''), 'ok');
@@ -800,6 +922,20 @@
    *  ÇIKIŞ
    * ------------------------------------------------------------------ */
 
+  /**
+   * Oturumu kapatır ve karşılama kapısına döner.
+   *
+   * HER İKİ ROL İÇİN ÇALIŞIR (Faz 6). Eskiden yalnızca plasiyer üst barındaki
+   * düğmeden çağrılıyordu; yönetici panele girdikten sonra kapıya dönemiyordu.
+   *
+   * SIRA ÖNEMLİ:
+   *  1) Jeton ana süreçte iptal edilir (ağ yoksa da yerel oturum düşer).
+   *  2) `durum.oturum = null` — bellekteki rol sıfırlanır.
+   *  3) Kısıtlama yeniden uygulanır: rol yok ⇒ bütün menü varsayılana döner,
+   *     plasiyer etiketleri/sırası geri alınır, üst bardaki ad kutusu silinir.
+   *  4) Kapı gösterilir. Cihaz kilitliyse kapı terminal biçiminde açılır ve
+   *     doğrudan o plasiyerin PIN ekranına döner — şartnamenin istediği davranış.
+   */
   async function cikisYap() {
     try {
       await ipcRenderer.invoke('plasiyer:logout');
@@ -808,6 +944,15 @@
     durum.oturum = null;
 
     kisitlamayiUygula();
+
+    /* Açık kalmış bir perde arkada durmasın: kapı temiz bir ekrana açılmalı. */
+    ypinKapat();
+
+    if (cihaz.kilitli) {
+      terminalModunuAc();   // kaplama + "[Ad] — Saha Satış Terminali" + PIN
+      return;
+    }
+
     kapiyiGoster();
   }
 
@@ -888,6 +1033,13 @@
         if (temiz !== kutu.value) kutu.value = temiz;
       });
     });
+
+    /*
+     * ÇIKIŞ YAP — sol menünün altında, HER İKİ ROL İÇİN tek kanonik çıkış.
+     * Oturum yokken de bağlı kalır (zararsız): kapı kaplaması zaten üstte.
+     */
+    var cikis = el('cikisYapDugme');
+    if (cikis) cikis.addEventListener('click', cikisYap);
 
     /* Kilitli terminaldeki discreet 🔓 — patron çıkışı. */
     var kilitAc = el('kapiKilitAc');
@@ -1034,7 +1186,9 @@
     cihaz: cihaz,
 
     PLASIYER_SEKMELERI: PLASIYER_SEKMELERI,
-    KISITLI_SEKMELER: KISITLI_SEKMELER,
+    ROL_SEKMELERI: ROL_SEKMELERI,
+    kisitliSekmeler: kisitliSekmeler,
+    sekmeIzinli: sekmeIzinli,
     LISTE_SURE_ASIMI_MS: LISTE_SURE_ASIMI_MS,
     PLASIYER_YOK_MESAJI: PLASIYER_YOK_MESAJI,
     YPIN_UZUNLUK: YPIN_UZUNLUK

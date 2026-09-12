@@ -512,14 +512,23 @@ test('KAYNAK: kilit acilinca plasiyer oturumu da dusurulur', (t) => {
   );
 });
 
-test('KAYNAK: kilitli cihazda PIN penceresi kapatilamaz (tek nokta koruma)', (t) => {
-  const blok = KAPI.slice(KAPI.indexOf('function pinPerdesiniKapat'));
+test('KAYNAK: kilitli cihazda KIMLIK DOGRULANMADAN perde kapatilamaz', (t) => {
+  const blok = KAPI.slice(KAPI.indexOf('function pinPerdesiniKapat')).slice(0, 1400);
 
-  assert.match(
-    blok.slice(0, 800),
-    /if \(cihaz\.kilitli\) return;/,
-    'pinPerdesiniKapat basinda kilit kontrolu olmali'
-  );
+  /*
+   * FAZ 6'DA DUZELTILDI — kosul iki parcali olmali.
+   *
+   * Faz 5'te yalnizca `cihaz.kilitli` vardi ve bu URETIMDE KILITLENME
+   * uretiyordu: plasiyer DOGRU PIN'i girince oturum aciliyor, kapi kaplamasi
+   * kalkiyor, ama perde ekranda kalip paneli kapatiyordu. `!durum.oturum`
+   * kosulu bu yuzden ZORUNLU ve bu test onu kilitliyor.
+   */
+  assert.match(blok, /if \(cihaz\.kilitli && !durum\.oturum\) return;/,
+    'kosul: kilitli VE oturum yok');
+
+  /* Eski (hatali) tek parcali kosul geri gelmesin. */
+  assert.ok(!/if \(cihaz\.kilitli\) return;/.test(blok),
+    'Faz 5 hatasi (tek parcali kosul) geri DONMEMIS');
 });
 
 test('KAYNAK: yonetici kapisi Master PIN penceresini acar, paneli DOGRUDAN acmaz', (t) => {

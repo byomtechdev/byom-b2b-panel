@@ -108,6 +108,14 @@
   /** Sol menüdeki "Pazarlamacılar" rozetini tazeler. */
   function rozetiTazele() {
     var sayi = V().cozulmemisSayisi(durumH.notlar);
+
+    /* Faz 6: harita alt sekmesindeki rozet de aynı sayıyı gösterir. Sol
+       menüdeki rozet "bu sekmede acil bir şey var" der, alt sekmedeki
+       "hangisinde" der; ikisi de AYNI sayıdan beslenir. */
+    if (window.PlasiyerYonetimi && 'function' === typeof window.PlasiyerYonetimi.haritaRozetiYaz) {
+      window.PlasiyerYonetimi.haritaRozetiYaz(sayi);
+    }
+
     var dugme = document.querySelector('[data-sekme="plasiyerler"]');
 
     if (!dugme) return;
@@ -707,19 +715,20 @@
     await veriyiGetir();
   }
 
+  /**
+   * FAZ 6'DA `sekmeAc` SARMALI KALDIRILDI — okumadan geri ekleme.
+   *
+   * Harita artık bağımsız bir ana sekme değil, "Pazarlamacılar" sekmesinin alt
+   * sekmesi. Açma kararını `plasiyer-yonetimi.js → altSekmeAc()` veriyor ve
+   * oradan `HaritaKokpit.sekmeyiAc()` çağrılıyor.
+   *
+   * Buradaki sarmal KALSAYDI `sekmeyiAc()` İKİ KEZ çalışırdı: bu dosya
+   * plasiyer-yonetimi.js'ten SONRA yüklendiği için zincir
+   * `harita-kokpit → plasiyer-yonetimi → özgün` biçimindedir; alt sekme
+   * denetleyicisi bir kez çağırır, buradaki `if ('harita' === ad)` ikinci kez
+   * çağırırdı. Sonuç: her açılışta çift `/admin/harita` isteği.
+   */
   function akisaBaglan() {
-    if ('function' !== typeof window.sekmeAc) return;
-
-    var ozgun = window.sekmeAc;
-
-    window.sekmeAc = function (ad) {
-      var sonuc = ozgun.apply(this, arguments);
-
-      if ('harita' === ad) sekmeyiAc();
-
-      return sonuc;
-    };
-
     /* Rozet açılışta da dolsun: patron haritayı açmadan da açık not sayısını
        görmeli. Sessiz, tek istek. */
     window.setTimeout(function () {

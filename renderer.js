@@ -1494,6 +1494,16 @@ function b2bSiparisNormalle(s) {
        kdvHaric     : sipariş KDV hariç tutara çevrildi mi?
        revizeFarki  : temin edilemeyen adetlerin liste fiyatı karşılığı.
                       Bayi iskontosu DEĞİLDİR; fişte ayrı satırdır. */
+    /* --- PLASİYER KÜNYESİ (eklenti 2.15.0) ---
+       Siparişi YAZAN saha satışçısı. Plasiyer oturumunda "Kendi Siparişlerim"
+       listesi bu alana göre süzülür (bkz. siparisleriSuz).
+
+       Sunucu alanı (`plasiyer_id`) BİRİNCİL kaynaktır; `meta_data` yedeği eski
+       eklenti sürümleri içindir — `prepare_order` meta_data döndürmediği için
+       panel bu bilgiyi 2.15.0'dan önce hiçbir yerden öğrenemiyordu ve plasiyere
+       bütün şirketin siparişleri görünüyordu. */
+    plasiyerId: Number(s.plasiyer_id || b2bMeta._b2b_plasiyer_id || 0) || 0,
+    siparisKaynagi: String(s.order_source || b2bMeta._b2b_siparis_kaynagi || ''),
     kdvToplam: Number(s.vat_total || 0),
     kdvHaric: !!s.vat_excluded,
     kdvDusulen: Number(s.vat_removed || 0),
@@ -1624,6 +1634,10 @@ function siparisNormalle(s) {
     musteri: adSoyad || fatura.company || 'İsimsiz Müşteri',
     firma: fatura.company || '',
     telefon: fatura.phone || '',
+    /* Plasiyer künyesi — eklentisiz (wc/v3) yolda yalnızca meta'dan okunabilir.
+       Bkz. b2bSiparisNormalle'deki aynı alan. */
+    plasiyerId: Number(meta._b2b_plasiyer_id || 0) || 0,
+    siparisKaynagi: String(meta._b2b_siparis_kaynagi || ''),
     /* Eklentisiz yolda vergi künyesi yalnızca meta'da olabilir; depo fişinin
        kurumsal başlığı bu iki alana bağlı olduğu için yaygın adlar taranır. */
     vergiNo: String(meta._b2b_tax_number || meta.b2b_vergi_no || meta.vergi_no ||
@@ -2784,14 +2798,53 @@ function durumDugmesiHtml(s, tanim) {
          '">' + tanim.simge + ' ' + kacis(tanim.etiket) + (aktifMi ? ' ' + ikon('onay', 'ik-sm') : '') + '</button>';
 }
 
+/**
+ * ROL SÜZGECİ — "Kendi Siparişlerim" (Faz 6)
+ *
+ * Plasiyer oturumunda liste YALNIZCA o plasiyerin YAZDIĞI siparişleri gösterir
+ * (`_b2b_plasiyer_id` damgası). Bayinin kendi sitesinden verdiği sipariş bu
+ * listede YOKTUR; aynı kural ciro istatistiğinde de geçerlidir
+ * (B2B_Plasiyer::get_plasiyer_stats) — iki yerde iki farklı "benim siparişim"
+ * tanımı üretmemek için bilinçli olarak aynı damga kullanılıyor.
+ *
+ * ⚠️ BU BİR GÖRÜNÜM SÜZGECİDİR, YETKİ SINIRI DEĞİLDİR.
+ * Panel mağaza anahtarlarını (CK/CS) taşır; veri cihaza zaten iniyor. Gerçek
+ * yetki sınırı sunucudadır ve mimari bunu baştan kabul ediyor (bkz. kök
+ * CLAUDE.md §10 "PIN bir yetki aracı DEĞİLDİR"). Burada çözülen sorun şudur:
+ * plasiyer ekranında patronun siparişlerinin GÖRÜNMESİ. Sızıntıyı tamamen
+ * kapatmak için sunucu tarafında plasiyere daraltılmış bir sipariş ucu gerekir
+ * (`/plasiyer/siparislerim`) — ayrı iş, BYOM-REGISTRY.md §5.29'da kayıtlı.
+ */
+function siparisleriSuz(liste) {
+  var oturum = durum.oturum;
+
+  if (!oturum || 'plasiyer' !== oturum.rol) return liste;
+
+  /* KARAR DOM'SUZ MOTORDA: `PlasiyerSiparisMotor.kendiSiparisleri` — böylece
+     kural `node --test` altında doğrudan sınanabiliyor (depo kalıbı, bkz.
+     panel CLAUDE.md §5 "Test edilebilir kod yazma kalıbı"). Buradaki iş
+     yalnızca `durum`u okuyup motora vermek. */
+  if (window.PlasiyerSiparisMotor && 'function' === typeof window.PlasiyerSiparisMotor.kendiSiparisleri) {
+    return window.PlasiyerSiparisMotor.kendiSiparisleri(liste, oturum.id);
+  }
+
+  /* Motor yüklenmediyse GÜVENLİ TARAFA düş: plasiyere hiçbir şey göstermemek,
+     patronun siparişlerini göstermekten iyidir. */
+  return [];
+}
+
 function siparisleriCiz() {
   const kap = $('#siparisListesi');
+
+  /* Rol süzgeci EN ÖNCE: özet kartlar, sayaçlar ve boş durum metni de ekranda
+     GÖRÜNEN listeyi anlatmalı. */
+  const kendi = siparisleriSuz(durum.siparisler);
 
   /* Teslim süzgeci yereldir: sunucudan gelen liste süzülüp öyle çizilir.
      Özet kartlar da ekranda GÖRÜNEN listeyi anlatsın diye süzgeçten sonra hesaplanır. */
   const liste = durum.teslimSuzgec
-    ? durum.siparisler.filter(function (s) { return teslimKodu(s) === durum.teslimSuzgec; })
-    : durum.siparisler;
+    ? kendi.filter(function (s) { return teslimKodu(s) === durum.teslimSuzgec; })
+    : kendi;
 
   /* Özet kartlar — "hazırlanmayı bekleyen" = akışın ilk adımındakiler. */
   const bekleyen = liste.filter(function (s) {

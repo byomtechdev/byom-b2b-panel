@@ -567,3 +567,66 @@ test('siparisGovdesi: tavan gövdedeki orana da uygulanır', (t) => {
   assert.equal(g.iskontoOrani, 5, 'tavan uygulandi');
   assert.equal(g.toplamlar.genelToplam, 95);
 });
+
+/* =========================================================================
+ * FAZ 6 — "KENDİ SİPARİŞLERİM" SÜZGECİ
+ * ---------------------------------------------------------------------
+ * Plasiyer oturumunda sipariş listesi yalnızca O PLASİYERİN YAZDIĞI
+ * siparişleri göstermeli. Faz 6'ya kadar `siparisleriYukle` hiçbir rol
+ * süzgeci uygulamıyordu: plasiyer girip "Siparişler"e basınca BÜTÜN
+ * şirketin siparişlerini görüyordu.
+ * ====================================================================== */
+
+test('kendiSiparisleri: yalnizca O plasiyerin yazdigi siparisler', (t) => {
+  const liste = [
+    { id: 1, plasiyerId: 7 },
+    { id: 2, plasiyerId: 9 },      // baska plasiyer
+    { id: 3, plasiyerId: 7 },
+    { id: 4, plasiyerId: 0 },      // bayinin kendi sitesinden verdigi siparis
+    { id: 5 }                      // damga hic yok (eski siparis)
+  ];
+
+  const benim = M.kendiSiparisleri(liste, 7);
+
+  assert.deepEqual(benim.map((s) => s.id), [1, 3]);
+});
+
+test('kendiSiparisleri: BASKA plasiyerin siparisi SIZMAZ', (t) => {
+  const liste = [{ id: 1, plasiyerId: 9 }, { id: 2, plasiyerId: 11 }];
+
+  assert.deepEqual(M.kendiSiparisleri(liste, 7), [], 'hicbiri gorunmez');
+});
+
+test('kendiSiparisleri: KIMLIK YOKSA BOS liste — "bilmiyorum" her seyi gostermek DEGIL', (t) => {
+  const liste = [{ id: 1, plasiyerId: 7 }, { id: 2, plasiyerId: 9 }];
+
+  /* Bu, sizintinin ta kendisi olurdu: kimlik okunamadi diye butun sirketin
+     siparislerini plasiyere acmak. */
+  assert.deepEqual(M.kendiSiparisleri(liste, 0), []);
+  assert.deepEqual(M.kendiSiparisleri(liste, null), []);
+  assert.deepEqual(M.kendiSiparisleri(liste, undefined), []);
+  assert.deepEqual(M.kendiSiparisleri(liste, 'abc'), []);
+});
+
+test('kendiSiparisleri: bozuk girdi cokme uretmez', (t) => {
+  assert.deepEqual(M.kendiSiparisleri(null, 7), []);
+  assert.deepEqual(M.kendiSiparisleri(undefined, 7), []);
+  assert.deepEqual(M.kendiSiparisleri('liste degil', 7), []);
+  assert.deepEqual(M.kendiSiparisleri([null, undefined, { id: 1, plasiyerId: 7 }], 7).map((s) => s.id), [1]);
+});
+
+test('kendiSiparisleri: metin kimlik de sayiya cevrilir (REST metin donebilir)', (t) => {
+  /* WooCommerce meta degerleri metin olarak gelebilir; '7' ile 7 ayni kisidir. */
+  const liste = [{ id: 1, plasiyerId: '7' }, { id: 2, plasiyerId: '9' }];
+
+  assert.deepEqual(M.kendiSiparisleri(liste, '7').map((s) => s.id), [1]);
+  assert.deepEqual(M.kendiSiparisleri(liste, 7).map((s) => s.id), [1]);
+});
+
+test('kendiSiparisleri: ozgun liste DEGISTIRILMEZ', (t) => {
+  const liste = [{ id: 1, plasiyerId: 7 }, { id: 2, plasiyerId: 9 }];
+
+  M.kendiSiparisleri(liste, 7);
+
+  assert.equal(liste.length, 2, 'kaynak liste korunur');
+});

@@ -80,7 +80,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | `src/renderer/sira-motor.js` | **DOM'suz** kademeli (domino) taşıma motoru | Izgaradan **ÖNCE** yüklenir |
 | **`src/renderer/telemetry.js`** | **Telemetri · arayüz.** EN ÖNCE yüklenir (→ §4) | — |
 | **`renderer-plasiyer.js`** | **Çift kapılı giriş + rol kısıtlaması.** Kapı kaplaması, `durum.oturum`, menü daraltma, üst bar, çıkış. EN SONA yüklenir (→ §5) | — |
-| **`src/renderer/modules/plasiyer-yonetimi.js`** | **Yöneticinin "Pazarlamacılar" sekmesi:** tanımlama, PIN, bayi atama, performans tablosu + ciro çubuğu. `sekmeAc`'ı SARAR (→ §5) | — |
+| **`src/renderer/modules/plasiyer-yonetimi.js`** | **Yöneticinin "Pazarlamacılar" sekmesi:** tanımlama, PIN, bayi atama, performans tablosu + ciro çubuğu, **cihaz tahsis düğmesi** (→ §4.9), **alt sekme denetleyicisi** (Ciro | Harita → §4.10). `sekmeAc`'ı SARAR | — |
 | **`src/renderer/plasiyer-siparis-motor.js`** | **DOM'suz sipariş motoru** (Faz 2): koli matematiği, sepet indirgeyici, "son siparişi kopyala", geçici müşteri UUID, iskonto tavanı, sipariş gövdesi. `node --test` altında koşar (→ §4.6) | — |
 | **`src/renderer/modules/plasiyer-vitrin.js`** | **Satış vitrini** (Faz 2): daraltılabilir kategori kenar çubuğu, filtre barı, çift görünüm (Vitrin/Matris), SPOT rozeti, ürün detay penceresi, sepet. `sekmeAc`'ı SARAR | — |
 | **`src/renderer/modules/plasiyer-musteri.js`** | **Müşteri ve sipariş akışı** (Faz 2): seçim/arama, cari risk uyarısı, çevrimdışı müşteri, son siparişi kopyala, üç ödeme yöntemi + notlar | — |
@@ -261,10 +261,12 @@ lisans doğrulandı → index.html açıldı
   iki kez gönderir ve kaba kuvvet sayacı boşuna ilerlerdi.
 
 ### Plasiyer oturumunda açık kalan sekmeler
-`PLASIYER_SEKMELERI = ['satis', 'siparisler']` · kapananlar:
-`KISITLI_SEKMELER = ['ayarlar','iskonto','vitrin-editor','uyeler','destek','plasiyerler','urunler','harita']`
-(ikisi de `renderer-plasiyer.js` başında; değiştirirsen
-`plasiyer-kapi.dom.test.js` içindeki `IZINLI`/`KISITLI` listelerini de güncelle).
+**→ FAZ 6'DA DEĞİŞTİ, tam liste §4.10'da.** Özet:
+`ROL_SEKMELERI.plasiyer = ['satis','siparisler','notlarim']` (3 sekme) ·
+`ROL_SEKMELERI.admin` 8 sekme. Yasak liste artık **DOM'dan türetilir**,
+elle tutulan ikinci bir liste YOK. Değiştirirsen `plasiyer-kapi.dom.test.js`
+içindeki `IZINLI`/`KISITLI`/`YONETICI_IZINLI`/`YONETICI_KISITLI` listelerini de
+güncelle.
 
 **`urunler` Faz 2'de KISITLIYA GEÇTİ:** plasiyer artık yönetici ürün ızgarasını
 değil `satis` (Satış Vitrini) sekmesini görür. Izgarada fiyat/stok **yazma**
@@ -585,6 +587,107 @@ cevaplar. `ortamKurAyarsiz()` yardımcısı artık üretim sırasını test eder
 
 ---
 
+## 4.10 Menü hiyerarşisi, rol izolasyonu ve çıkış (Faz 6)
+
+### İKİ FARKLI DÜNYA — tek beyaz liste
+```js
+renderer-plasiyer.js → ROL_SEKMELERI = {
+  admin:    ['siparisler','urunler','uyeler','iskonto','vitrin-editor','plasiyerler','destek','ayarlar'],  // 8
+  plasiyer: ['satis','siparisler','notlarim']                                                              // 3
+}
+```
+**TEK DOĞRULUK KAYNAĞI.** Eskiden `PLASIYER_SEKMELERI` (izinli) +
+`KISITLI_SEKMELER` (yasak) diye **iki liste** vardı ve birbirinin tümleyeni
+olmak zorundaydı; yeni bir sekme eklendiğinde yalnızca birine yazılır ve sekme
+sessizce yanlış rolde görünürdü. Artık yasak liste **DOM'dan türetilir**
+(`kisitliSekmeler`): menüye eklenen her yeni düğme varsayılan olarak **KAPALI**
+başlar — güvenli taraf.
+
+**YÖNETİCİ DE KISITLANIR** (Faz 6'nın asıl değişikliği): `satis` yöneticiden
+gizlenir. O ekran plasiyerin saha dünyasıdır; yöneticinin depo/onay dünyasında
+durması iki dünyayı iç içe geçiriyordu.
+
+Plasiyer dünyasında ayrıca:
+- **Etiket:** `siparisler` → "Kendi Siparişlerim" (`PLASIYER_ETIKET`). Çıkışta
+  geri alınır (`ozgunEtiketler` bir kez saklanır).
+- **Sıra:** flex `order` ile Katalog başa alınır (`PLASIYER_SIRA`). DOM'u
+  taşımak yöneticinin sırasını bozardı.
+- **Giriş sekmesi:** başarılı PIN'den sonra `sekmeAc('satis')`. Karar
+  `pinGirisDene` içinde verilir, `kisitlamayiUygula` içinde **değil** — o
+  fonksiyon her yeniden çizimde çalışır ve gereksiz sekme değişimi veri yükleme
+  turu tetiklerdi.
+- **`data-rol` iki yönlü:** `data-rol="admin"` ve `data-rol="plasiyer"` artık
+  ikisi de var; işaretli düğüm YALNIZCA kendi rolünde görünür. Oturum yokken
+  ikisi de gizlenir.
+
+### Saha Haritası → alt sekme
+Sol menüdeki bağımsız "Saha Haritası" düğmesi **kaldırıldı**; harita
+"Pazarlamacılar" sekmesinin alt sekmesi oldu:
+`[👥 Pazarlamacılar & Ciro] | [🗺️ Saha Ziyaret Haritası]`.
+
+- Denetleyici: `plasiyer-yonetimi.js → altSekmeAc()`. Düğmeler `menu-btn`
+  **değil** (`plasiyer-alt`) — `sekmeAc` yalnızca `.menu-btn` düğümlerini boyar.
+- Durum **`aria-selected`** ile taşınır, CSS onu izler. Sınıf ve öznitelik ayrı
+  yönetilseydi ekran doğru görünürken ekran okuyucu yanlış söylerdi.
+- **`sekmeAc('harita')` GERİYE DÖNÜK ÇALIŞIR:** `plasiyerler`'e yönlendirir ve
+  harita alt sekmesini açar. Eski bir çağrının sessizce hiçbir şey yapmaması en
+  kötü hata türüdür.
+- **`harita-kokpit.js`'teki `sekmeAc` sarmalı KALDIRILDI — geri ekleme.** Bu
+  dosya `plasiyer-yonetimi.js`'ten **sonra** yüklendiği için zincir
+  `harita-kokpit → plasiyer-yonetimi → özgün` olur; alt sekme denetleyicisi bir
+  kez, sarmal ikinci kez çağırırdı → her açılışta **çift `/admin/harita`
+  isteği**. Test bunu istek SAYISIYLA kilitler.
+- Haritada "Yenile / + Yeni Pazarlamacı" **gizlenir**: görünür ama işlevsiz
+  düğme kullanıcıya yalan söyler.
+- Çözülmemiş not rozeti **iki yerde, tek sayıdan**: sol menüdeki "Pazarlamacılar"
+  rozeti ("bu sekmede acil bir şey var") + alt sekme rozeti ("hangisinde").
+
+### Çıkış Yap — tek kanonik çıkış
+`#cikisYapDugme`, sol menünün altında, **her iki rolde aynı yerde**, oturum
+yokken de DOM'da.
+
+- **`menu-btn` DEĞİL:** sekme değil bir eylem. `menu-btn` olsaydı `sekmeAc` onu
+  da boyamaya çalışır ve rol süzgeci onu bir sekme sanıp gizleyebilirdi.
+- **`mt-auto` bilinçli olarak iki yerde** (ayarlar + çıkış): yönetici
+  oturumunda "API & Sistem Ayarları" boşluğu yutar ve çıkış onun altına oturur;
+  plasiyerde o düğme `display:none` olduğu için flex düzenine girmez ve boşluğu
+  çıkış yutar. Tek kural, iki rol.
+- **Üst bardaki ikinci çıkış düğmesi KALDIRILDI.** Faz 1'de üst bara bir "Çıkış
+  Yap" konmuştu; aynı eylemin iki yerde durması kullanıcıyı "hangisi gerçek?"
+  diye düşündürüyordu. Üst barda kalan şey **bilgi** (ad + bölge), eylem değil.
+- `cikisYap()` sırası: jeton iptali → `durum.oturum = null` → kısıtlamayı
+  yeniden uygula (etiket/sıra/üst bar geri alınır) → `ypinKapat()` → kapı.
+- **Kilitli cihazda kapı terminal biçiminde açılır** (o plasiyerin PIN ekranı),
+  çift kapı **değil** — çift kapıya dönmek kilidi delmek olurdu.
+
+### "Kendi Siparişlerim" süzgeci
+`renderer.js → siparisleriSuz()` → `PlasiyerSiparisMotor.kendiSiparisleri()`.
+
+`siparisleriYukle()` Faz 6'ya kadar **hiçbir rol süzgeci uygulamıyordu**:
+plasiyer "Siparişler"e basınca bütün şirketin siparişlerini görüyordu. Artık
+`_b2b_plasiyer_id` damgasına göre süzülür (panele eklentinin `plasiyer_id`
+alanıyla gelir — **eklenti 2.15.0**; `prepare_order` daha önce `meta_data`
+döndürmediği için panel bu bilgiyi hiçbir yerden öğrenemiyordu).
+
+- Süzgeç `siparisleriCiz()` içinde **EN ÖNCE** uygulanır: özet kartlar, sayaçlar
+  ve boş durum metni de ekranda GÖRÜNEN listeyi anlatmalı.
+- **Kimlik bilinmiyorsa BOŞ liste** döner. "Bilmiyorum" hâlinde her şeyi
+  göstermek, tam olarak engellemeye çalıştığımız sızıntı olurdu. Motor
+  yüklenmemişse de boş döner (güvenli taraf).
+- Bayinin kendi sitesinden verdiği sipariş bu listede **yoktur** — aynı kural
+  ciro istatistiğinde de geçerli (`B2B_Plasiyer::get_plasiyer_stats`). İki yerde
+  iki farklı "benim siparişim" tanımı üretmemek için bilinçli olarak aynı damga.
+
+> ### ⚠️ BU BİR GÖRÜNÜM SÜZGECİDİR, YETKİ SINIRI DEĞİLDİR
+> Panel mağaza anahtarlarını (CK/CS) taşır; veri cihaza zaten iniyor ve mimari
+> bunu baştan kabul ediyor (`../CLAUDE.md §10` — "PIN bir yetki aracı
+> DEĞİLDİR"). Çözülen sorun: plasiyer **ekranında** patronun siparişlerinin
+> görünmesi. Sızıntıyı tamamen kapatmak için sunucuda plasiyere daraltılmış bir
+> uç gerekir (`/plasiyer/siparislerim`) — **ayrı iş**, `../BYOM-REGISTRY.md
+> §5.29`'da açık kalem olarak kayıtlı.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -592,14 +695,15 @@ cevaplar. `ortamKurAyarsiz()` yardımcısı artık üretim sırasını test eder
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**384 test**: panel 190 + kök 194).
+İkisini birden `../scripts/check-all.js` koşar (**411 test**: panel 196 + kök 215).
 
 ```bash
-# Bu submodule'un kendi birim testleri (190 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (196 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
-node --test test/plasiyer-siparis.test.js   # 34 — koli matematigi, sepet, son siparis, UUID, tavan
+node --test test/plasiyer-siparis.test.js   # 40 — koli matematigi, sepet, son siparis, UUID, tavan,
+                                            #      kendiSiparisleri ("Kendi Siparislerim" suzgeci)
 node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprusu, hata toleransi,
                                             #      esitlemeGerekliMi (Faz 4 oto-esitleme karari)
 node --test test/harita-notlar.test.js      # 35 — 81 il kutugu, durum gecisleri, filtreler
@@ -628,7 +732,8 @@ node --test scripts/tests/depo-fisi.test.js           # fiş muhasebe dökümü
 node --test scripts/tests/odeme-matrisi.dom.test.js   # matris arayüzü
 node --test scripts/tests/checkout-masasi.dom.test.js
 node --test scripts/tests/sifre-goz.dom.test.js
-node --test scripts/tests/plasiyer-kapi.dom.test.js   # 52 — çift kapı, [hidden], süre aşımı, Master PIN, cihaz kilidi
+node --test scripts/tests/plasiyer-kapi.dom.test.js   # 58 — çift kapı, [hidden], Master PIN, cihaz kilidi, ÇIKIŞ
+node --test scripts/tests/plasiyer-menu.dom.test.js   # 15 — menü hiyerarşisi, alt sekmeler, Saha Notlarım
 node --test scripts/tests/harita-kokpit.dom.test.js   # 15 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
@@ -640,7 +745,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (384 test)
+# Bitirirken: üç katmanın tamamı (411 test)
 node scripts/check-all.js
 ```
 
@@ -714,7 +819,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 156 php / 71 js / 384 test
+cd .. && node scripts/check-all.js     # 0 hata / 156 php / 72 js / 411 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

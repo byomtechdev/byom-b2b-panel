@@ -328,6 +328,23 @@
   /* Plasiyer oturumunda gizlenen alanlar (sekme düğmesi, menü bölümü...). */
   .plasiyer-gizli { display: none !important; }
 
+  /* ALT SEKMELER (Pazarlamacılar › Ciro | Saha Haritası) — Faz 6
+     Durum `aria-selected` ile taşınır, stil onu İZLER. Tek kaynak: öznitelik.
+     Sınıf ve öznitelik ayrı ayrı yönetilseydi ikisi ayrışır ve ekran doğru
+     görünürken ekran okuyucu yanlış söylerdi.
+     Yalnızca renk/gölge değişir — `transform` bile yok, düzen hiç hesaplanmaz. */
+  .plasiyer-alt { color: #475569; }
+  .plasiyer-alt[aria-selected="true"] {
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 1px 3px rgb(0 0 0 / .12);
+  }
+  .plasiyer-alt:hover:not([aria-selected="true"]) { color: #0f172a; }
+
+  html.dark .plasiyer-alt { color: #cbd5e1; }
+  html.dark .plasiyer-alt[aria-selected="true"] { background: #1e293b; color: #f8fafc; }
+  html.dark .plasiyer-alt:hover:not([aria-selected="true"]) { color: #f8fafc; }
+
   /* Ciro dağılım çubuğu — genişlik yerine transform ile büyür (reflow yok). */
   .ciro-cubuk { transform-origin: left center; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
 
@@ -1894,7 +1911,8 @@
   <div class="flex flex-1 min-h-0">
 
     <!-- ==================================================================
-         SOL MENÜ (4 ANA SEKME)
+         SOL MENÜ — rol süzgeci renderer-plasiyer.js § ROL_SEKMELERI
+         (yönetici 8 sekme, plasiyer 3 sekme; liste ORADA, burada değil)
          ================================================================== -->
     <nav class="w-72 shrink-0 bg-white dark:bg-slate-800 border-r-2 border-slate-200 dark:border-slate-700
                 p-4 flex flex-col gap-3 overflow-y-auto">
@@ -1906,8 +1924,14 @@
 
       <!-- Plasiyer Faz 2 — saha satış ekranı: çevrimdışı katalog, vitrin,
            müşteri seçimi ve sipariş yazma (src/renderer/modules/plasiyer-vitrin.js
-           + plasiyer-musteri.js). Yöneticiye de açıktır. -->
-      <button data-sekme="satis" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+           + plasiyer-musteri.js).
+
+           FAZ 6: `data-rol="plasiyer"` EKLENDİ — artık yöneticiye KAPALI.
+           Bu ekran sahanın dünyasıdır; yöneticinin depo/onay dünyasında
+           durması iki dünyayı iç içe geçiriyordu. Öznitelik bilinçli olarak
+           beyaz listeye EK: oturum henüz kurulmamışken (kapı ekranı) de
+           gizli kalsın, rol bilinmeyen bir anda menüde görünmesin. -->
+      <button data-sekme="satis" data-rol="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg>
         <span class="align-middle">Katalog &amp; Sipariş Yazma</span>
       </button>
@@ -1945,12 +1969,23 @@
         <span class="align-middle">Pazarlamacılar</span>
       </button>
 
-      <!-- Saha haritası (Faz 3): 81 il, bayi/ciro yoğunluğu, ziyaret notları.
-           Harici bağımlılık YOK — yerel SVG, internet/Google Maps gerekmez
-           (src/renderer/modules/harita-kokpit.js). -->
-      <button data-sekme="harita" data-rol="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
-        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-panel"></use></svg>
-        <span class="align-middle">Saha Haritası</span>
+      <!-- SAHA HARİTASI ARTIK BURADA DEĞİL — Faz 6'da "Pazarlamacılar"
+           sekmesinin içine ALT SEKME olarak taşındı (#plasiyerAltHarita).
+           Gerekçe: harita pazarlamacı verisinin bir GÖRÜNÜMÜ, ayrı bir iş
+           alanı değil; sol menüde bağımsız durması 10 düğmelik bir menü
+           üretiyordu. `sekmeAc('harita')` geriye dönük olarak çalışmaya devam
+           eder, Pazarlamacılar + harita alt sekmesini açar. -->
+
+      <!-- SAHA NOTLARIM (Faz 6) — YALNIZCA plasiyer oturumunda görünür.
+           Plasiyerin kendi ziyaret notları ve patronun yanıtları
+           (src/renderer/modules/plasiyer-ziyaret.js). Yöneticinin karşılığı
+           Pazarlamacılar › Saha Ziyaret Haritası'dır. -->
+      <button data-sekme="notlarim" data-rol="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg>
+        <span class="align-middle">Saha Notlarım / CRM</span>
+        <span id="notlarimSayaci"
+              class="hidden absolute top-3 right-3 min-w-8 h-8 px-2 rounded-full bg-red-600 text-white
+                     text-base font-black grid place-items-center shadow-lg">0</span>
       </button>
 
       <!-- BYOM Brain destek masası: talepler doğrudan merkezî sisteme düşer -->
@@ -1977,6 +2012,29 @@
         <span id="ayarKilitSimgesi"
               class="ml-auto shrink-0 inline-flex items-center leading-none"
               title="Geliştirici kilidi — şifre gerekir"><svg class="ik" aria-hidden="true"><use href="#ik-kilit"></use></svg></span>
+      </button>
+
+      <!-- ============================================================
+           ÇIKIŞ YAP (Faz 6)
+           ------------------------------------------------------------
+           `menu-btn` DEĞİL: sekme değil bir EYLEM. `menu-btn` olsaydı
+           `sekmeAc` onu da boyamaya çalışır ve rol süzgeci onu bir sekme
+           sanıp gizleyebilirdi.
+
+           `mt-auto` BİLİNÇLİ OLARAK İKİ YERDE: yönetici oturumunda üstteki
+           "API & Sistem Ayarları" boşluğu yutar ve bu düğme onun hemen altına
+           oturur; plasiyer oturumunda o düğme gizli olduğu için (display:none
+           ⇒ flex düzenine girmez) boşluğu bu düğme yutar ve yine en altta
+           kalır. Tek kural, iki rol.
+           ============================================================ -->
+      <button type="button" id="cikisYapDugme"
+              class="mt-auto text-left px-5 py-5 rounded-2xl font-extrabold text-lg transition border-2
+                     border-slate-200 text-slate-600 hover:bg-red-50 hover:border-red-300 hover:text-red-700
+                     dark:border-slate-600 dark:text-slate-300 dark:hover:bg-red-950/40
+                     dark:hover:border-red-800 dark:hover:text-red-300
+                     focus:outline-none focus:ring-4 focus:ring-red-500/20">
+        <span class="align-middle" aria-hidden="true">🚪</span>
+        <span id="cikisYapMetin" class="align-middle ml-1">Çıkış Yap / Giriş Ekranına Dön</span>
       </button>
     </nav>
 
@@ -3220,8 +3278,32 @@
  tarih/ölçüt filtreleri ve ziyaret notu işlemleri.
  Harici bağımlılık YOK — internet ya da Google Maps gerekmez.
  ============================================================ -->
-      <section id="sekme-harita" class="sekme-govde">
-        <div id="haritaKab"></div>
+      <!-- ============================================================
+           SEKME — SAHA NOTLARIM / CRM (plasiyer)
+           ------------------------------------------------------------
+           İçerik src/renderer/modules/plasiyer-ziyaret.js tarafından çizilir
+           (not kartları zilde kullanılan `zilKarti` ile AYNI çizicidir —
+           iki ayrı kart tasarımı bakmak zorunda kalmayalım).
+           ============================================================ -->
+      <section id="sekme-notlarim" class="sekme-govde">
+
+        <div class="flex items-center gap-4 mb-5 flex-wrap">
+          <h1 class="text-3xl font-black">
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kulaklik"></use></svg> Saha Notlarım
+          </h1>
+          <span id="notlarimOzet"
+                class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
+                       dark:bg-slate-800 dark:text-slate-300"></span>
+
+          <div class="ml-auto flex gap-3">
+            <button type="button" id="notlarimYenile"
+                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+          </div>
+        </div>
+
+        <div id="notlarimKab"
+             class="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-6"></div>
       </section>
 
       <!-- ============================================================
@@ -3241,7 +3323,7 @@
                 class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
                        dark:bg-slate-800 dark:text-slate-300"></span>
 
-          <div class="ml-auto flex gap-3">
+          <div id="plasiyerAraclar" class="ml-auto flex gap-3">
             <button type="button" id="plasiyerYenile"
                     class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
                            font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
@@ -3251,8 +3333,50 @@
           </div>
         </div>
 
-        <!-- Performans tablosu + ciro dağılım çubukları -->
-        <div id="plasiyerTablo" class="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-6"></div>
+        <!-- ============================================================
+             ALT SEKMELER (Faz 6) — "pill switch"
+             ------------------------------------------------------------
+             Saha Haritası eskiden sol ana menüde bağımsız bir düğmeydi ve
+             menüyü 10 satıra çıkarıyordu. Harita, pazarlamacı verisinin bir
+             GÖRÜNÜMÜ olduğu için buraya taşındı.
+
+             Düğmeler `menu-btn` DEĞİL (`plasiyer-alt`): `sekmeAc` yalnızca
+             `.menu-btn` düğümlerini boyar, alt sekmeler ona karışmaz.
+             Seçim `aria-selected` ile taşınır — renk tek başına erişilebilir
+             bir durum göstergesi değildir.
+             ============================================================ -->
+        <div class="mb-5 inline-flex gap-1 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900/60"
+             role="tablist" aria-label="Pazarlamacı görünümü">
+
+          <button type="button" class="plasiyer-alt px-5 py-3 rounded-xl font-extrabold transition"
+                  role="tab" data-alt="performans" aria-selected="true" aria-controls="plasiyerAltPerformans">
+            <span aria-hidden="true">👥</span>
+            <span class="align-middle ml-1">Pazarlamacılar &amp; Ciro</span>
+          </button>
+
+          <button type="button" class="plasiyer-alt relative px-5 py-3 rounded-xl font-extrabold transition"
+                  role="tab" data-alt="harita" aria-selected="false" aria-controls="plasiyerAltHarita">
+            <span aria-hidden="true">🗺️</span>
+            <span class="align-middle ml-1">Saha Ziyaret Haritası</span>
+            <!-- Çözülmemiş saha notu sayacı: Faz 3'te sol menüdeydi, harita
+                 buraya taşınınca rozet de onu izledi. Sol menüdeki
+                 "Pazarlamacılar" rozetinde de durmaya devam eder ki yönetici
+                 sekmeyi açmadan görebilsin. -->
+            <span id="haritaAltSayaci"
+                  class="hidden absolute -top-1 -right-1 min-w-6 h-6 px-1.5 rounded-full bg-red-600 text-white
+                         text-xs font-black grid place-items-center shadow">0</span>
+          </button>
+        </div>
+
+        <!-- ALT SEKME 1 — performans tablosu + ciro dağılım çubukları -->
+        <div id="plasiyerAltPerformans" role="tabpanel">
+          <div id="plasiyerTablo" class="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-6"></div>
+        </div>
+
+        <!-- ALT SEKME 2 — Türkiye harita kokpiti (harita-kokpit.js çizer) -->
+        <div id="plasiyerAltHarita" role="tabpanel" hidden>
+          <div id="haritaKab"></div>
+        </div>
 
         <!-- Tanımlama / düzenleme formu (modülün açıp kapadığı perde) -->
         <div id="plasiyerFormPerde" hidden
