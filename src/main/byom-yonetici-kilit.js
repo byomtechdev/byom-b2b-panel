@@ -101,8 +101,237 @@ const KORUMALI_ALANLAR = [
   'yoneticiPinKilitBitis',
   'cihazRolu',
   'tahsisliPlasiyerId',
-  'tahsisliPlasiyerAd'
+  'tahsisliPlasiyerAd',
+  /* ---- PIN kurtarma (Faz 8) ---- */
+  /* Kurtarma deneme sayacı arayüzden sıfırlanabilse yerel kısıtlama anlamsız
+     olurdu; sıfırlama damgası da denetim kaydıdır, silinebilir olmamalı. */
+  'pinKurtarmaDeneme',
+  'pinKurtarmaKilitBitis',
+  'yoneticiPinSifirlamaZamani'
 ];
+
+/* ------------------------------------------------------------------ *
+ *  PIN KURTARMA — TALEP KODU (challenge) ve TEK KULLANIMLIK KOD (OTP)
+ *  ---------------------------------------------------------------
+ *  Akış (düz metin PIN HİÇBİR YERE GİTMEZ):
+ *
+ *    1) Patron PIN'i unuttu → panel TALEP KODU gösterir.
+ *       Talep kodu lisans anahtarı + HWID'den TÜRETİLİR, yani o cihaza
+ *       özgüdür ve merkez onu lisans kaydından yeniden hesaplayıp
+ *       arayanın gerçekten o cihazın başında olduğunu doğrulayabilir.
+ *       SIR DEĞİLDİR — bir kimliktir; telefonda okunmak için vardır.
+ *
+ *    2) Merkez, o lisans+HWID için TEK KULLANIMLIK bir kod üretir.
+ *       Kodun gücü, tekliği ve süresi HUB tarafında tutulur.
+ *
+ *    3) Patron kodu panele yazar → panel hub'a doğrulatır → PIN yerel
+ *       olarak SİLİNİR ve patron yenisini kurar.
+ *
+ *  Neden bu tasarım (eski düz metin senkronunun yerine):
+ *    · Hub PIN'i HİÇ GÖRMEZ. Hub sızıntısı müşteri PIN'lerini açığa çıkarmaz.
+ *    · BYOM personeli müşterinin PIN'ini öğrenmez; yalnızca SIFIRLAMA yetkisi
+ *      verir. Yetki vermek, sırrı bilmekten daha az ayrıcalıktır.
+ *    · Kod tek kullanımlık ve süreli: yakalanan bir kod ikinci kez işlemez.
+ *
+ *  ⚠️ KALAN RİSK — DÜRÜST NOT:
+ *  Her kurtarma yolu SOSYAL MÜHENDİSLİĞE açıktır. Kötü niyetli bir plasiyer
+ *  merkezi arayıp patron gibi davranabilir. Bunu panel çözemez; çözüm merkezin
+ *  KİMLİK DOĞRULAMASIDIR. Panel tarafındaki karşı önlem denetlenebilirliktir:
+ *  her başarılı sıfırlama `yoneticiPinSifirlamaZamani` olarak damgalanır ve
+ *  Ayarlar kartında gösterilir — patron "bu PIN ne zaman sıfırlandı?" sorusunu
+ *  sorabilir. (Eski düz metin tasarımında bu risk AYNEN vardı; üstelik merkez
+ *  PIN'i söylediği için iz bile kalmıyordu.)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Karıştırılması kolay harfler ÇIKARILMIŞ alfabe (Crockford Base32 ruhu).
+ *
+ * I, L, O, U yok: telefonda "O mu sıfır mı?" diye sorulmasın. Girdi
+ * normalleştirmesi bu harfleri zaten karşılıklarına çevirir.
+ */
+const KOD_ALFABE = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+/** Talep kodu uzunluğu (kimlik; sır değil). */
+const TALEP_UZUNLUK = 12;
+
+/** Merkezin verdiği tek kullanımlık kodun uzunluğu. */
+const KURTARMA_KOD_UZUNLUK = 8;
+
+/** Kurtarma kodu için yerel deneme tavanı ve kilidi. */
+const KURTARMA_MAX_DENEME = 5;
+const KURTARMA_KILIT = 900;   // 15 dk
+
+/**
+ * Talep kodunu lisans + HWID'den türetir.
+ *
+ * DETERMİNİST: aynı cihaz her zaman aynı kodu gösterir. Böylece merkez kodu
+ * lisans kaydından yeniden hesaplayıp arayanı doğrulayabilir. Rastgele olsaydı
+ * merkezin onu önceden bilmesi mümkün olmazdı ve her talebi panelin hub'a
+ * kaydetmesi ZORUNLU olurdu — internetsiz bir ofiste akış tamamen tıkanırdı.
+ *
+ * Tekliği TALEP değil, merkezin verdiği KOD sağlar.
+ */
+function talepKodu(lisansAnahtari, hwid) {
+  const anahtar = String(lisansAnahtari === null || lisansAnahtari === undefined ? '' : lisansAnahtari).trim();
+  const cihaz = String(hwid === null || hwid === undefined ? '' : hwid).trim();
+
+  /* Lisans yoksa kurtarmanın bağlanacağı bir kimlik de yok. */
+  if (!anahtar) return '';
+
+  const ozet = crypto.createHash('sha256')
+    .update(anahtar + '|' + cihaz + '|byom-pin-sifirlama-v1', 'utf8')
+    .digest();
+
+  let kod = '';
+
+  for (let i = 0; i < TALEP_UZUNLUK; i++) {
+    kod += KOD_ALFABE[ozet[i] % KOD_ALFABE.length];
+  }
+
+  /* Dörtlü gruplar: telefonda okunması ve ekranda kontrol edilmesi kolay. */
+  return kod.replace(/(.{4})(?=.)/g, '$1-');
+}
+
+/**
+ * Kullanıcının yazdığı kodu normalleştirir.
+ *
+ * Ayırıcıları atar, büyütür ve karıştırılan harfleri çevirir (O→0, I/L→1,
+ * U→V). Bu bir kolaylık değil HATA ÖNLEMEDİR: telefonda okunan bir kodda
+ * "O" ile "0"ı ayırmak imkânsızdır ve her yazım hatası merkeze ikinci bir
+ * çağrı demektir.
+ */
+function kurtarmaKodunuNormalle(kod) {
+  return String(kod === null || kod === undefined ? '' : kod)
+    .toUpperCase()
+    .replace(/[\s\-_.]/g, '')
+    .replace(/O/g, '0')
+    .replace(/[IL]/g, '1')
+    .replace(/U/g, 'V');
+}
+
+/** Kod biçim denetimi — ağa çıkmadan önce elenir. */
+function kurtarmaKoduBicimi(kod) {
+  const temiz = kurtarmaKodunuNormalle(kod);
+
+  if (temiz.length !== KURTARMA_KOD_UZUNLUK) {
+    return { ok: false, hata: 'Kurtarma kodu ' + KURTARMA_KOD_UZUNLUK + ' karakter olmalı.' };
+  }
+
+  for (let i = 0; i < temiz.length; i++) {
+    if (KOD_ALFABE.indexOf(temiz[i]) === -1) {
+      return { ok: false, hata: 'Kurtarma kodunda geçersiz karakter var.' };
+    }
+  }
+
+  return { ok: true, kod: temiz };
+}
+
+/** Kurtarma kilidine kalan saniye. */
+function kurtarmaKilitKalan(ayarlar, simdi) {
+  const bitis = sayi((ayarlar || {}).pinKurtarmaKilitBitis);
+
+  if (!bitis) return 0;
+
+  const kalan = Math.ceil((bitis - simdi) / 1000);
+
+  return kalan > 0 ? kalan : 0;
+}
+
+/**
+ * Kurtarma denemesini yerel olarak karşılar.
+ *
+ * Kodun DOĞRULUĞUNA burada karar verilmez — o hub'ın işi. Burada yapılan:
+ * biçim elemesi ve hub'ı gereksiz yere dövmeyi engelleyen yerel sayaç.
+ *
+ * `{ ok: true, kod }` → çağıran hub'a gidebilir.
+ */
+function kurtarmaDenemesiHazirla(kod, ayarlar, simdi) {
+  ayarlar = ayarlar || {};
+  simdi = simdi || Date.now();
+
+  const kalanKilit = kurtarmaKilitKalan(ayarlar, simdi);
+
+  if (kalanKilit > 0) {
+    return {
+      ok: false,
+      kilitli: true,
+      kilitKalanSn: kalanKilit,
+      hata: 'Çok fazla hatalı kurtarma kodu. ' + kalanKilit + ' saniye sonra tekrar deneyin.'
+    };
+  }
+
+  const bicim = kurtarmaKoduBicimi(kod);
+
+  if (!bicim.ok) return { ok: false, hata: bicim.hata };
+
+  return { ok: true, kod: bicim.kod };
+}
+
+/**
+ * Hub "kod yanlış" dedi — yerel sayacı ilerletir.
+ *
+ * Kilit süresi dolmuşsa sayaç sıfırdan başlar (PIN denemesiyle aynı kural).
+ */
+function kurtarmaBasarisiz(ayarlar, simdi) {
+  ayarlar = ayarlar || {};
+  simdi = simdi || Date.now();
+
+  const gecmis = sayi(ayarlar.pinKurtarmaKilitBitis) ? 0 : sayi(ayarlar.pinKurtarmaDeneme);
+  const deneme = gecmis + 1;
+
+  if (deneme >= KURTARMA_MAX_DENEME) {
+    return {
+      kilitli: true,
+      kilitKalanSn: KURTARMA_KILIT,
+      kalanDeneme: 0,
+      yazilacak: {
+        pinKurtarmaDeneme: deneme,
+        pinKurtarmaKilitBitis: simdi + (KURTARMA_KILIT * 1000)
+      }
+    };
+  }
+
+  return {
+    kilitli: false,
+    kalanDeneme: KURTARMA_MAX_DENEME - deneme,
+    yazilacak: { pinKurtarmaDeneme: deneme, pinKurtarmaKilitBitis: 0 }
+  };
+}
+
+/**
+ * PIN'i SİFİRLAR — merkez onayı alındıktan sonra çağrılır.
+ *
+ * ⚠️ CİHAZ KİLİDİ DE KALKAR — DEĞİŞMEZ KURAL:
+ *     «kilitli cihaz ⇒ tanımlı bir PIN vardır»
+ *
+ * `cihazKilitle` PIN olmadan kilitlemeyi zaten reddediyor. PIN silinip kilit
+ * bırakılsaydı cihaz TUĞLAYA dönerdi: kilidi açmak PIN ister, PIN yok, yeni
+ * PIN kurmak kilidi açmaz. Bu yüzden sıfırlama ikisini BİRLİKTE temizler.
+ *
+ * Sıfırlama ZAMANI damgalanır: patron "bu PIN ne zaman, kim tarafından
+ * sıfırlandı?" sorusunu sorabilsin. Kurtarma yolunun kaçınılmaz sosyal
+ * mühendislik riskine karşı panel tarafındaki tek gerçek karşı önlem budur.
+ */
+function pinSifirla(ayarlar, simdi) {
+  ayarlar = ayarlar || {};
+  simdi = simdi || Date.now();
+
+  return {
+    ok: true,
+    yazilacak: {
+      yoneticiPinHash: '',
+      yoneticiPinDeneme: 0,
+      yoneticiPinKilitBitis: 0,
+      pinKurtarmaDeneme: 0,
+      pinKurtarmaKilitBitis: 0,
+      yoneticiPinSifirlamaZamani: new Date(simdi).toISOString(),
+      /* DEĞİŞMEZ KURAL: PIN yoksa kilit de olamaz (bkz. yukarıdaki not). */
+      cihazRolu: ROL_STANDART,
+      tahsisliPlasiyerId: 0,
+      tahsisliPlasiyerAd: ''
+    }
+  };
+}
 
 /* ------------------------------------------------------------------ *
  *  PIN BİÇİMİ
@@ -242,7 +471,14 @@ function durum(ayarlar, simdi) {
     cihazRolu: rol,
     cihazKilitli: ROL_KILITLI === rol,
     tahsisliPlasiyerId: sayi(ayarlar.tahsisliPlasiyerId),
-    tahsisliPlasiyerAd: String(ayarlar.tahsisliPlasiyerAd || '')
+    tahsisliPlasiyerAd: String(ayarlar.tahsisliPlasiyerAd || ''),
+
+    /* ---- PIN kurtarma durumu (Faz 8) ---- */
+    kurtarmaKilitli: kurtarmaKilitKalan(ayarlar, simdi) > 0,
+    kurtarmaKilitKalanSn: kurtarmaKilitKalan(ayarlar, simdi),
+    kurtarmaKalanDeneme: Math.max(0, KURTARMA_MAX_DENEME - sayi(ayarlar.pinKurtarmaDeneme)),
+    /* DENETIM IZI: patron "bu PIN ne zaman sifirlandi?" diye sorabilsin. */
+    sifirlamaZamani: String(ayarlar.yoneticiPinSifirlamaZamani || '')
   };
 }
 
@@ -464,6 +700,12 @@ const YoneticiKilit = {
   ROL_KILITLI: ROL_KILITLI,
   KORUMALI_ALANLAR: KORUMALI_ALANLAR,
 
+  KOD_ALFABE: KOD_ALFABE,
+  TALEP_UZUNLUK: TALEP_UZUNLUK,
+  KURTARMA_KOD_UZUNLUK: KURTARMA_KOD_UZUNLUK,
+  KURTARMA_MAX_DENEME: KURTARMA_MAX_DENEME,
+  KURTARMA_KILIT: KURTARMA_KILIT,
+
   pinBicimi: pinBicimi,
   ozetle: ozetle,
   dogrula: dogrula,
@@ -474,7 +716,15 @@ const YoneticiKilit = {
   pinDegistir: pinDegistir,
   pinDene: pinDene,
   cihazKilitle: cihazKilitle,
-  cihazAc: cihazAc
+  cihazAc: cihazAc,
+
+  /* ---- PIN kurtarma (Faz 8) ---- */
+  talepKodu: talepKodu,
+  kurtarmaKodunuNormalle: kurtarmaKodunuNormalle,
+  kurtarmaKoduBicimi: kurtarmaKoduBicimi,
+  kurtarmaDenemesiHazirla: kurtarmaDenemesiHazirla,
+  kurtarmaBasarisiz: kurtarmaBasarisiz,
+  pinSifirla: pinSifirla
 };
 
 module.exports = YoneticiKilit;

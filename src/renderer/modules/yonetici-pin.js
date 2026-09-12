@@ -93,11 +93,28 @@
 
     if (mevcut) mevcut.disabled = !kurulu;
 
-    /* Kurtarma kutusu: `pinSenkron` açıkça false DEĞİLSE açık sayılır —
-       varsayılan kurtarılabilir olmaktır (şartname bunu istiyor). */
-    var kutu = el('ypinSenkronKutu');
+    /*
+     * DENETİM İZİ (Faz 8): PIN daha önce sıfırlandıysa bunu GÖSTER.
+     *
+     * Kurtarma yolu kaçınılmaz olarak sosyal mühendisliğe açıktır — kötü
+     * niyetli biri merkezi arayıp patron gibi davranabilir. Bunu panel
+     * çözemez; çözebileceği tek şey olayı GÖRÜNÜR kılmaktır. Patron "bu PIN
+     * ne zaman sıfırlandı?" sorusunu sorabiliyorsa, habersiz bir sıfırlama
+     * sessiz kalmaz.
+     */
+    var iz = el('ypinSifirlamaIzi');
 
-    if (kutu) kutu.checked = (false !== ayarlar.pinSenkron);
+    if (iz) {
+      var zaman = String(ayarlar.yoneticiPinSifirlamaZamani || '');
+      var okunur = '';
+
+      if (zaman) {
+        try { okunur = new Date(zaman).toLocaleString('tr-TR'); } catch (e) { okunur = zaman; }
+      }
+
+      iz.textContent = okunur ? ('⚠ Bu PIN en son ' + okunur + ' tarihinde merkez onayıyla sıfırlandı.') : '';
+      iz.classList.toggle('hidden', !okunur);
+    }
 
     if (!kurulu) {
       hataYaz('PIN henüz belirlenmedi. Giriş ekranındaki "Yönetici Girişi" ' +
@@ -105,27 +122,21 @@
     }
   }
 
-  /** Kurtarma tercihi — ayarlara yazılır, ana süreç onu okur. */
-  async function senkronTercihiniYaz() {
-    var kutu = el('ypinSenkronKutu');
-
-    if (!kutu) return;
-
-    try {
-      var yeni = await ipcRenderer.invoke('ayar:yaz', { pinSenkron: !!kutu.checked });
-
-      if (typeof durum !== 'undefined' && yeni) durum.ayarlar = yeni;
-
-      if (typeof bildir === 'function') {
-        bildir(kutu.checked
-          ? 'PIN kurtarma açık: PIN bir daha kurulduğunda/değiştiğinde merkeze iletilecek.'
-          : 'PIN kurtarma kapalı: PIN yalnızca bu bilgisayarda kalacak.', 'ok');
-      }
-    } catch (e) {
-      /* Tercih yazılamadıysa kutuyu gerçek duruma geri al: kullanıcı
-         kapattığını sanmasın. */
-      durumuCiz();
+  /**
+   * PIN sıfırlama akışını açar — giriş kapısındaki Master PIN penceresini
+   * 'kurtarma' modunda kullanır.
+   *
+   * NEDEN AYNI PENCERE: sıfırlama, PIN'i unutan patronun giriş kapısında da
+   * ulaşabilmesi gereken bir akış (Ayarlar'a giremez, çünkü PIN'i yok). İki
+   * ayrı kurtarma arayüzü bakmak zorunda kalmamak için tek pencere kullanılıyor.
+   */
+  function sifirlamayiAc() {
+    if (window.PlasiyerKapi && 'function' === typeof window.PlasiyerKapi.ypinAc) {
+      window.PlasiyerKapi.ypinAc('kurtarma');
+      return;
     }
+
+    hataYaz('Sıfırlama penceresi açılamadı. Uygulamayı yeniden başlatın.', false);
   }
 
   /**
@@ -207,8 +218,8 @@
     var dugme = el('ypinDegistirBtn');
     if (dugme) dugme.addEventListener('click', degistir);
 
-    var kutu = el('ypinSenkronKutu');
-    if (kutu) kutu.addEventListener('change', senkronTercihiniYaz);
+    var sifirla = el('ypinSifirlaBtn');
+    if (sifirla) sifirla.addEventListener('click', sifirlamayiAc);
   }
 
   /** Ayarlar sekmesi açıldığında kartı tazeler — `sekmeAc`'ı SARAR. */
@@ -239,7 +250,7 @@
     durumuCiz: durumuCiz,
     degistir: degistir,
     olaylariBagla: olaylariBagla,
-    senkronTercihiniYaz: senkronTercihiniYaz,
+    sifirlamayiAc: sifirlamayiAc,
     PIN_UZUNLUK: PIN_UZUNLUK
   };
 })();

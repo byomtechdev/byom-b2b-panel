@@ -136,98 +136,156 @@ function lisansOzeti() {
 }
 
 /* ==========================================================================
- *  YÖNETİCİ MASTER PIN — HUB KURTARMA SENKRONU
+ *  YÖNETİCİ MASTER PIN — SIFIRLAMA (OTP / CHALLENGE) PROTOKOLÜ
  *  -------------------------------------------------------------------------
- *  İş gerekçesi: patron 6 haneli Yönetici Master PIN'ini unutursa kilitli bir
- *  saha cihazını açmanın başka yolu yok. Bu uç, PIN'i lisans anahtarıyla
- *  birlikte BYOM Brain'e iletir ki merkez destek verebilsin.
+ *  ⛔ DÜZ METİN PIN SENKRONU KALDIRILDI (Faz 8). Eski tasarım PIN'i lisans
+ *     anahtarıyla birlikte hub'a yazıyordu; hub onu okuyabildiği için bir hub
+ *     sızıntısı bütün müşterilerin yönetici PIN'ini açığa çıkarıyor ve hub
+ *     erişimi olan personel kilitli her cihazı açabiliyordu. O uç
+ *     (`/api/v1/license/pin-sync`) ARTIK ÇAĞRILMIYOR — geri ekleme.
  *
- *  ┌────────────────────────────────────────────────────────────────────────┐
- *  │ ⚠️ GÜVENLİK SÖZLEŞMESİNİ DEĞİŞTİREN BİR KARAR — OKUMADAN DOKUNMA      │
- *  │                                                                        │
- *  │ Panel PIN'i tuzlu scrypt ile saklar ve o özet GERİ DÖNDÜRÜLEMEZ        │
- *  │ (BYOM-REGISTRY.md §5.28 A). Bu senkron o sözün BİR İSTİSNASIDIR:       │
- *  │ düz metin PIN hub'a gider, orada okunabilir durur.                     │
- *  │                                                                        │
- *  │ Bunun bedeli gerçek ve kabul edilmiştir:                               │
- *  │   · Hub veritabanına/günlüklerine düşerse okunabilir.                  │
- *  │   · Hub erişimi olan BYOM personeli her müşterinin yönetici PIN'ini    │
- *  │     görebilir ve kilitli her cihazı açabilir.                          │
- *  │   · Kullanıcılar PIN'i başka yerde de kullanıyorsa etki yayılır.       │
- *  │                                                                        │
- *  │ Bu yüzden ZORUNLU üç önlem:                                            │
- *  │   1) KULLANICIYA SÖYLENİR. Ayarlar'daki PIN kartında açık uyarı var;   │
- *  │      kimsenin PIN'i haberi olmadan dışarı çıkmaz.                      │
- *  │   2) KAPATILABİLİR. `ayarlar.json → pinSenkron: false` ya da           │
- *  │      `BYOM_PIN_SENKRON_KAPALI=1` ortam değişkeni kapatır.              │
- *  │   3) AKIŞI BEKLETMEZ. 3 sn süre aşımı, tek deneme, sessiz hata —       │
- *  │      hub erişilemezse PIN yerel olarak yine kurulur/değişir.           │
- *  │                                                                        │
- *  │ DAHA İYİSİ VAR (önerilen sertleştirme, ayrı iş):                       │
- *  │ Hub'ın PIN'i hiç görmediği bir SIFIRLAMA akışı. Patron merkezi arar,   │
- *  │ merkez o lisans+HWID için sıfırlama yetkisi verir, panel PIN'i YEREL   │
- *  │ olarak siler ve patron yenisini kurar. Aynı iş hedefini ("unutursa     │
- *  │ kurtarılsın") PIN'i hiç sızdırmadan karşılar ve hub sızıntısı bütün    │
- *  │ müşterileri açık hâle getirmez. Ayrıntı: BYOM-REGISTRY.md §5.30 D.     │
- *  └────────────────────────────────────────────────────────────────────────┘
+ *  YENİ AKIŞ — HUB PIN'İ HİÇ GÖRMEZ:
+ *
+ *    1) Patron PIN'i unuttu. Panel, lisans + HWID'den TÜRETİLMİŞ bir
+ *       TALEP KODU gösterir (ör. 33B8-RND3-8KCP). Sır değil, kimliktir.
+ *    2) Panel bu talebi hub'a KAYDETMEYE ÇALIŞIR (en iyi gayret): merkez
+ *       "şu cihaz sıfırlama istedi" kaydını görür. Başarısız olsa bile akış
+ *       durmaz — patron kodu telefonda okur, merkez lisans kaydından aynı
+ *       kodu yeniden hesaplayıp doğrular.
+ *    3) Merkez TEK KULLANIMLIK bir kod üretir (gücü/tekliği/süresi HUB'da).
+ *    4) Patron kodu panele yazar → panel hub'a DOĞRULATIR → PIN yerel olarak
+ *       SİLİNİR ve patron yenisini kurar.
+ *
+ *  Kazanç: merkez artık müşterinin PIN'ini BİLMİYOR, yalnızca sıfırlama
+ *  YETKİSİ veriyor. Yetki vermek, sırrı bilmekten daha az ayrıcalıktır.
+ *
+ *  ⚠️ KALAN RİSK: her kurtarma yolu sosyal mühendisliğe açıktır (kötü niyetli
+ *  biri merkezi arayıp patron gibi davranabilir). Bunu panel çözemez; merkezin
+ *  kimlik doğrulaması çözer. Panel tarafındaki karşı önlem, her sıfırlamanın
+ *  damgalanması ve Ayarlar'da gösterilmesidir (yoneticiPinSifirlamaZamani).
+ *  Ayrıntı: byom-yonetici-kilit.js → "PIN KURTARMA" başlığı.
+ *
+ *  İNTERNET GEREKİR: doğrulama hub'da yapıldığı için sıfırlama çevrimdışı
+ *  çalışmaz. Bilinçli: çevrimdışı doğrulama, panele gömülü bir sır (paketten
+ *  çıkarılıp herkesin cihazı için kod üretmeye yarar) ya da açık anahtar +
+ *  telefonda okunamayacak uzunlukta bir imza gerektirirdi. Patron merkezi
+ *  arayabiliyorsa internete de erişebiliyordur.
  * ========================================================================*/
 
-/** Hub ucu. Sunucu tarafı yoksa istek sessizce başarısız olur — akış sürer. */
-const PIN_SENKRON_UC = '/api/v1/license/pin-sync';
+/** Sıfırlama talebini merkeze bildiren uç (en iyi gayret). */
+const PIN_SIFIRLAMA_TALEP_UC = '/api/v1/license/pin-reset/request';
 
-/** Senkron akışı ASLA bekletmez: 3 sn, tek deneme. */
-const PIN_SENKRON_SURE_ASIMI = 3000;
+/** Merkezin verdiği tek kullanımlık kodu doğrulayan uç. */
+const PIN_SIFIRLAMA_DOGRULA_UC = '/api/v1/license/pin-reset/verify';
+
+/** Talep bildirimi akışı bekletmez; doğrulamada kullanıcı bekliyor, daha uzun. */
+const PIN_SIFIRLAMA_TALEP_SURE_ASIMI = 4000;
+const PIN_SIFIRLAMA_DOGRULA_SURE_ASIMI = 15000;
 
 /**
- * Master PIN'i hub'a iletir (kurtarma kaydı).
+ * Bu cihazın talep kodu — lisans + HWID'den türetilir.
  *
- * Lisans anahtarı BU MODÜLDEN ÇIKMAZ: fonksiyon burada durur ki anahtar
- * `lisansOzeti()` dışına (maskesiz) sızmasın.
- *
- * Her zaman ÇÖZÜLÜR, asla throw etmez. `{ ok, atlandi? }` döner.
+ * Lisans anahtarı BU MODÜLDEN ÇIKMAZ: kod burada hesaplanır, dışarıya yalnızca
+ * sonuç verilir.
  */
-async function pinSenkronla(pin) {
-  /* Ortam değişkeni kill switch'i — kurumsal dağıtımda tek satırla kapatılır. */
-  if ('1' === String(process.env.BYOM_PIN_SENKRON_KAPALI || '')) {
-    return { ok: false, atlandi: 'ortam-kapali' };
-  }
+function pinSifirlamaTalepKodu() {
+  const kilit = require('./byom-yonetici-kilit');
 
+  return kilit.talepKodu(
+    (durum.lisans && durum.lisans.lisansAnahtari) || '',
+    durum.hwid || ''
+  );
+}
+
+/**
+ * Sıfırlama talebini merkeze bildirir — EN İYİ GAYRET.
+ *
+ * Başarısızlığı akışı DURDURMAZ: merkez talep kodunu lisans kaydından yeniden
+ * hesaplayabildiği için bu kayıt bir kolaylıktır, zorunluluk değil.
+ * Her zaman çözülür, asla throw etmez.
+ */
+async function pinSifirlamaTalebi() {
   const anahtar = String((durum.lisans && durum.lisans.lisansAnahtari) || '').trim();
+  const kod = pinSifirlamaTalepKodu();
 
-  /* Lisans yoksa kurtarma kaydının bağlanacağı bir kimlik de yok. */
-  if (!anahtar) return { ok: false, atlandi: 'lisans-yok' };
-
-  const temiz = String(pin === null || pin === undefined ? '' : pin).trim();
-
-  /* Biçimi burada da denetliyoruz: yanlış bir değeri hub'a yazmak, kurtarma
-     anında yanlış PIN söylenmesi demek olurdu. */
-  if (!/^[0-9]{6}$/.test(temiz)) return { ok: false, atlandi: 'bicim' };
+  if (!anahtar || !kod) return { ok: false, atlandi: 'lisans-yok', talepKodu: kod };
 
   try {
-    /* GEÇ YÜKLEME — dosyanın geri kalanındaki desenle aynı (bkz. satır ~835).
-       Hub istemcisi `adresBirlestir` kullandığı için çift bölü çizgisi orada
-       da sanitize edilir; burada elle birleştirme YAPILMAZ. */
     const api = require('./byom-api');
 
     const cevap = await api.istekAt({
-      yol: PIN_SENKRON_UC,
+      yol: PIN_SIFIRLAMA_TALEP_UC,
       metod: 'POST',
-      sureAsimi: PIN_SENKRON_SURE_ASIMI,
+      sureAsimi: PIN_SIFIRLAMA_TALEP_SURE_ASIMI,
       govde: {
         lisansAnahtari: anahtar,
-        /* HWID kaydı CİHAZA bağlar: aynı lisansın iki makinesi ayrı ayrı
-           kurtarılabilir ve merkez hangi cihazdan geldiğini bilir. */
         hwid: durum.hwid || '',
-        pin: temiz,
+        talepKodu: kod,
         kaynak: 'b2b-yonetim-paneli',
         surum: uygulamaSurumu()
       }
     });
 
-    return { ok: !!(cevap && cevap.ok), durum: (cevap && cevap.durum) || 0 };
+    return { ok: !!(cevap && cevap.ok), talepKodu: kod, bildirildi: !!(cevap && cevap.ok) };
   } catch (e) {
-    /* SESSİZ: hub erişilemese bile PIN yerel olarak kuruldu/değişti. */
-    return { ok: false, atlandi: 'hata' };
+    return { ok: false, atlandi: 'hata', talepKodu: kod };
+  }
+}
+
+/**
+ * Merkezin verdiği tek kullanımlık kodu doğrular.
+ *
+ * KARAR HUB'INDIR. Panel kodu kendisi denetlemez — denetleyebilmesi için
+ * gömülü bir sır gerekirdi ve o sır paketten çıkarılıp herkesin cihazı için
+ * kod üretmeye yarardı. Panel yalnızca sorar ve cevabı uygular.
+ *
+ * "Sunucuya ulaşamadım" ile "sunucu hayır dedi" AYRI tutulur (agSorunu):
+ * karıştırılırsa internet yokken kullanıcıya "kodunuz yanlış" denir ve merkeze
+ * boşuna ikinci bir çağrı yapılır. Aynı ayrım byom-api.js'te de var.
+ */
+async function pinSifirlamaDogrula(kod) {
+  const anahtar = String((durum.lisans && durum.lisans.lisansAnahtari) || '').trim();
+  const talep = pinSifirlamaTalepKodu();
+
+  if (!anahtar || !talep) {
+    return { ok: false, agSorunu: false, hata: 'Lisans kaydı bulunamadı. Önce lisansı etkinleştirin.' };
+  }
+
+  try {
+    const api = require('./byom-api');
+
+    const cevap = await api.istekAt({
+      yol: PIN_SIFIRLAMA_DOGRULA_UC,
+      metod: 'POST',
+      sureAsimi: PIN_SIFIRLAMA_DOGRULA_SURE_ASIMI,
+      govde: {
+        lisansAnahtari: anahtar,
+        hwid: durum.hwid || '',
+        talepKodu: talep,
+        kod: String(kod || ''),
+        kaynak: 'b2b-yonetim-paneli'
+      }
+    });
+
+    if (!cevap || !cevap.ok) {
+      return {
+        ok: false,
+        agSorunu: !!(cevap && cevap.agSorunu),
+        durum: (cevap && cevap.durum) || 0,
+        hata: (cevap && cevap.hata) || 'Kurtarma kodu doğrulanamadı.'
+      };
+    }
+
+    const veri = cevap.veri || {};
+    const gecerli = true === veri.ok || true === veri.gecerli || true === veri.valid;
+
+    return {
+      ok: gecerli,
+      agSorunu: false,
+      hata: gecerli ? '' : String(veri.hata || veri.message || 'Kurtarma kodu geçersiz ya da süresi geçmiş.')
+    };
+  } catch (e) {
+    return { ok: false, agSorunu: true, hata: 'BYOM sunucusuna ulaşılamadı. İnternet bağlantınızı denetleyin.' };
   }
 }
 
@@ -1049,7 +1107,9 @@ function acilisTamamMi() {
 
 module.exports = {
   baslat,
-  pinSenkronla,
+  pinSifirlamaTalepKodu,
+  pinSifirlamaTalebi,
+  pinSifirlamaDogrula,
   odakla,
   anaPencereHazir,
   acilisTamamMi,

@@ -1772,13 +1772,15 @@
                      text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>
     </div>
 
-    <label class="block mt-6 text-sm font-bold text-slate-600 dark:text-slate-300" for="ypinKod">
-      6 Haneli PIN
-    </label>
-    <input id="ypinKod" type="password" inputmode="numeric" autocomplete="off" maxlength="6"
-           class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                  bg-white dark:bg-slate-900 text-2xl font-black tracking-[0.4em] text-center"
-           placeholder="••••••" />
+    <div id="ypinPinAlan">
+      <label class="block mt-6 text-sm font-bold text-slate-600 dark:text-slate-300" for="ypinKod">
+        6 Haneli PIN
+      </label>
+      <input id="ypinKod" type="password" inputmode="numeric" autocomplete="off" maxlength="6"
+             class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                    bg-white dark:bg-slate-900 text-2xl font-black tracking-[0.4em] text-center"
+             placeholder="••••••" />
+    </div>
 
     <!-- ONAY ALANI — YALNIZCA İLK KURULUMDA.
          Tek kutuyla kurulan bir PIN'de yapılan yazım hatası, cihaz
@@ -1791,16 +1793,54 @@
              class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
                     bg-white dark:bg-slate-900 text-2xl font-black tracking-[0.4em] text-center"
              placeholder="••••••" />
-      <!-- İLK KURULUMDA DA ŞEFFAFLIK (Faz 7): PIN ilk kez BURADA kuruluyor,
-           Ayarlar kartında değil. Kurtarma kaydının varlığı PIN'i yazan kişiye
-           tam o anda söylenmeli — sonradan öğrenmesi kabul edilemez. -->
+      <!-- FAZ 8: PIN ARTIK HİÇBİR YERE GÖNDERİLMİYOR.
+           Eski metin "PIN lisans sunucusuna iletilir" diyordu; o tasarım
+           kaldırıldı. Unutulursa merkez PIN'i SÖYLEMİYOR, tek kullanımlık bir
+           SIFIRLAMA kodu veriyor ve patron yeni PIN kuruyor. -->
       <p class="mt-3 text-xs text-amber-700 dark:text-amber-400 font-semibold leading-relaxed">
-        Bu PIN'i not alın. Unutmanız hâlinde kurtarılabilmesi için PIN, lisans
-        anahtarınızla birlikte BYOM lisans sunucusuna iletilir.
+        Bu PIN'i not alın. <b>Yalnızca bu bilgisayarda saklanır</b> ve geri
+        döndürülemez biçimde şifrelenir — BYOM dahil kimse okuyamaz.
         <br>
-        Bunu istemiyorsanız: <b>API &amp; Sistem Ayarları ▸ Yönetici Master PIN</b>
-        bölümünden kurtarma kutusunu kaldırın — o zaman PIN yalnızca bu
-        bilgisayarda kalır ve unutulursa açılamaz.
+        Unutursanız: merkezden <b>tek kullanımlık sıfırlama kodu</b> alıp yeni
+        bir PIN belirleyebilirsiniz ("PIN'imi unuttum").
+      </p>
+    </div>
+
+    <!-- ==============================================================
+         KURTARMA ALANI (Faz 8) — yalnızca 'kurtarma' modunda görünür
+         --------------------------------------------------------------
+         Düz metin PIN hiçbir yere gitmez. Patron TALEP KODUNU merkeze okur,
+         merkez tek kullanımlık bir SIFIRLAMA KODU verir, PIN yerel olarak
+         silinir ve yenisi kurulur.
+         ============================================================== -->
+    <div id="ypinKurtarmaAlan" hidden>
+      <div class="mt-5 p-4 rounded-xl bg-slate-100 dark:bg-slate-900/60 border-2 border-slate-200 dark:border-slate-700">
+        <div class="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+          1) Bu talep kodunu merkeze okuyun
+        </div>
+        <div id="ypinTalepKodu"
+             class="font-mono text-xl font-black tracking-widest text-center select-all
+                    text-slate-900 dark:text-white break-all">…</div>
+        <div id="ypinTalepDurum" class="mt-2 text-xs text-slate-500 dark:text-slate-400 text-center"></div>
+        <button type="button" id="ypinTalepKopyala"
+                class="mt-3 w-full px-4 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600
+                       text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition">
+          Kodu Kopyala
+        </button>
+      </div>
+
+      <label class="block mt-5 text-sm font-bold text-slate-600 dark:text-slate-300" for="ypinKurtarmaKod">
+        2) Merkezin verdiği sıfırlama kodu
+      </label>
+      <input id="ypinKurtarmaKod" type="text" autocomplete="off" spellcheck="false" maxlength="20"
+             class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                    bg-white dark:bg-slate-900 font-mono text-xl font-black tracking-[0.25em]
+                    text-center uppercase"
+             placeholder="XXXX-XXXX" />
+      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+        Kod tek kullanımlıktır ve süresi sınırlıdır. Doğrulandığında mevcut PIN
+        <b>silinir</b> ve hemen yeni bir PIN belirlemeniz istenir.
+        <span id="ypinKurtarmaKilitNotu" class="block mt-1 font-semibold text-amber-700 dark:text-amber-400"></span>
       </p>
     </div>
 
@@ -1810,6 +1850,15 @@
             class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold
                    hover:bg-marka-600 disabled:opacity-50 disabled:cursor-not-allowed transition">
       Devam
+    </button>
+
+    <!-- KURTARMA GİRİŞİ BURADA OLMAK ZORUNDA (Faz 8):
+         PIN'i unutan kişi yönetici paneline GİREMEZ, yani Ayarlar sekmesindeki
+         karta da ulaşamaz. Kurtarmanın tek erişilebilir yeri giriş kapısıdır. -->
+    <button type="button" id="ypinUnuttum"
+            class="mt-3 w-full px-6 py-2 text-sm font-bold text-marka-700 dark:text-marka-300
+                   hover:underline focus:outline-none focus:underline">
+      PIN'imi unuttum — merkezden sıfırlama kodu al
     </button>
 
     <button type="button" id="ypinGeri"
@@ -3220,31 +3269,36 @@
               </div>
 
               <!-- ========================================================
-                   KURTARMA — ŞEFFAFLIK ZORUNLU
-                   PIN'i merkeze göndermek, panelin "düz metin PIN hiçbir
-                   yere yazılmaz" sözünün bilinçli bir istisnasıdır. PIN'in
-                   sahibi bunu BİLMEK zorunda; gerekçe byom.js başlığında.
+                   KURTARMA — TEK KULLANIMLIK SIFIRLAMA KODU (Faz 8)
+                   --------------------------------------------------------
+                   FAZ 8'DE DEĞİŞTİ: düz metin PIN senkronu KALDIRILDI.
+                   Eski tasarımda PIN lisans anahtarıyla hub'a yazılıyordu ve
+                   merkez onu okuyup söyleyebiliyordu; bir hub sızıntısı bütün
+                   müşterilerin yönetici PIN'ini açığa çıkarırdı.
+                   Artık merkez PIN'i BİLMİYOR, yalnızca SIFIRLAMA yetkisi
+                   veriyor. Gerekçe: src/main/byom.js → SIFIRLAMA PROTOKOLÜ.
                    ======================================================== -->
-              <div class="mt-5 p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10
-                          border-2 border-amber-300 dark:border-amber-500/30">
-                <label class="flex items-start gap-3 cursor-pointer">
-                  <input id="ypinSenkronKutu" type="checkbox"
-                         class="w-5 h-5 mt-0.5 shrink-0 accent-amber-600" />
-                  <span class="text-sm leading-relaxed text-amber-900 dark:text-amber-200">
-                    <b>PIN'i unutursam merkezden kurtarılabilsin.</b><br>
-                    İşaretliyse bu PIN, lisans anahtarınızla birlikte BYOM lisans
-                    sunucusuna iletilir ve destek ekibi size geri söyleyebilir.
-                    İşaretli değilse PIN <b>yalnızca bu bilgisayarda</b> kalır ve
-                    unutulursa <b>kurtarılamaz</b>.
-                  </span>
-                </label>
+              <div class="mt-5 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50
+                          border-2 border-slate-200 dark:border-slate-700">
+                <div class="text-sm font-bold mb-1">PIN'inizi unuttuysanız</div>
+                <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  PIN bu bilgisayarda geri döndürülemez biçimde şifrelenir;
+                  <b>BYOM dahil kimse okuyamaz</b>. Merkez size PIN'inizi
+                  söyleyemez — bunun yerine <b>tek kullanımlık bir sıfırlama
+                  kodu</b> verir, mevcut PIN silinir ve yenisini siz belirlersiniz.
+                </p>
+                <button type="button" id="ypinSifirlaBtn"
+                        class="mt-3 w-full h-12 rounded-xl border-2 border-amber-300 dark:border-amber-700
+                               text-amber-800 dark:text-amber-300 font-extrabold
+                               hover:bg-amber-50 dark:hover:bg-amber-900/30 transition">
+                  🔓 Sıfırlama Kodu ile PIN'i Sıfırla
+                </button>
+                <!-- DENETİM İZİ: kurtarma yolu sosyal mühendisliğe açıktır
+                     (biri merkezi arayıp patron gibi davranabilir). Panelin
+                     karşı önlemi, sıfırlamanın görünür bir iz bırakmasıdır. -->
+                <div id="ypinSifirlamaIzi"
+                     class="hidden mt-3 text-xs font-semibold text-amber-700 dark:text-amber-400"></div>
               </div>
-
-              <p class="mt-3 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                <b>PIN'inizi unuttuysanız:</b> BYOM Destek sekmesinden ya da
-                hub.byomtech.com üzerinden lisans anahtarınızla başvurun.
-                Kurtarma yalnızca yukarıdaki kutu işaretliyken mümkündür.
-              </p>
             </div>
 
             <!-- ==========================================================

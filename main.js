@@ -1575,26 +1575,6 @@ function kilitSonucunuUygula(sonuc) {
   };
 }
 
-/**
- * Master PIN'i hub'a kurtarma kaydı olarak iletir — ATEŞLE VE UNUT.
- *
- * `await` EDİLMEZ: hub erişilemezse PIN yerel olarak yine kurulur/değişir ve
- * kullanıcı bekletilmez (3 sn süre aşımı zaten byom.js'te).
- *
- * KAPATMA: `ayarlar.json → pinSenkron: false` (müşteri tercihi, Ayarlar
- * kartındaki kutudan) veya `BYOM_PIN_SENKRON_KAPALI=1` (ops).
- *
- * Gizlilik/risk gerekçesi ve önerilen daha güvenli tasarım:
- * src/main/byom.js → "YÖNETİCİ MASTER PIN — HUB KURTARMA SENKRONU" başlığı.
- */
-function pinKurtarmaSenkronu(pin) {
-  try {
-    if (false === ayarlariOku().pinSenkron) return;
-
-    Promise.resolve(byom.pinSenkronla(pin)).catch(function () { /* sessiz */ });
-  } catch (e) { /* senkron hiçbir koşulda akışı bozmaz */ }
-}
-
 /** Kapı açılışında sorulur: PIN kurulu mu, cihaz kilitli mi, kilit var mı? */
 ipcMain.handle('auth:yonetici-pin-durum', function () {
   return { ok: true, durum: yoneticiKilit.durum(ayarlariOku()) };
@@ -1604,15 +1584,11 @@ ipcMain.handle('auth:yonetici-pin-durum', function () {
 ipcMain.handle('auth:yonetici-pin-kur', function (olay, veri) {
   veri = veri || {};
 
-  const pin = String(veri.pin || '');
-  const sonuc = yoneticiKilit.pinKur(pin, ayarlariOku());
+  const sonuc = yoneticiKilit.pinKur(String(veri.pin || ''), ayarlariOku());
 
-  /* Hub kurtarma kaydı YALNIZCA yerel kurulum başarılıysa gönderilir:
-     reddedilmiş bir PIN'i merkeze yazmak, kurtarma anında yanlış PIN
-     söylenmesi demek olurdu. */
-  if (sonuc.ok) pinKurtarmaSenkronu(pin);
-
-  /* PIN referansı bırakılmaz; nesne çöpe gider (bkz. bölüm 3.6 kural 1). */
+  /* PIN referansı bırakılmaz; nesne çöpe gider (bkz. bölüm 3.6 kural 1).
+     FAZ 8: PIN artık hiçbir yere GÖNDERİLMİYOR — kurtarma, merkezin tek
+     kullanımlık SIFIRLAMA kodu ile yapılıyor (bkz. auth:pin-kurtarma-*). */
   veri.pin = '';
 
   return kilitSonucunuUygula(sonuc);
@@ -1633,16 +1609,96 @@ ipcMain.handle('auth:yonetici-pin-dogrula', function (olay, veri) {
 ipcMain.handle('auth:yonetici-pin-degistir', function (olay, veri) {
   veri = veri || {};
 
-  const yeni = String(veri.yeni || '');
-  const sonuc = yoneticiKilit.pinDegistir(String(veri.eski || ''), yeni, ayarlariOku());
-
-  /* Değişiklik sonrası merkezdeki kayıt TAZELENİR; eski PIN geçersiz. */
-  if (sonuc.ok) pinKurtarmaSenkronu(yeni);
+  const sonuc = yoneticiKilit.pinDegistir(
+    String(veri.eski || ''),
+    String(veri.yeni || ''),
+    ayarlariOku()
+  );
 
   veri.eski = '';
   veri.yeni = '';
 
   return kilitSonucunuUygula(sonuc);
+});
+
+/* ------------------------------------------------------------------ *
+ *  PIN KURTARMA (SIFIRLAMA) — tek kullanımlık kod akışı
+ *  ---------------------------------------------------------------
+ *  Düz metin PIN HİÇBİR YERE GÖNDERİLMEZ. Merkez yalnızca SIFIRLAMA
+ *  yetkisi verir; PIN'i öğrenmez. Protokol: src/main/byom.js →
+ *  "SIFIRLAMA (OTP / CHALLENGE) PROTOKOLÜ" başlığı.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Talep kodunu üretir ve merkeze bildirmeyi dener.
+ *
+ * Bildirim BAŞARISIZ OLSA DA talep kodu döner: patron onu telefonda okur,
+ * merkez lisans kaydından aynı kodu yeniden hesaplar. Akışı internete
+ * bağımlı kılmamak bilinçli.
+ */
+ipcMain.handle('auth:pin-kurtarma-talep', async function () {
+  const sonuc = await byom.pinSifirlamaTalebi();
+
+  return {
+    ok: !!sonuc.talepKodu,
+    talepKodu: sonuc.talepKodu || '',
+    /* Merkez kaydı aldı mı? Arayüz buna göre "merkeze iletildi" ya da
+       "kodu telefonda okuyun" der — kullanıcı ne yapacağını bilsin. */
+    bildirildi: !!sonuc.bildirildi,
+    durum: yoneticiKilit.durum(ayarlariOku())
+  };
+});
+
+/**
+ * Merkezin verdiği kodu doğrular; geçerliyse PIN'i SİLER.
+ *
+ * SIRA: yerel eleme (biçim + kilit) → hub → yerel yazma. Hub'a yalnızca
+ * biçimi geçerli ve kilitsiz bir deneme gider; hatalı kod yerel sayacı
+ * ilerletir ki merkez gereksiz yere dövülmesin.
+ */
+ipcMain.handle('auth:pin-kurtarma-dogrula', async function (olay, veri) {
+  veri = veri || {};
+
+  const hazir = yoneticiKilit.kurtarmaDenemesiHazirla(String(veri.kod || ''), ayarlariOku());
+
+  if (!hazir.ok) return kilitSonucunuUygula(hazir);
+
+  const cevap = await byom.pinSifirlamaDogrula(hazir.kod);
+
+  veri.kod = '';
+
+  if (!cevap.ok) {
+    /*
+     * AĞ HATASI SAYAÇ İLERLETMEZ. "Ulaşamadım" ile "kod yanlış" farklı
+     * şeylerdir; internet kesikken kullanıcıyı 15 dakika kilitlemek,
+     * onun hiç yapmadığı bir hatayı cezalandırmak olurdu.
+     */
+    if (cevap.agSorunu) {
+      return { ok: false, agSorunu: true, hata: cevap.hata, durum: yoneticiKilit.durum(ayarlariOku()) };
+    }
+
+    const basarisiz = yoneticiKilit.kurtarmaBasarisiz(ayarlariOku());
+
+    if (basarisiz.yazilacak) ayarlariYaz(basarisiz.yazilacak);
+
+    return {
+      ok: false,
+      kilitli: !!basarisiz.kilitli,
+      kilitKalanSn: basarisiz.kilitKalanSn || 0,
+      kalanDeneme: basarisiz.kalanDeneme,
+      hata: cevap.hata,
+      durum: yoneticiKilit.durum(ayarlariOku())
+    };
+  }
+
+  /* Merkez onayladı: PIN silinir, sayaçlar sıfırlanır, CİHAZ KİLİDİ DE KALKAR
+     (değişmez kural: kilitli cihaz ⇒ tanımlı PIN vardır) ve olay damgalanır. */
+  const sifirla = yoneticiKilit.pinSifirla(ayarlariOku());
+
+  /* Açık plasiyer oturumu da düşer: cihazın tahsisi kalktı. */
+  plasiyerOturumu = null;
+
+  return kilitSonucunuUygula(sifirla);
 });
 
 /** Cihaz durumu — açılışta kapının hangi biçimde çizileceğini söyler. */

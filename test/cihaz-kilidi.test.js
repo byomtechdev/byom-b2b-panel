@@ -152,15 +152,23 @@ test('suz: KORUMALI alanlar genel yazma kanalindan GECMEZ', (t) => {
   assert.equal(temiz.tema, 'koyu', 'masum alan korunur');
 });
 
-test('suz: korumali alan listesi BEKLENEN alti alani kapsar', (t) => {
-  /* Listeye yeni bir hassas alan eklenince bu test hatirlatir. */
+test('suz: korumali alan listesi BEKLENEN dokuz alani kapsar', (t) => {
+  /* Listeye yeni bir hassas alan eklenince bu test hatirlatir.
+     FAZ 8'DE UC ALAN EKLENDI (PIN kurtarma):
+       pinKurtarmaDeneme / pinKurtarmaKilitBitis → arayuzden sifirlanabilse
+         yerel kurtarma kisitlamasi anlamsiz olurdu.
+       yoneticiPinSifirlamaZamani → DENETIM IZI; silinebilir olmamali, yoksa
+         habersiz bir sifirlama hic iz birakmadan gecer. */
   assert.deepEqual(Kilit.KORUMALI_ALANLAR.slice().sort(), [
     'cihazRolu',
+    'pinKurtarmaDeneme',
+    'pinKurtarmaKilitBitis',
     'tahsisliPlasiyerAd',
     'tahsisliPlasiyerId',
     'yoneticiPinDeneme',
     'yoneticiPinHash',
-    'yoneticiPinKilitBitis'
+    'yoneticiPinKilitBitis',
+    'yoneticiPinSifirlamaZamani'
   ]);
 });
 
@@ -558,4 +566,279 @@ test('KAYNAK: arayuz PIN ozetini hicbir yerde OKUMAZ', (t) => {
 
   /* Gerekce YAZILI olmali: alan adi en az bir yorumda anilmali. */
   assert.ok(/yoneticiPinHash/.test(KAPI), 'neden okunmadigi yorumda aciklanmis');
+});
+
+/* =========================================================================
+ * FAZ 8 — PIN SIFIRLAMA (OTP / CHALLENGE) MOTORU
+ * ---------------------------------------------------------------------
+ * Düz metin PIN senkronu KALDIRILDI. Merkez PIN'i hiç görmez; yalnızca tek
+ * kullanımlık SIFIRLAMA kodu verir ve PIN yerel olarak silinir.
+ * ====================================================================== */
+
+/* ---- TALEP KODU (challenge) ---- */
+
+test('talepKodu: lisans + HWID den TURETILIR ve DETERMINISTTIR', (t) => {
+  const a = Kilit.talepKodu('BYOM-1111-2222', 'hwid-abc');
+  const b = Kilit.talepKodu('BYOM-1111-2222', 'hwid-abc');
+
+  assert.equal(a, b, 'ayni cihaz her zaman ayni kodu gosterir');
+
+  /* DETERMINIST olmak ZORUNDA: merkez kodu lisans kaydindan yeniden
+     hesaplayip arayanin gercekten o cihazin basinda oldugunu dogrulayabilsin.
+     Rastgele olsaydi her talebin hub'a kaydedilmesi ZORUNLU olurdu ve
+     internetsiz bir ofiste akis tamamen tikanirdi. */
+  assert.match(a, /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/, 'dortlu gruplar');
+});
+
+test('talepKodu: HWID ya da LISANS degisince kod DEGISIR', (t) => {
+  const temel = Kilit.talepKodu('BYOM-1111-2222', 'hwid-abc');
+
+  assert.notEqual(Kilit.talepKodu('BYOM-1111-2222', 'hwid-XYZ'), temel, 'baska cihaz');
+  assert.notEqual(Kilit.talepKodu('BYOM-9999-8888', 'hwid-abc'), temel, 'baska lisans');
+});
+
+test('talepKodu: LISANS YOKSA kod uretilmez', (t) => {
+  /* Kurtarmanin baglanacagi bir kimlik yok; bos kod arayuzde "—" gosterilir. */
+  assert.equal(Kilit.talepKodu('', 'hwid-abc'), '');
+  assert.equal(Kilit.talepKodu(null, 'hwid-abc'), '');
+  assert.equal(Kilit.talepKodu(undefined, undefined), '');
+});
+
+test('talepKodu: alfabede KARISTIRILAN harf YOK (telefonda okunacak)', (t) => {
+  /* I, L, O, U cikarildi: "O mu sifir mi?" sorusu destek cagrisi demektir. */
+  assert.ok(!/[ILOU]/.test(Kilit.KOD_ALFABE), 'alfabe temiz');
+
+  /* Uretilen kodlar da o alfabeden cikmali — 400 ornek tara. */
+  for (let i = 0; i < 400; i++) {
+    const kod = Kilit.talepKodu('BYOM-' + i, 'hwid-' + i).replace(/-/g, '');
+
+    for (const ch of kod) {
+      assert.ok(Kilit.KOD_ALFABE.indexOf(ch) !== -1, 'alfabe disi karakter: ' + ch);
+    }
+  }
+});
+
+test('talepKodu: SIR DEGIL — PIN ozetinden bagimsiz', (t) => {
+  /* Talep kodu bir KIMLIKTIR; PIN'den turetilmez, yani ekranda gostermek ya da
+     telefonda okumak PIN hakkinda hicbir sey sizdirmaz. */
+  const pinli = Kilit.pinKur('135790', {});
+  const a = Kilit.talepKodu('BYOM-1111', 'hwid-1');
+
+  /* Ayni cihaz, PIN kurulu ya da degil — kod AYNI. */
+  assert.equal(Kilit.talepKodu('BYOM-1111', 'hwid-1'), a);
+  assert.ok(!a.includes('135790'));
+  assert.ok(!pinli.yazilacak.yoneticiPinHash.includes(a.replace(/-/g, '')));
+});
+
+/* ---- KURTARMA KODU BICIMI ---- */
+
+test('kurtarmaKodunuNormalle: ayirici atilir, KARISTIRILAN harf cevrilir', (t) => {
+  assert.equal(Kilit.kurtarmaKodunuNormalle('a1b2-c3d4'), 'A1B2C3D4');
+  assert.equal(Kilit.kurtarmaKodunuNormalle(' A1B2 C3D4 '), 'A1B2C3D4');
+  assert.equal(Kilit.kurtarmaKodunuNormalle('A1B2_C3D4'), 'A1B2C3D4');
+
+  /* O->0, I/L->1, U->V : telefonda okunan kodda bunlari ayirmak imkansiz.
+     Bu bir kolaylik degil HATA ONLEMEDIR; her yazim hatasi merkeze ikinci
+     bir cagri demektir. */
+  assert.equal(Kilit.kurtarmaKodunuNormalle('OIL2345U'), '0112345V');
+  assert.equal(Kilit.kurtarmaKodunuNormalle('oil2345u'), '0112345V');
+});
+
+test('kurtarmaKoduBicimi: 8 karakter ve alfabe denetimi', (t) => {
+  assert.equal(Kilit.kurtarmaKoduBicimi('A1B2C3D4').ok, true);
+  assert.equal(Kilit.kurtarmaKoduBicimi('a1b2-c3d4').ok, true, 'tireli girdi kabul');
+  assert.equal(Kilit.kurtarmaKoduBicimi('OIL23450').ok, true, 'cevrilen harfler kabul');
+
+  assert.equal(Kilit.kurtarmaKoduBicimi('A1B2C3D').ok, false, '7 karakter');
+  assert.equal(Kilit.kurtarmaKoduBicimi('A1B2C3D45').ok, false, '9 karakter');
+  assert.equal(Kilit.kurtarmaKoduBicimi('').ok, false, 'bos');
+  assert.equal(Kilit.kurtarmaKoduBicimi(null).ok, false, 'null');
+
+  /* Alfabe disi karakter (normalizasyondan sonra da kalan). */
+  assert.equal(Kilit.kurtarmaKoduBicimi('A1B2C3D@').ok, false, 'isaret');
+  assert.match(Kilit.kurtarmaKoduBicimi('A1B2C3D@').hata, /geçersiz karakter/i);
+  assert.match(Kilit.kurtarmaKoduBicimi('A1B2').hata, /8 karakter/);
+});
+
+/* ---- YEREL DENEME / KILIT ---- */
+
+test('kurtarmaDenemesiHazirla: BICIM gecmeyen kod hub a GITMEZ', (t) => {
+  const h = Kilit.kurtarmaDenemesiHazirla('A1B2', {}, 1000);
+
+  assert.equal(h.ok, false, 'eksik kod elendi');
+  assert.equal(h.kod, undefined, 'hub a gonderilecek kod yok');
+
+  const iyi = Kilit.kurtarmaDenemesiHazirla('a1b2-c3d4', {}, 1000);
+
+  assert.equal(iyi.ok, true);
+  assert.equal(iyi.kod, 'A1B2C3D4', 'normalize edilmis hali gonderilir');
+});
+
+test('kurtarmaBasarisiz: BES hatali denemede 15 DAKIKA kilit', (t) => {
+  let ayarlar = {};
+
+  for (let i = 1; i <= 4; i++) {
+    const r = Kilit.kurtarmaBasarisiz(ayarlar, 1000 + i);
+
+    assert.equal(r.kilitli, false, i + '. denemede kilit yok');
+    assert.equal(r.kalanDeneme, 5 - i);
+    ayarlar = Object.assign({}, ayarlar, r.yazilacak);
+  }
+
+  const besinci = Kilit.kurtarmaBasarisiz(ayarlar, 2000);
+
+  assert.equal(besinci.kilitli, true, '5. denemede KILIT');
+  assert.equal(besinci.kilitKalanSn, 900, '15 dakika');
+  assert.equal(besinci.yazilacak.pinKurtarmaKilitBitis, 2000 + 900000);
+
+  ayarlar = Object.assign({}, ayarlar, besinci.yazilacak);
+
+  /* KILITLIYKEN DOGRU BICIMLI kod bile hub a GITMEZ: merkez bosuna dovulmesin. */
+  const kilitli = Kilit.kurtarmaDenemesiHazirla('A1B2C3D4', ayarlar, 2500);
+
+  assert.equal(kilitli.ok, false);
+  assert.equal(kilitli.kilitli, true);
+  assert.match(kilitli.hata, /saniye sonra/);
+});
+
+test('kurtarmaBasarisiz: kilit suresi dolunca hak YENILENIR', (t) => {
+  let ayarlar = {};
+
+  for (let i = 0; i < 5; i++) {
+    ayarlar = Object.assign({}, ayarlar, Kilit.kurtarmaBasarisiz(ayarlar, 1000 + i).yazilacak);
+  }
+
+  const sonra = 1004 + 901000;
+
+  assert.equal(Kilit.kurtarmaDenemesiHazirla('A1B2C3D4', ayarlar, sonra).ok, true, 'kilit dustu');
+
+  /* Sayac sifirdan baslar: sure dolduktan sonraki ilk hata kilit ACMAZ. */
+  const hatali = Kilit.kurtarmaBasarisiz(ayarlar, sonra);
+
+  assert.equal(hatali.kilitli, false);
+  assert.equal(hatali.kalanDeneme, 4, 'hak yenilendi');
+});
+
+/* ---- SIFIRLAMA ---- */
+
+test('pinSifirla: PIN ozeti SILINIR ve sayaclar sifirlanir', (t) => {
+  const ayarlar = Object.assign(
+    { pinKurtarmaDeneme: 3, pinKurtarmaKilitBitis: 123, yoneticiPinDeneme: 2, yoneticiPinKilitBitis: 9 },
+    Kilit.pinKur('135790', {}).yazilacak
+  );
+
+  const s = Kilit.pinSifirla(ayarlar, 1700000000000);
+
+  assert.equal(s.ok, true);
+  assert.equal(s.yazilacak.yoneticiPinHash, '', 'ozet silindi');
+  assert.equal(s.yazilacak.yoneticiPinDeneme, 0);
+  assert.equal(s.yazilacak.yoneticiPinKilitBitis, 0);
+  assert.equal(s.yazilacak.pinKurtarmaDeneme, 0);
+  assert.equal(s.yazilacak.pinKurtarmaKilitBitis, 0);
+
+  /* Uygulandiktan sonra PIN "kurulu degil" sayilir → yeni PIN kurulabilir. */
+  const sonra = Object.assign({}, ayarlar, s.yazilacak);
+
+  assert.equal(Kilit.durum(sonra, 1).pinKurulu, false);
+  assert.equal(Kilit.pinKur('246802', sonra).ok, true, 'yeni PIN kurulabilir');
+});
+
+test('pinSifirla: DEGISMEZ KURAL — PIN silinince CIHAZ KILIDI de kalkar', (t) => {
+  /*
+   * «kilitli cihaz ⇒ tanimli bir PIN vardir»
+   * cihazKilitle PIN olmadan kilitlemeyi zaten reddediyor. PIN silinip kilit
+   * birakilsaydi cihaz TUGLAYA donerdi: kilidi acmak PIN ister, PIN yok, yeni
+   * PIN kurmak kilidi acmaz.
+   */
+  let ayarlar = Kilit.pinKur('135790', {}).yazilacak;
+  ayarlar = Object.assign({}, ayarlar, Kilit.cihazKilitle({ id: 7, ad: 'Ahmet' }, ayarlar).yazilacak);
+
+  assert.equal(Kilit.durum(ayarlar, 1).cihazKilitli, true, 'once kilitli');
+
+  const sonra = Object.assign({}, ayarlar, Kilit.pinSifirla(ayarlar, 1).yazilacak);
+  const d = Kilit.durum(sonra, 1);
+
+  assert.equal(d.pinKurulu, false, 'PIN silindi');
+  assert.equal(d.cihazKilitli, false, 'KILIT DE KALKTI (tugla olmasin)');
+  assert.equal(d.tahsisliPlasiyerId, 0);
+  assert.equal(d.tahsisliPlasiyerAd, '');
+});
+
+test('pinSifirla: DENETIM IZI damgalanir', (t) => {
+  /* Kurtarma yolu sosyal muhendislige acik; panelin karsi onlemi olayin
+     GORUNUR olmasi. Patron "bu PIN ne zaman sifirlandi?" diye sorabilmeli. */
+  const s = Kilit.pinSifirla({}, 1757660000000);
+
+  assert.equal(s.yazilacak.yoneticiPinSifirlamaZamani, new Date(1757660000000).toISOString());
+  assert.equal(Kilit.durum(s.yazilacak, 1).sifirlamaZamani, s.yazilacak.yoneticiPinSifirlamaZamani);
+});
+
+test('durum: kurtarma kilidi ve kalan deneme arayuze TASINIR', (t) => {
+  let ayarlar = Kilit.pinKur('135790', {}).yazilacak;
+
+  assert.equal(Kilit.durum(ayarlar, 1000).kurtarmaKilitli, false);
+  assert.equal(Kilit.durum(ayarlar, 1000).kurtarmaKalanDeneme, 5);
+
+  for (let i = 0; i < 5; i++) {
+    ayarlar = Object.assign({}, ayarlar, Kilit.kurtarmaBasarisiz(ayarlar, 1000 + i).yazilacak);
+  }
+
+  const d = Kilit.durum(ayarlar, 1004);
+
+  assert.equal(d.kurtarmaKilitli, true);
+  assert.ok(d.kurtarmaKilitKalanSn > 890, 'kalan sure tasindi: ' + d.kurtarmaKilitKalanSn);
+  assert.equal(d.kurtarmaKalanDeneme, 0);
+
+  /* Hicbir durum alani OZET sizdirmiyor. */
+  assert.ok(!JSON.stringify(d).includes('scrypt'));
+});
+
+test('KAYNAK: duz metin PIN senkronu KALDIRILDI (geri donmemis)', (t) => {
+  const BYOM = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'byom.js'), 'utf8');
+  const MAIN2 = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+
+  /* Yorumlar haric: kaldirilan tasarim BELGELENMIS olmali ama CAGRILMAMALI. */
+  const yorumsuz = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  assert.ok(!/pinSenkronla/.test(yorumsuz(BYOM)), 'pinSenkronla kaldirildi');
+  assert.ok(!/pin-sync/.test(yorumsuz(BYOM)), 'pin-sync ucu artik cagrilmiyor');
+  assert.ok(!/pinKurtarmaSenkronu/.test(yorumsuz(MAIN2)), 'main.js senkron cagrisi kaldirildi');
+
+  /* Yerine sifirlama protokolu gelmis olmali. */
+  assert.match(BYOM, /pin-reset\/request/, 'talep ucu var');
+  assert.match(BYOM, /pin-reset\/verify/, 'dogrulama ucu var');
+  assert.match(MAIN2, /ipcMain\.handle\('auth:pin-kurtarma-talep'/, 'talep kanali kayitli');
+  assert.match(MAIN2, /ipcMain\.handle\('auth:pin-kurtarma-dogrula'/, 'dogrulama kanali kayitli');
+
+  /* Kaldirma KARARI yorumda aciklanmis olmali — gerekce canli kalsin. */
+  assert.match(BYOM, /DÜZ METİN PIN SENKRONU KALDIRILDI/, 'karar belgelenmis');
+});
+
+test('KAYNAK: AG HATASI kurtarma sayacini ILERLETMEZ', (t) => {
+  /*
+   * "Ulasamadim" ile "kod yanlis" ayri seylerdir. Karistirilirsa internet
+   * kesikken kullanici hic yapmadigi bir hata icin 15 dakika kilitlenir.
+   * Ayni ayrim byom-api.js -> agSorunu bayraginda da var.
+   */
+  const MAIN2 = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const blok = MAIN2.slice(MAIN2.indexOf("ipcMain.handle('auth:pin-kurtarma-dogrula'"));
+
+  assert.match(blok.slice(0, 2200), /if \(cevap\.agSorunu\) \{[\s\S]{0,260}?return/,
+    'ag hatasi sayac ilerletmeden doner');
+
+  /* Sayac ilerletme yalnizca ag hatasi DISINDAKI dalda olmali. */
+  const agDal = blok.indexOf('cevap.agSorunu');
+  const sayacDal = blok.indexOf('kurtarmaBasarisiz');
+
+  assert.ok(agDal !== -1 && sayacDal !== -1 && agDal < sayacDal,
+    'ag hatasi kontrolu sayac ilerletmeden ONCE gelmeli');
+});
+
+test('KAYNAK: sifirlama plasiyer oturumunu da dusurur', (t) => {
+  const MAIN2 = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const blok = MAIN2.slice(MAIN2.indexOf("ipcMain.handle('auth:pin-kurtarma-dogrula'"));
+
+  /* Cihazin tahsisi kalktigi icin acik jetonla veri cekmeye devam etmemeli. */
+  assert.match(blok.slice(0, 2600), /plasiyerOturumu = null/,
+    'sifirlamada jeton dusurulmeli');
 });

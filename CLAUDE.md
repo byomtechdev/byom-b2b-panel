@@ -108,6 +108,8 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | `ayarlar.json → yoneticiPinDeneme` / `yoneticiPinKilitBitis` | Kaba kuvvet sayacı ve 60 sn kilidin bitiş anı. **Diskte** tutulması bilinçli: bellekte olsa uygulamayı kapatıp açmak sayacı sıfırlardı |
 | `ayarlar.json → cihazRolu` | `standart` veya `plasiyer_kilitli` (saha terminali modu) |
 | `ayarlar.json → tahsisliPlasiyerId` / `tahsisliPlasiyerAd` | Cihazın tahsis edildiği plasiyer. İkisi de dolu olmadıkça kilit **uygulanmaz** |
+| `ayarlar.json → pinKurtarmaDeneme` / `pinKurtarmaKilitBitis` | Sıfırlama kodu için yerel deneme sayacı ve 15 dk kilit (Faz 8). **Korumalı alan** |
+| `ayarlar.json → yoneticiPinSifirlamaZamani` | **Denetim izi:** PIN en son ne zaman merkez onayıyla sıfırlandı. Korumalı alan — arayüzden silinemez (→ §4.12) |
 
 ---
 
@@ -168,7 +170,7 @@ listeye **elle** eklemen gerekir.
 | Önek | Nerede kurulur | Kanallar |
 |---|---|---|
 | `ayar:` | `main.js` | `ayar:oku` (**maskeli** — PIN özeti gelmez), `ayar:yaz` (**süzgeçli** — korumalı alanlar geçmez → §4.9) |
-| `auth:` | `main.js` § 3.9 | `auth:yonetici-pin-durum`, `auth:yonetici-pin-kur`, `auth:yonetici-pin-dogrula`, `auth:yonetici-pin-degistir` |
+| `auth:` | `main.js` § 3.9 | `auth:yonetici-pin-durum`, `auth:yonetici-pin-kur`, `auth:yonetici-pin-dogrula`, `auth:yonetici-pin-degistir`, **`auth:pin-kurtarma-talep`**, **`auth:pin-kurtarma-dogrula`** (→ §4.12) |
 | `cihaz:` | `main.js` § 3.9 | `cihaz:durum`, `cihaz:kilitle` (plasiyere tahsis), `cihaz:ac` (Master PIN ile kilidi kaldır) |
 | `woo:` / `api:` | `main.js` | `woo:istek` (wc/v3), `api:istek` (wc-b2b/v1) |
 | `fis:` | `main.js` | `fis:onizleme`, `fis:yazdir`, `fis:pdf`, `fis:kapat` |
@@ -793,13 +795,13 @@ beyaz** olurdu. Tema duyarlı çiftler kullanıldı (`text-slate-900 dark:text-w
 / `text-slate-500 dark:text-slate-400`). Bir test `text-white`ın geri dönmesini
 engelliyor.
 
-### 4.11.5 Yönetici PIN değiştirme + hub kurtarma
+### 4.11.5 Yönetici PIN değiştirme
 | Parça | Yer |
 |---|---|
 | Kart işaretlemesi | `index.html` → Ayarlar sağ sütunu, "🔑 Yönetici Master PIN" |
 | Kart mantığı | `src/renderer/modules/yonetici-pin.js` (`sekmeAc`'ı SARAR) |
 | Doğrulama | `auth:yonetici-pin-degistir` → `byom-yonetici-kilit.js → pinDegistir` |
-| Hub senkronu | `src/main/byom.js → pinSenkronla()`, `main.js → pinKurtarmaSenkronu()` |
+| PIN kurtarma | → **§4.12** (tek kullanımlık sıfırlama kodu; düz metin PIN senkronu kaldırıldı) |
 
 - **PIN kurulu değilse kart kapalı** ve kullanıcıya ilk PIN'i **giriş kapısında**
   kuracağı söylenir. Aynı işi iki yerde yapmak "PIN zaten tanımlı" hatasını
@@ -808,22 +810,84 @@ engelliyor.
   ana süreçte.
 - PIN alanları **her denemeden sonra** (başarılı ya da değil) temizlenir.
 
-> ### ⚠️ HUB PIN SENKRONU — GÜVENLİK SÖZLEŞMESİNİN BİLİNÇLİ İSTİSNASI
-> Panel PIN'i tuzlu scrypt ile saklar ve özet geri döndürülemez
-> (`../BYOM-REGISTRY.md §5.28 A`). Kurtarma senkronu bu sözün istisnasıdır:
-> **düz metin PIN hub'a gider ve orada okunabilir durur.** Bedeli gerçektir —
-> hub erişimi olan BYOM personeli her müşterinin yönetici PIN'ini görebilir ve
-> kilitli her cihazı açabilir.
+---
+
+## 4.12 PIN KURTARMA — tek kullanımlık sıfırlama kodu (Faz 8)
+
+> ### ⛔ DÜZ METİN PIN SENKRONU KALDIRILDI — GERİ EKLEME
+> Faz 7'de PIN, lisans anahtarıyla birlikte `/api/v1/license/pin-sync` ucuna
+> yazılıyordu. Hub onu **okuyabildiği** için bir hub sızıntısı bütün
+> müşterilerin yönetici PIN'ini açığa çıkarıyor ve hub erişimi olan personel
+> kilitli her cihazı açabiliyordu. O uç artık **çağrılmıyor**; `pinSenkronla`,
+> `pinKurtarmaSenkronu` ve `pinSenkron` ayarı **silindi**. Bir test kaynakta
+> geri dönmediğini kilitliyor.
+
+### Akış — hub PIN'i HİÇ GÖRMEZ
+```
+1) Patron PIN'i unuttu → panel TALEP KODU gösterir   (N192-7GQG-KBZX)
+     · lisans anahtarı + HWID'den TÜRETİLİR → o cihaza özgü, DETERMİNİST
+     · SIR DEĞİL, kimliktir: telefonda okunmak için var
+2) Panel talebi hub'a bildirmeyi DENER (en iyi gayret)
+3) Merkez TEK KULLANIMLIK bir kod üretir (güç/teklik/süre HUB'da)
+4) Patron kodu panele yazar → panel hub'a DOĞRULATIR
+5) PIN yerel olarak SİLİNİR → hemen yeni PIN kurulumuna geçilir
+```
+
+| Dosya | Sorumluluk |
+|---|---|
+| `src/main/byom-yonetici-kilit.js` | `talepKodu`, `kurtarmaKodunuNormalle`, `kurtarmaKoduBicimi`, `kurtarmaDenemesiHazirla`, `kurtarmaBasarisiz`, `pinSifirla` — **DOM'suz, test edilebilir** |
+| `src/main/byom.js` | `pinSifirlamaTalebi` / `pinSifirlamaDogrula` — hub uçları. **Lisans anahtarı bu modülden çıkmaz** |
+| `main.js` § 3.9 | `auth:pin-kurtarma-talep` · `auth:pin-kurtarma-dogrula` |
+| `renderer-plasiyer.js` | Master PIN penceresinin **`kurtarma` modu** + `ypinUnuttum` |
+| `src/renderer/modules/yonetici-pin.js` | Ayarlar kartındaki `ypinSifirlaBtn` → aynı pencereyi açar |
+
+### Bozmaman gereken sözler
+- **KURTARMA GİRİŞİ KAPIDA OLMAK ZORUNDA.** PIN'i unutan kişi yönetici
+  paneline giremez, yani Ayarlar sekmesindeki karta da **ulaşamaz**.
+  `ypinUnuttum` bağlantısı `dogrula` ve `kilit-ac` modlarında görünür; `kur`
+  modunda gizli (sıfırlanacak PIN yok). Ayarlar kartındaki düğme **aynı
+  pencereyi** açar — iki ayrı kurtarma arayüzü bakmak zorunda kalmamak için.
+- **TALEP KODU DETERMİNİST.** Merkez onu lisans kaydından yeniden hesaplayıp
+  arayanın gerçekten o cihazın başında olduğunu doğrular. Rastgele olsaydı her
+  talebin hub'a kaydedilmesi **zorunlu** olurdu ve internetsiz bir ofiste akış
+  tamamen tıkanırdı. Tekliği talep değil, merkezin verdiği **kod** sağlar.
+- **MERKEZE BİLDİRİM "EN İYİ GAYRET".** Başarısız olursa kod yine gösterilir ve
+  kullanıcıya "telefonda okuyun" denir. Akış internete bağımlı kılınmaz.
+- **ALFABEDE KARIŞTIRILAN HARF YOK** (`I L O U` çıkarıldı) ve girdi
+  normalleştirmesi `O→0`, `I/L→1`, `U→V` çevirir. Bu bir kolaylık değil **hata
+  önlemedir**: telefonda okunan bir kodda "O" ile "0"ı ayırmak imkânsızdır ve
+  her yazım hatası merkeze ikinci bir çağrı demektir.
+- **DEĞİŞMEZ KURAL: «kilitli cihaz ⇒ tanımlı PIN vardır».** `cihazKilitle` PIN
+  olmadan kilitlemeyi zaten reddediyor; bu yüzden `pinSifirla` PIN'i silerken
+  **cihaz kilidini de kaldırır**. Kilit bırakılsaydı cihaz **tuğlaya** dönerdi:
+  kilidi açmak PIN ister, PIN yok, yeni PIN kurmak kilidi açmaz.
+- **AĞ HATASI SAYAÇ İLERLETMEZ.** "Ulaşamadım" ile "kod yanlış" ayrı şeylerdir;
+  karıştırılırsa internet kesikken kullanıcı hiç yapmadığı bir hata için 15
+  dakika kilitlenir. Aynı ayrım `byom-api.js → agSorunu`'nda da var.
+- **5 hatalı kodda 15 dakika yerel kilit** (`pinKurtarmaDeneme` /
+  `pinKurtarmaKilitBitis`, ikisi de **korumalı alan**). Gerçek kısıtlama hub'da;
+  yereli merkezi gereksiz yere dövmemek için.
+- **Sıfırlama yönetici girişi DEĞİLDİR:** oturum açılmaz, yalnızca yeni PIN
+  kurulum ekranına geçilir. Kullanıcı PIN'siz de bırakılmaz.
+- **Sıfırlamada plasiyer jetonu düşürülür** — cihazın tahsisi kalktı.
+
+> ### ⚠️ KALAN RİSK — DÜRÜST NOT
+> Her kurtarma yolu **sosyal mühendisliğe** açıktır: kötü niyetli biri merkezi
+> arayıp patron gibi davranabilir. Bunu panel çözemez; çözüm merkezin **kimlik
+> doğrulamasıdır**. Panel tarafındaki tek gerçek karşı önlem
+> **denetlenebilirliktir**: her sıfırlama `yoneticiPinSifirlamaZamani` olarak
+> damgalanır (korumalı alan, arayüzden silinemez) ve Ayarlar kartında
+> "⚠ Bu PIN en son … tarihinde merkez onayıyla sıfırlandı" olarak gösterilir.
 >
-> Bu yüzden üç önlem **zorunlu**: (1) kullanıcıya hem Ayarlar kartında hem
-> **ilk kurulum ekranında** yazılı olarak söylenir, (2) kapatılabilir
-> (`ayarlar.json → pinSenkron: false` / `BYOM_PIN_SENKRON_KAPALI=1`),
-> (3) akışı bekletmez (3 sn, tek deneme, sessiz hata).
+> Bu risk eski düz metin tasarımında da **aynen** vardı — üstelik merkez PIN'i
+> söylediği için hiç iz kalmıyordu. Yeni tasarım riski ortadan kaldırmıyor,
+> **görünür** kılıyor ve merkezin ayrıcalığını "sırrı bilmek"ten "yetki
+> vermek"e indiriyor.
 >
-> **Daha iyisi var (önerilen, ayrı iş):** hub'ın PIN'i hiç görmediği bir
-> SIFIRLAMA akışı — merkez o lisans+HWID için sıfırlama yetkisi verir, panel
-> PIN'i yerel olarak siler, patron yenisini kurar. Aynı iş hedefini PIN'i
-> sızdırmadan karşılar. Gerekçe: `byom.js` başlığı + `§5.30 D`.
+> **İNTERNET GEREKİR:** doğrulama hub'da yapıldığı için sıfırlama çevrimdışı
+> çalışmaz. Bilinçli: çevrimdışı doğrulama ya panele gömülü bir sır (paketten
+> çıkarılıp herkesin cihazı için kod üretmeye yarar) ya da açık anahtar +
+> telefonda okunamayacak uzunlukta bir imza gerektirirdi.
 
 ---
 
@@ -834,10 +898,10 @@ engelliyor.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**449 test**: panel 209 + kök 240).
+İkisini birden `../scripts/check-all.js` koşar (**480 test**: panel 222 + kök 258).
 
 ```bash
-# Bu submodule'un kendi birim testleri (209 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (222 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
@@ -846,7 +910,7 @@ node --test test/plasiyer-siparis.test.js   # 40 — koli matematigi, sepet, son
 node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprusu, hata toleransi,
                                             #      esitlemeGerekliMi (Faz 4 oto-esitleme karari)
 node --test test/harita-notlar.test.js      # 35 — 81 il kutugu, durum gecisleri, filtreler
-node --test test/cihaz-kilidi.test.js       # 35 — Master PIN hash/kilit, cihaz tahsisi, KAYNAK denetimi
+node --test test/cihaz-kilidi.test.js       # 52 — Master PIN hash/kilit, cihaz tahsisi, PIN SIFIRLAMA, KAYNAK denetimi
 node --test test/rest-adres.test.js         # 13 — restYoluKur, tabanAdresiTemizle, sorgu korunmasi
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
@@ -872,7 +936,7 @@ node --test scripts/tests/depo-fisi.test.js           # fiş muhasebe dökümü
 node --test scripts/tests/odeme-matrisi.dom.test.js   # matris arayüzü
 node --test scripts/tests/checkout-masasi.dom.test.js
 node --test scripts/tests/sifre-goz.dom.test.js
-node --test scripts/tests/plasiyer-kapi.dom.test.js   # 66 — çift kapı, [hidden], Master PIN, cihaz kilidi, ÇIKIŞ, rol dayanıklılığı
+node --test scripts/tests/plasiyer-kapi.dom.test.js   # 79 — çift kapı, Master PIN, cihaz kilidi, ÇIKIŞ, rol dayanıklılığı, PIN SIFIRLAMA
 node --test scripts/tests/plasiyer-menu.dom.test.js   # 15 — menü hiyerarşisi, alt sekmeler, Saha Notlarım
 node --test scripts/tests/yonetici-pin.dom.test.js    # 17 — PIN değiştirme kartı + giriş kartı düzeni
 node --test scripts/tests/harita-kokpit.dom.test.js   # 15 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran
@@ -886,7 +950,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (449 test)
+# Bitirirken: üç katmanın tamamı (480 test)
 node scripts/check-all.js
 ```
 
@@ -956,6 +1020,7 @@ if (typeof window !== 'undefined') window.X = X;
 | **`[data-rol-gizli="1"] { display:none !important }` (index.html)** | Rol izolasyonunun TAMAMI bu kurala dayanıyor. Kural kalkarsa öznitelik bir şey ifade etmez ve her iki rol birbirinin sekmelerini görür. Sınıf tabanlı gizleme DENENDİ ve `sekmeAc` tarafından siliniyordu (→ §4.11.1) |
 | **`.kapi-kart` düzen ezmeleri (index.html)** | Global `button { display:inline-flex; white-space:nowrap }` kuralını ezer. Biri (özellikle `white-space: normal`) kalkarsa giriş kartlarındaki metin tek satıra sıkışıp taşar (→ §4.11.4) |
 | **`scripts/tests/yardimci/sekme-ac-taklidi.js`** | DOM testlerinin `sekmeAc` taklidi. Üretimdeki `className` ATAMASINI birebir yapar; bu satır kaldırılırsa rol gizlemesi regresyonları yeniden görünmez olur (411 test bir kez böyle kaçırdı) |
+| **«kilitli cihaz ⇒ tanımlı PIN vardır» değişmezi** | `pinSifirla` PIN'i silerken cihaz kilidini DE kaldırır. Kilit bırakılırsa cihaz tuğlaya döner: kilidi açmak PIN ister, PIN yok, yeni PIN kurmak kilidi açmaz (→ §4.12) |
 | **`byom-yonetici-kilit.js` scrypt parametreleri** | `N=16384, r=8, p=1`. Düşürmenin tek kazancı ölçülemeyecek bir hız, bedeli 6 haneli PIN'e kaba kuvvetin kolaylaşması. Parametreler özetin **içinde** saklanır, yani ileride artırmak sahadaki PIN'leri geçersiz kılmaz |
 
 ---
@@ -963,7 +1028,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 156 php / 76 js / 449 test
+cd .. && node scripts/check-all.js     # 0 hata / 156 php / 76 js / 480 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

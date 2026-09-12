@@ -512,16 +512,26 @@
       baslik: 'Cihaz Kilidini Aç',
       aciklama: 'Bu cihaz saha satışına tahsisli. Kilidi kaldırmak için yönetici PIN\'inizi girin.',
       dugme: 'Kilidi Aç'
+    },
+    /*
+     * KURTARMA (Faz 8) — düz metin PIN hiçbir yere gitmez.
+     * Patron talep kodunu merkeze okur, merkez tek kullanımlık sıfırlama kodu
+     * verir, PIN yerel olarak silinir ve yenisi kurulur.
+     */
+    kurtarma: {
+      baslik: 'PIN Sıfırlama',
+      aciklama: 'Merkez PIN\'inizi göremez. Aşağıdaki talep kodunu okuyup tek kullanımlık sıfırlama kodunu alın.',
+      dugme: 'Kodu Doğrula ve PIN\'i Sıfırla'
     }
   };
 
   function ypinAlanlariTemizle() {
-    var a = el('ypinKod');
-    var b = el('ypinKod2');
-
-    /* PIN ekranda bile bırakılmaz (bkz. dosya başlığı — SIR kuralı). */
-    if (a) a.value = '';
-    if (b) b.value = '';
+    /* PIN ekranda bile bırakılmaz (bkz. dosya başlığı — SIR kuralı).
+       Kurtarma kodu da: tek kullanımlıktır, ekranda durmasının anlamı yok. */
+    ['ypinKod', 'ypinKod2', 'ypinKurtarmaKod'].forEach(function (id) {
+      var kutu = el(id);
+      if (kutu) kutu.value = '';
+    });
   }
 
   function ypinSayaciDurdur() {
@@ -583,16 +593,155 @@
        hatası, cihaz kilitlendikten sonra geri dönüşü olmayan bir kilit üretir. */
     gorunur(el('ypinOnayAlan'), 'kur' === ypinModu);
 
-    /* Kilit açma modunda "Geri Dön" kullanıcıyı terminale bırakır; kapatma
-       düğmeleri kilidi AÇMAZ, yalnızca bu pencereyi kapatır. */
+    /*
+     * KURTARMA MODU ayrı bir yüz gösterir: 6 haneli PIN alanı GİZLENİR (PIN
+     * zaten bilinmiyor), yerine talep kodu + sıfırlama kodu alanı gelir.
+     */
+    var kurtarmaModu = ('kurtarma' === ypinModu);
+
+    gorunur(el('ypinPinAlan'), !kurtarmaModu);
+    gorunur(el('ypinKurtarmaAlan'), kurtarmaModu);
+
+    /*
+     * "PIN'imi unuttum" YALNIZCA 'dogrula' modunda anlamlı:
+     *   · 'kur'      → henüz PIN yok, sıfırlanacak bir şey de yok.
+     *   · 'kurtarma' → zaten o ekrandayız.
+     *   · 'kilit-ac' → GÖSTERİLİR: patron kilitli cihazın başında PIN'i
+     *                  unutmuş olabilir ve o ekran onun tek çıkışı.
+     */
+    gorunur(el('ypinUnuttum'), 'dogrula' === ypinModu || 'kilit-ac' === ypinModu);
+
     ypinAlanlariTemizle();
     hataYaz(el('ypinHata'), '');
     ypinSayaciDurdur();
 
     gorunur(ypinPerde, true);
 
+    if (kurtarmaModu) {
+      talepKodunuYukle();
+
+      var kkod = el('ypinKurtarmaKod');
+      if (kkod) kkod.focus();
+      return;
+    }
+
     var kod = el('ypinKod');
     if (kod) kod.focus();
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  PIN SIFIRLAMA (Faz 8) — tek kullanımlık kod akışı
+   *  ---------------------------------------------------------------
+   *  DÜZ METİN PIN HİÇBİR YERE GÖNDERİLMEZ. Merkez PIN'i bilmez, yalnızca
+   *  sıfırlama yetkisi verir. Protokol: main.js § 3.9 + byom.js.
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Talep kodunu alır ve ekrana yazar.
+   *
+   * Kod lisans + HWID'den TÜRETİLİR, yani ağ olmasa bile hesaplanabilir.
+   * Merkeze bildirim "en iyi gayret"tir: başarısız olursa kullanıcıya kodu
+   * telefonda okuması söylenir — akış internete BAĞIMLI KILINMAZ.
+   */
+  async function talepKodunuYukle() {
+    var kutu = el('ypinTalepKodu');
+    var durumYazisi = el('ypinTalepDurum');
+
+    if (kutu) kutu.textContent = '…';
+    if (durumYazisi) durumYazisi.textContent = 'Talep kodu hazırlanıyor…';
+
+    var cevap = await sureAsimiyla(ipc('auth:pin-kurtarma-talep'), LISTE_SURE_ASIMI_MS);
+
+    if (!cevap || cevap.sureAsimi || !cevap.talepKodu) {
+      if (kutu) kutu.textContent = '—';
+      if (durumYazisi) {
+        durumYazisi.textContent = cevap && cevap.sureAsimi
+          ? 'Merkeze ulaşılamadı. Lisansınız etkinse tekrar deneyin.'
+          : 'Talep kodu üretilemedi. Lisans etkin değil olabilir.';
+      }
+      return;
+    }
+
+    if (kutu) kutu.textContent = cevap.talepKodu;
+
+    if (durumYazisi) {
+      durumYazisi.textContent = cevap.bildirildi
+        ? 'Talebiniz merkeze iletildi. Destek ekibini arayıp bu kodu okuyun.'
+        : 'Merkeze iletilemedi (internet yok olabilir). Kodu telefonda okumanız yeterli.';
+    }
+
+    /* Kurtarma kilidi varsa kullanıcıya söyle — boşuna kod girmesin. */
+    var notu = el('ypinKurtarmaKilitNotu');
+
+    if (notu) {
+      var d = cevap.durum || {};
+
+      notu.textContent = d.kurtarmaKilitli
+        ? ('Çok fazla hatalı deneme: ' + (d.kurtarmaKilitKalanSn || 0) + ' saniye bekleyin.')
+        : '';
+    }
+  }
+
+  /** Sıfırlama kodunu merkeze doğrulatır; geçerliyse PIN silinir. */
+  async function kurtarmaKodunuDogrula() {
+    var kutu = el('ypinKurtarmaKod');
+    var dugme = el('ypinGonder');
+    var hata = el('ypinHata');
+
+    var kod = String((kutu && kutu.value) || '').trim();
+
+    if (!kod) return hataYaz(hata, 'Merkezin verdiği sıfırlama kodunu girin.');
+
+    hataYaz(hata, '');
+    if (dugme) dugme.disabled = true;
+
+    var cevap = await ipc('auth:pin-kurtarma-dogrula', { kod: kod });
+
+    /* Kod ekranda bırakılmaz: tek kullanımlık, ikinci kez işe yaramaz. */
+    kod = '';
+    if (kutu) kutu.value = '';
+
+    if (!cevap) {
+      if (dugme) dugme.disabled = false;
+      return hataYaz(hata, 'Doğrulama yapılamadı. Uygulamayı yeniden başlatın.');
+    }
+
+    if (!cevap.ok) {
+      if (dugme) dugme.disabled = false;
+
+      if (cevap.kilitli) {
+        ypinKilidiGoster(cevap.kilitKalanSn);
+        return;
+      }
+
+      return hataYaz(hata, cevap.hata || 'Sıfırlama kodu doğrulanamadı.');
+    }
+
+    /* BAŞARILI: PIN silindi, cihaz kilidi de kalktı (kilitli ⇒ PIN var kuralı). */
+    if (cevap.durum) {
+      cihaz.pinKurulu = !!cevap.durum.pinKurulu;
+      cihaz.kilitli = !!cevap.durum.cihazKilitli;
+      cihaz.plasiyerId = Number(cevap.durum.tahsisliPlasiyerId || 0) || 0;
+      cihaz.plasiyerAd = String(cevap.durum.tahsisliPlasiyerAd || '');
+
+      if (typeof durum !== 'undefined' && durum.ayarlar) {
+        durum.ayarlar.yoneticiPinKurulu = cihaz.pinKurulu;
+        durum.ayarlar.cihazRolu = cihaz.kilitli ? 'plasiyer_kilitli' : 'standart';
+        durum.ayarlar.tahsisliPlasiyerId = cihaz.plasiyerId;
+        durum.ayarlar.tahsisliPlasiyerAd = cihaz.plasiyerAd;
+        durum.ayarlar.yoneticiPinSifirlamaZamani = cevap.durum.sifirlamaZamani || '';
+      }
+    }
+
+    /* Cihaz kilidi kalktıysa terminal görünümünden çık: kapı artık çift kapı. */
+    terminalModunuKapat();
+
+    if (typeof bildir === 'function') {
+      bildir('PIN sıfırlandı. Şimdi yeni bir Yönetici Master PIN belirleyin.', 'basari');
+    }
+
+    /* Hemen yeni PIN kurulumuna geç — kullanıcıyı PIN'siz bırakmıyoruz. */
+    ypinAc('kur');
   }
 
   function ypinKapat() {
@@ -616,6 +765,9 @@
     var kod2 = el('ypinKod2');
     var dugme = el('ypinGonder');
     var hata = el('ypinHata');
+
+    /* KURTARMA MODU ayrı akış: 6 haneli PIN değil, merkezin kodu doğrulanır. */
+    if ('kurtarma' === ypinModu) return kurtarmaKodunuDogrula();
 
     var pin = String((kod && kod.value) || '');
 
@@ -1123,6 +1275,44 @@
     var cikis = el('cikisYapDugme');
     if (cikis) cikis.addEventListener('click', cikisYap);
 
+    /* ---- PIN SIFIRLAMA (Faz 8) ---- */
+
+    var unuttum = el('ypinUnuttum');
+    if (unuttum) unuttum.addEventListener('click', function () { ypinAc('kurtarma'); });
+
+    var kopyala = el('ypinTalepKopyala');
+
+    if (kopyala) {
+      kopyala.addEventListener('click', function () {
+        var kutu = el('ypinTalepKodu');
+        var metin = kutu ? kutu.textContent : '';
+
+        if (!metin || '…' === metin || '—' === metin) return;
+
+        /* Pano ana süreçten geçer (byom:panoya-kopyala); renderer'ın pano
+           erişimi Electron sürümüne göre değişkenlik gösteriyor. */
+        ipc('byom:panoya-kopyala', metin);
+
+        if (typeof bildir === 'function') bildir('Talep kodu kopyalandı.', 'ok');
+      });
+    }
+
+    var kurtarmaKutu = el('ypinKurtarmaKod');
+
+    if (kurtarmaKutu) {
+      kurtarmaKutu.addEventListener('keydown', function (olay) {
+        if ('Enter' === olay.key) ypinGonder();
+      });
+
+      /* Büyüt ve alfabe dışını süz; ayırıcıya izin ver (merkez tireli okur).
+         Asıl normalleştirme ANA SÜREÇTE (kurtarmaKodunuNormalle) — buradaki
+         yalnızca yazarken görünen gürültüyü azaltır. */
+      kurtarmaKutu.addEventListener('input', function () {
+        var temiz = kurtarmaKutu.value.toUpperCase().replace(/[^0-9A-Z-]/g, '').slice(0, 20);
+        if (temiz !== kurtarmaKutu.value) kurtarmaKutu.value = temiz;
+      });
+    }
+
     /* Kilitli terminaldeki discreet 🔓 — patron çıkışı. */
     var kilitAc = el('kapiKilitAc');
     if (kilitAc) kilitAc.addEventListener('click', function () { ypinAc('kilit-ac'); });
@@ -1261,6 +1451,8 @@
     ypinAc: ypinAc,
     ypinKapat: ypinKapat,
     ypinGonder: ypinGonder,
+    talepKodunuYukle: talepKodunuYukle,
+    kurtarmaKodunuDogrula: kurtarmaKodunuDogrula,
     cihazDurumunuAl: cihazDurumunuAl,
     terminalModunuAc: terminalModunuAc,
     terminalModunuKapat: terminalModunuKapat,
