@@ -50,6 +50,21 @@
     return window.HaritaVeri;
   }
 
+  /**
+   * GERÇEK İL SINIRLARI (Faz 10): src/renderer/harita-yollar.js (Natural
+   * Earth, kamu malı) yüklüyse il kütüğüne beslenir — kokpit <rect> yerine
+   * <path> basar, etiket/uyarı/zoom merkezleri gerçek ağırlık merkezine
+   * geçer. Dosya yoksa şematik kutulara düşer. İdempotent.
+   */
+  function yollariBesle() {
+    var Y = window.HaritaYollar;
+
+    if (!Y || !V() || 'function' !== typeof V().yollariYukle) return 0;
+    if (V().yolluIlSayisi() > 0) return V().yolluIlSayisi();
+
+    return V().yollariYukle(Y.YOLLAR, Y.MERKEZLER, Y.SINIRLAR);
+  }
+
   function el(id) {
     return document.getElementById(id);
   }
@@ -287,7 +302,8 @@
           ? '<p class="mt-3 text-xs text-slate-500 dark:text-slate-400">' +
             'Şematik görünüm: iller gerçek coğrafi konumlarında kutu olarak çizilir. ' +
             'Gerçek il sınırları <code>HaritaVeri.yollariYukle()</code> ile beslenebilir.</p>'
-          : '') +
+          : '<p class="mt-3 text-xs text-slate-500 dark:text-slate-400">' +
+            'İl sınırları: Natural Earth 1:10m (kamu malı) · ' + V().yolluIlSayisi() + ' il.</p>') +
         (durumH.tanimsiz.length
           ? '<p class="mt-3 text-xs text-amber-700 dark:text-amber-400">' +
             durumH.tanimsiz.length + ' kayıt bir ile eşlenemedi (il alanı boş ya da tanınmayan): ' +
@@ -426,17 +442,31 @@
    */
   function tekIlSvg(il) {
     var tuval = V().TUVAL;
-    var k = 3.2;   // yakınlaştırma katsayısı
+    var k = 3.2;   // yakınlaştırma katsayısı (şematik kutu)
+    var mx = il.x;
+    var my = il.y;
+
+    /* Gerçek geometri: ilin sınır kutusu tuvale %72 doluluğa oturur (Faz 10). */
+    if (il.sinir && il.sinir.w > 0 && il.sinir.h > 0) {
+      k = Math.max(1.2, Math.min(6, 0.72 * Math.min(tuval.w / il.sinir.w, tuval.h / il.sinir.h)));
+      mx = il.sinir.x + il.sinir.w / 2;
+      my = il.sinir.y + il.sinir.h / 2;
+    }
 
     /* İl merkezini tuvalin ortasına taşıyan öteleme. */
-    var dx = (tuval.w / 2) - il.x * k;
-    var dy = (tuval.h / 2) - il.y * k;
+    var dx = (tuval.w / 2) - mx * k;
+    var dy = (tuval.h / 2) - my * k;
 
     return '<svg viewBox="0 0 ' + tuval.w + ' ' + tuval.h + '" class="w-full h-auto">' +
       '<g class="harita-zoom" style="transform: translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) scale(' + k + ');">' +
         /* Komşular soluk arka plan olarak kalır: il tek başına havada durmasın. */
         durumH.iller.map(function (x) {
           if (Number(x.plaka) === Number(il.plaka)) return '';
+
+          /* Gerçek sınır varsa komşu da gerçek şekliyle (soluk) çizilir. */
+          if (x.yol) {
+            return '<path d="' + kacis(x.yol) + '" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.35)" stroke-width="0.4"></path>';
+          }
 
           return '<rect x="' + (x.x - KUTU.w / 2) + '" y="' + (x.y - KUTU.h / 2) +
             '" width="' + KUTU.w + '" height="' + KUTU.h + '" rx="3" ' +
@@ -705,6 +735,8 @@
    * ------------------------------------------------------------------ */
 
   async function sekmeyiAc() {
+    yollariBesle();
+
     if (bagli && durumH.iller.length) {
       ciz();
       return;
@@ -729,6 +761,8 @@
    * çağırırdı. Sonuç: her açılışta çift `/admin/harita` isteği.
    */
   function akisaBaglan() {
+    yollariBesle();
+
     /* Rozet açılışta da dolsun: patron haritayı açmadan da açık not sayısını
        görmeli. Sessiz, tek istek. */
     window.setTimeout(function () {
@@ -743,6 +777,7 @@
   }
 
   window.HaritaKokpit = {
+    yollariBesle: yollariBesle,
     sekmeyiAc: sekmeyiAc,
     veriyiGetir: veriyiGetir,
     ilSec: ilSec,

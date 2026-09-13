@@ -122,7 +122,10 @@
       var ayar = await ipcRenderer.invoke('ayar:oku');
       var liste = (ayar && ayar[YEREL_ANAHTAR]) || [];
 
-      durumM.yereller = Array.isArray(liste) ? liste : [];
+      /* `senkron: true` kayıt sunucuda zaten var (anında eşitleme ya da tur);
+         temizlik sıradaki eşitlemede yapılır. Onu ÇEVRİMDIŞI rozetiyle
+         listelemek yanlış bilgi olurdu. */
+      durumM.yereller = (Array.isArray(liste) ? liste : []).filter(function (x) { return x && !x.senkron; });
     } catch (e) {
       durumM.yereller = [];
     }
@@ -192,7 +195,20 @@
       return { ok: true };
     }
 
-    /* Yönetici: WooCommerce müşteri ucu (byom eki bakiyeyi, b2b eki iskontoyu taşır). */
+    /*
+     * YÖNETİCİ yolu YALNIZCA açıkça yönetici oturumunda (Faz 10).
+     *
+     * Eskiden "plasiyer değilse yönetici" varsayılıyordu; `window.durum`
+     * üretimde tanımsız kaldığı için rol hiç okunamıyor ve plasiyer ekranına
+     * WooCommerce'in BÜTÜN perakende müşterileri dökülüyordu (Görsel 6-7).
+     * Rol bilinmiyorsa sunucuya HİÇ gidilmez — "bilmiyorum" hâlinde her şeyi
+     * göstermek tam olarak engellemeye çalıştığımız sızıntıdır.
+     */
+    if ('admin' !== oturum().rol) {
+      durumM.musteriler = [];
+      return { ok: false, hata: 'Oturum rolü bilinmiyor; müşteri listesi çekilmedi.' };
+    }
+
     durumM.musteriler = await woo_musteriler();
     durumM.yuklendi = true;
 
@@ -694,7 +710,65 @@
     musteriSec(sonuc.musteri);
     portfoyuCiz();
 
-    bildir('Müşteri çevrimdışı kaydedildi (' + (temiz.kimlikTuru || 'kimlik').toUpperCase() + ' doğrulandı). Eşitlemede sunucuya iletilecek.', 'ok');
+    bildir('Müşteri kaydedildi (' + (temiz.kimlikTuru || 'kimlik').toUpperCase() + ' doğrulandı).', 'ok');
+
+    /* Çevrimiçiysek arka planda HEMEN sunucuya yaz — kullanıcı beklemez. */
+    anindaEsitle(sonuc.musteri);
+  }
+
+  /**
+   * ANINDA MÜŞTERİ EŞİTLEME (Faz 10) — Görsel 6: internet varken eklenen
+   * müşteri bir sonraki 60 sn yoklamasına kadar "ÇEVRİMDIŞI" rozetiyle
+   * kalıyordu. Cihaz çevrimiçiyse yerel kayıt yazıldıktan hemen sonra
+   * `/plasiyer/musteri-esitle` tetiklenir; `user_id` gelince geçici kayıt
+   * gerçek bayiye çevrilir, rozet kalkar.
+   *
+   * Sessiz başarısızlık: ağ yoksa ya da sunucu reddetmişse kayıt kuyrukta
+   * bekler, olağan eşitleme turu (ya da hata sebebi) onu ele alır.
+   */
+  async function anindaEsitle(musteri) {
+    if (!musteri || !M().geciciMi(musteri.id)) return;
+    if ('undefined' !== typeof navigator && false === navigator.onLine) return;
+    if (!plasiyerMi()) return;
+
+    var cevap;
+
+    try {
+      cevap = await ipcRenderer.invoke('musteri:esitle-tek', { id: musteri.id });
+    } catch (e) {
+      return;
+    }
+
+    var yeniId = Number((cevap && cevap.user_id) || 0);
+
+    if (!cevap || !cevap.ok || !yeniId) return;
+
+    var gercek = Object.assign({}, musteri, {
+      id: yeniId,
+      gecici: false,
+      senkron: true,
+      gercekId: yeniId
+    });
+
+    durumM.yereller = durumM.yereller.filter(function (m) { return String(m.id) !== String(musteri.id); });
+    durumM.musteriler = [gercek].concat(durumM.musteriler.filter(function (m) { return Number(m.id) !== yeniId; }));
+
+    /* Seçili müşteri buysa sepet de gerçek kimliğe geçer. */
+    if (durumM.secili && String(durumM.secili.id) === String(musteri.id)) {
+      musteriSec(gercek, { sessiz: true });
+    }
+
+    if (durumM.profil && String(durumM.profil.id) === String(musteri.id)) {
+      durumM.profil = gercek;
+      profiliCiz(gercek);
+    }
+
+    portfoyuCiz();
+    seridiCiz();
+
+    bildir(cevap.tekrar
+      ? 'Müşteri sunucudaki mevcut bayiyle eşleşti (#' + yeniId + ').'
+      : 'Müşteri sunucuya kaydedildi ✓ (bayi #' + yeniId + ').', 'ok');
   }
 
   /* ------------------------------------------------------------------ *
@@ -1025,8 +1099,9 @@
 
         kuyrukSeridiniCiz();
 
-        if ('function' === typeof window.siparisleriYukle) {
-          try { window.siparisleriYukle(true); } catch (e) { /* sessiz */ }
+        /* Sunucudaki kendi sipariş listesi de tazelenir (Faz 10 şablonu). */
+        if (window.PlasiyerSiparislerim && 'function' === typeof window.PlasiyerSiparislerim.yenile) {
+          window.PlasiyerSiparislerim.yenile();
         }
       });
     }
@@ -1302,7 +1377,8 @@
         var sonuc = ozgun.apply(this, arguments);
 
         if ('musterilerim' === ad) portfoyuAc();
-        if ('siparisler' === ad && plasiyerMi()) kuyrukSeridiniCiz();
+        /* Kuyruk şeridi Faz 10'da 'siparislerim' şablonuna taşındı;
+           plasiyer-siparislerim.js kendi sarmalında çizer. */
 
         return sonuc;
       };
@@ -1329,6 +1405,7 @@
     portfoyuCiz: portfoyuCiz,
     profiliCiz: profiliCiz,
     kuyrukSeridiniCiz: kuyrukSeridiniCiz,
+    anindaEsitle: anindaEsitle,
     yerelMukerrerBul: yerelMukerrerBul,
     durum: durumM,
     YEREL_ANAHTAR: YEREL_ANAHTAR

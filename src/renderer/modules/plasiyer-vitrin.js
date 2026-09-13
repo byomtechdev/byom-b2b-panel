@@ -337,7 +337,17 @@
             '<div class="mt-1 text-xs text-slate-500 dark:text-slate-400">' + kacis(u.sku || '') + '</div>' +
             '<div class="mt-2 flex items-center gap-2 flex-wrap">' + koliEtiketi(u) + '</div>' +
             fiyatHtml(u, 'mt-2 text-lg font-black') +
-            '<button type="button" class="urun-ekle mt-3 w-full px-4 py-3 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600 transition" ' +
+            /* HIZLI ADET (Faz 10 — Görsel 4): kartta doğrudan sayı yazılır;
+               −/+ koli katlarında ilerler, Enter ya da "Sepete Ekle" yazılan
+               adedi sepete koyar (motor koli katına YUKARI tamamlar). */
+            '<div class="mt-3 flex items-center gap-1">' +
+              '<button type="button" class="hizli-eksi w-9 h-9 shrink-0 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-black" data-id="' + u.id + '" aria-label="Azalt">−</button>' +
+              '<input type="number" min="1" step="' + M().koliIci(u) + '" value="' + M().koliIci(u) + '" data-id="' + u.id + '" ' +
+                     'class="hizli-adet-input flex-1 min-w-0 px-2 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-black text-center" ' +
+                     'aria-label="Adet" title="Adet yazın; koli katına tamamlanır" />' +
+              '<button type="button" class="hizli-arti w-9 h-9 shrink-0 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-black" data-id="' + u.id + '" aria-label="Artır">+</button>' +
+            '</div>' +
+            '<button type="button" class="urun-ekle mt-2 w-full px-4 py-3 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600 transition" ' +
                     'data-id="' + u.id + '">Sepete Ekle</button>' +
           '</div>';
       }).join('') +
@@ -516,15 +526,40 @@
     return durumV.urunler.find(function (x) { return Number(x.id) === Number(id); }) || null;
   }
 
+  /** Karttaki hızlı adet kutusu (varsa). */
+  function hizliKutu(id) {
+    var vit = el('urunVitrin');
+
+    return vit ? vit.querySelector('.hizli-adet-input[data-id="' + String(id) + '"]') : null;
+  }
+
+  /** Kutudaki değer — boş/geçersizse undefined (motor bir koli/adet varsayar). */
+  function hizliAdet(id) {
+    var kutu = hizliKutu(id);
+    var n = kutu ? Number(kutu.value) : NaN;
+
+    return isFinite(n) && n > 0 ? n : undefined;
+  }
+
   function sepeteEkle(id, adet) {
     var u = urunBul(id);
 
     if (!u) return;
 
+    var oncekiSatir = M().satirBul(sepet(), u.id);
+    var onceki = -1 === oncekiSatir ? 0 : Number(sepet().satirlar[oncekiSatir].adet) || 0;
+
     M().ekle(sepet(), u, adet);
 
+    var yeniSatir = M().satirBul(sepet(), u.id);
+    var eklenen = (-1 === yeniSatir ? 0 : Number(sepet().satirlar[yeniSatir].adet) || 0) - onceki;
+
+    /* Kutu bir sonraki ürün için birime döner. */
+    var kutu = hizliKutu(u.id);
+    if (kutu) kutu.value = M().koliIci(u);
+
     sepetiCiz();
-    bildir(kacis(u.name) + ' sepete eklendi.', 'ok');
+    bildir(kacis(u.name) + ' sepete eklendi: ' + kacis(M().adetEtiketi(u, eklenen)) + '.', 'ok');
   }
 
   function sepetiCiz() {
@@ -676,10 +711,36 @@
       vit.addEventListener('click', function (olay) {
         var ekle = olay.target.closest('.urun-ekle');
 
-        if (ekle) { sepeteEkle(ekle.dataset.id); return; }
+        if (ekle) { sepeteEkle(ekle.dataset.id, hizliAdet(ekle.dataset.id)); return; }
+
+        /* −/+ : karttaki adet kutusunu koli katlarında ilerletir (sepete eklemez). */
+        var adim = olay.target.closest('.hizli-arti, .hizli-eksi');
+
+        if (adim) {
+          var kutu = hizliKutu(adim.dataset.id);
+          var urun = urunBul(adim.dataset.id);
+
+          if (kutu && urun) {
+            kutu.value = M().adimla(urun, kutu.value, adim.classList.contains('hizli-arti') ? 1 : -1);
+          }
+
+          return;
+        }
 
         var buyut = olay.target.closest('.urun-buyut');
         if (buyut) urunuBuyut(buyut.dataset.id);
+      });
+
+      /* Adet kutusunda Enter → sepete ekle (klavye akışı). */
+      vit.addEventListener('keydown', function (olay) {
+        if ('Enter' !== olay.key) return;
+
+        var kutu = olay.target.closest('.hizli-adet-input');
+
+        if (!kutu) return;
+
+        olay.preventDefault();
+        sepeteEkle(kutu.dataset.id, kutu.value || undefined);
       });
 
       /* [Enter → Adet → Enter] akışı: adet kutusunda Enter sepete ekler ve
@@ -780,6 +841,8 @@
     sepetiCiz: sepetiCiz,
     vitriniCiz: vitriniCiz,
     netFiyati: netFiyati,
+    sepeteEkle: sepeteEkle,
+    hizliAdet: hizliAdet,
     urunBul: urunBul,
     tavanAl: tavanAl,
     durum: durumV,

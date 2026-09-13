@@ -189,13 +189,25 @@
     if (il) AD_INDEKS[c[0]] = il;
   });
 
-  /** Ada (ya da plakaya) göre il bulur. */
+  /**
+   * Ada, plakaya ya da ISO 3166-2 koduna göre il bulur.
+   *
+   * WooCommerce `billing_state` Türkiye için "TR34" biçiminde ISO kodu
+   * saklar (Görsel 2-3: "TR34 eşlenemedi"). "TR-35", "TR35", "tr 35", "035",
+   * "35", "İzmir", "IZMIR" → aynı il. Determinist: aynı girdi daima aynı plaka.
+   */
   function ilBul(ad) {
-    if ('number' === typeof ad || /^[0-9]{1,2}$/.test(String(ad))) {
-      return PLAKA_INDEKS[Number(ad)] || null;
-    }
+    if ('number' === typeof ad) return PLAKA_INDEKS[ad] || null;
 
-    return AD_INDEKS[normalize(ad)] || null;
+    var metin = String(ad === null || ad === undefined ? '' : ad).trim();
+
+    if (!metin) return null;
+
+    var kod = /^(?:tr[\s\-_]?)?0?(\d{1,2})$/i.exec(metin);
+
+    if (kod) return PLAKA_INDEKS[Number(kod[1])] || null;
+
+    return AD_INDEKS[normalize(metin)] || null;
   }
 
   /** Bölgeye ait iller. */
@@ -291,6 +303,7 @@
         x: il.x,
         y: il.y,
         yol: il.yol,
+        sinir: il.sinir,
         bayiSayisi: o.bayiSayisi,
         bayiler: o.bayiler,
         siparis: o.siparis,
@@ -381,6 +394,9 @@
     filtre = filtre || {};
 
     var ilAdi = filtre.il ? normalize(filtre.il) : '';
+    /* İl süzgeci PLAKA üzerinden: notun ili "TR35" kodu, süzgeç "İzmir" adı
+       olabilir — ikisi de çözülüyorsa plaka eşitliği yeter (Faz 10). */
+    var ilHedef = filtre.il ? ilBul(filtre.il) : null;
     var sinir = 0;
 
     if (Number(filtre.gun) > 0) {
@@ -390,7 +406,15 @@
     return liste.filter(function (n) {
       if (!n) return false;
 
-      if (ilAdi && normalize(n.il) !== ilAdi) return false;
+      if (ilAdi) {
+        var nIl = ilBul(n.il);
+
+        if (ilHedef && nIl) {
+          if (nIl.plaka !== ilHedef.plaka) return false;
+        } else if (normalize(n.il) !== ilAdi) {
+          return false;
+        }
+      }
 
       if (filtre.plasiyerId && Number(n.plasiyerId) !== Number(filtre.plasiyerId)) return false;
 
@@ -433,7 +457,7 @@
    * @param {object} harita plaka|ad -> SVG `d` dizesi
    * @returns {number} kaç ile yol yazıldı
    */
-  function yollariYukle(harita) {
+  function yollariYukle(harita, merkezler, sinirlar) {
     if (!harita || 'object' !== typeof harita) return 0;
 
     var sayi = 0;
@@ -445,6 +469,21 @@
       if (il && yol) {
         il.yol = yol;
         sayi++;
+
+        /* Gerçek geometri gelince etiket/uyarı/zoom merkezi de gerçek
+           ağırlık merkezine taşınır; kutu konumları şematik kipe aitti. */
+        var m = merkezler && merkezler[anahtar];
+
+        if (m && isFinite(Number(m.x)) && isFinite(Number(m.y))) {
+          il.x = Number(m.x);
+          il.y = Number(m.y);
+        }
+
+        var s = sinirlar && sinirlar[anahtar];
+
+        if (s && isFinite(Number(s.w)) && isFinite(Number(s.h))) {
+          il.sinir = { x: Number(s.x), y: Number(s.y), w: Number(s.w), h: Number(s.h) };
+        }
       }
     });
 

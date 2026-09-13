@@ -385,17 +385,17 @@
      Sınıf ve öznitelik ayrı ayrı yönetilseydi ikisi ayrışır ve ekran doğru
      görünürken ekran okuyucu yanlış söylerdi.
      Yalnızca renk/gölge değişir — `transform` bile yok, düzen hiç hesaplanmaz. */
-  .plasiyer-alt { color: #475569; }
-  .plasiyer-alt[aria-selected="true"] {
+  .plasiyer-alt, .uye-alt { color: #475569; }
+  .plasiyer-alt[aria-selected="true"], .uye-alt[aria-selected="true"] {
     background: #fff;
     color: #0f172a;
     box-shadow: 0 1px 3px rgb(0 0 0 / .12);
   }
-  .plasiyer-alt:hover:not([aria-selected="true"]) { color: #0f172a; }
+  .plasiyer-alt:hover:not([aria-selected="true"]), .uye-alt:hover:not([aria-selected="true"]) { color: #0f172a; }
 
-  html.dark .plasiyer-alt { color: #cbd5e1; }
-  html.dark .plasiyer-alt[aria-selected="true"] { background: #1e293b; color: #f8fafc; }
-  html.dark .plasiyer-alt:hover:not([aria-selected="true"]) { color: #f8fafc; }
+  html.dark .plasiyer-alt, html.dark .uye-alt { color: #cbd5e1; }
+  html.dark .plasiyer-alt[aria-selected="true"], html.dark .uye-alt[aria-selected="true"] { background: #1e293b; color: #f8fafc; }
+  html.dark .plasiyer-alt:hover:not([aria-selected="true"]), html.dark .uye-alt:hover:not([aria-selected="true"]) { color: #f8fafc; }
 
   /* Ciro dağılım çubuğu — genişlik yerine transform ile büyür (reflow yok). */
   .ciro-cubuk { transform-origin: left center; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
@@ -2041,7 +2041,12 @@
     <nav class="w-72 shrink-0 bg-white dark:bg-slate-800 border-r-2 border-slate-200 dark:border-slate-700
                 p-4 flex flex-col gap-3 overflow-y-auto">
 
-      <button data-sekme="siparisler" data-rol-izin="admin plasiyer" data-kabuk="admin plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+      <!-- FAZ 10: bu düğme ve gövdesi (#sekme-siparisler) artık YALNIZCA
+           yönetici kabuğunda. Faz 9'da iki rol aynı gövdeyi paylaşıyordu ve
+           plasiyer "Kendi Siparişlerim"e basınca yöneticinin depo ekranı
+           (bütün şirket siparişleri + depo düğmeleri) açılıyordu. Saha için
+           ayrı şablon: #sekme-siparislerim (aşağıda). -->
+      <button data-sekme="siparisler" data-rol-izin="admin" data-kabuk="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg>
         <span class="align-middle">Siparişler & Depo Fişi</span>
       </button>
@@ -2058,6 +2063,29 @@
       <button data-sekme="satis" data-rol-izin="plasiyer" data-kabuk="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg>
         <span class="align-middle">Katalog &amp; Satış</span>
+      </button>
+      <!-- KENDİ SİPARİŞLERİM (saha, Faz 10) — yönetici "Siparişler & Depo Fişi"
+           gövdesinden TAMAMEN AYRI şablon (#sekme-siparislerim). Veri sunucuda
+           daraltılır: GET /plasiyer/siparislerim yalnızca bu plasiyerin
+           (_b2b_plasiyer_id) siparişlerini döndürür; depo düğmeleri yoktur.
+           SAHA MENÜ SIRASI DOM SIRASIDIR: Katalog → Kendi Siparişlerim →
+           Müşterilerim; Çıkış Yap mt-auto ile en altta kalır. -->
+      <button data-sekme="siparislerim" data-rol-izin="plasiyer" data-kabuk="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg>
+        <span class="align-middle">Kendi Siparişlerim</span>
+      </button>
+      <!-- MÜŞTERİLERİM (Faz 9) — YALNIZCA plasiyer kabuğunda.
+           Plasiyerin portföyü: müşteri kartları, algoritmik doğrulamalı yeni
+           müşteri formu (TCKN/VKN/GSM), müşteri profili ve Saha Notlarım
+           (patron yanıtları + okunmamış rozeti). Faz 6'daki "Saha Notlarım /
+           CRM" sekmesi bu sekmenin İÇİNE taşındı; rozet sayacı aynı kaldı.
+           Çizim: src/renderer/modules/plasiyer-musteri.js + plasiyer-ziyaret.js -->
+      <button data-sekme="musterilerim" data-rol-izin="plasiyer" data-kabuk="plasiyer" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg>
+        <span class="align-middle">Müşterilerim</span>
+        <span id="notlarimSayaci"
+              class="hidden absolute top-3 right-3 min-w-8 h-8 px-2 rounded-full bg-red-600 text-white
+                     text-base font-black grid place-items-center shadow-lg">0</span>
       </button>
 
       <button data-sekme="urunler" data-rol-izin="admin" data-kabuk="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
@@ -2099,20 +2127,6 @@
            alanı değil; sol menüde bağımsız durması 10 düğmelik bir menü
            üretiyordu. `sekmeAc('harita')` geriye dönük olarak çalışmaya devam
            eder, Pazarlamacılar + harita alt sekmesini açar. -->
-
-      <!-- MÜŞTERİLERİM (Faz 9) — YALNIZCA plasiyer kabuğunda.
-           Plasiyerin portföyü: müşteri kartları, algoritmik doğrulamalı yeni
-           müşteri formu (TCKN/VKN/GSM), müşteri profili ve Saha Notlarım
-           (patron yanıtları + okunmamış rozeti). Faz 6'daki "Saha Notlarım /
-           CRM" sekmesi bu sekmenin İÇİNE taşındı; rozet sayacı aynı kaldı.
-           Çizim: src/renderer/modules/plasiyer-musteri.js + plasiyer-ziyaret.js -->
-      <button data-sekme="musterilerim" data-rol-izin="plasiyer" data-kabuk="plasiyer" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
-        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg>
-        <span class="align-middle">Müşterilerim</span>
-        <span id="notlarimSayaci"
-              class="hidden absolute top-3 right-3 min-w-8 h-8 px-2 rounded-full bg-red-600 text-white
-                     text-base font-black grid place-items-center shadow-lg">0</span>
-      </button>
 
       <!-- BYOM Brain destek masası: talepler doğrudan merkezî sisteme düşer -->
       <button data-sekme="destek" data-rol-izin="admin" data-kabuk="admin" data-sayacli="1" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2 relative">
@@ -2175,7 +2189,7 @@
       <!-- ============================================================
  SEKME 1 — SİPARİŞLER & DEPO FİŞİ
  ============================================================ -->
-      <section id="sekme-siparisler" class="sekme-govde acik" data-kabuk="admin plasiyer">
+      <section id="sekme-siparisler" class="sekme-govde acik" data-kabuk="admin">
 
         <div class="flex flex-wrap items-center gap-4 mb-5">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg> Siparişler</h1>
@@ -2197,14 +2211,12 @@
  </button>
         </div>
 
-        <!-- PLASİYER KUYRUK ŞERİDİ (Faz 9) — yalnızca saha kabuğunda belgede.
-             Çevrimdışı yazılan siparişler sunucuya gidene kadar burada durur:
-             bekleyen / kalıcı hatalı (sebebiyle) + [Şimdi Eşitle].
-             Çizim: plasiyer-musteri.js → kuyrukSeridiniCiz. -->
-        <div id="plasiyerKuyrukKab" data-kabuk="plasiyer" class="mb-5"></div>
         <!-- Sipariş sekmeleri: [Aktif Siparişler] [Kargodakiler] [Teslim Edilenler]
              Her sekme sunucudan KENDİ durum kümesini çeker (bkz. SIPARIS_SEKMELERI). -->
         <div id="siparisSekmeler" class="flex flex-wrap gap-3 mb-5"></div>
+        <!-- KAYNAK SÜZGECİ (Faz 10): [Tümü] [🌐 Web Sitesi] [💼 Saha / Plasiyer]
+             Yerel süzgeç — siparisKaynagi / plasiyerId damgasına bakar. -->
+        <div id="kaynakSuzgecler" class="flex flex-wrap gap-2 mb-3"></div>
 
         <!-- Durum süzgeci (açık sekmenin içini daraltır) -->
         <div id="siparisSuzgecler" class="flex flex-wrap gap-2 mb-3"></div>
@@ -2456,6 +2468,26 @@
  </button>
         </div>
 
+        <!-- ALT SEKMELER (Faz 10) — Görsel 6/7: web'den kayıt olan perakende
+             müşteriler bayi başvurularıyla aynı listeye karışıyordu.
+             [🏢 B2B Bayilik Başvuruları] → b2b_pending / b2b_customer / rejected
+             [👤 Web Perakende Müşterileri] → WooCommerce "customer" rolü;
+             kartta tek tıkla [Bayiye Dönüştür] (= /dealers/{id}/approve).
+             Düğmeler `menu-btn` DEĞİL; durum aria-selected ile taşınır
+             (Pazarlamacılar alt sekmeleriyle aynı kalıp). -->
+        <div id="uyeAltSekmeler" class="mb-4 inline-flex gap-1 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900/60"
+             role="tablist" aria-label="Üye görünümü">
+          <button type="button" class="uye-alt px-5 py-3 rounded-xl font-extrabold transition"
+                  role="tab" data-alt="bayi" aria-selected="true">
+            <span aria-hidden="true">🏢</span>
+            <span class="align-middle ml-1">B2B Bayilik Başvuruları</span>
+          </button>
+          <button type="button" class="uye-alt px-5 py-3 rounded-xl font-extrabold transition"
+                  role="tab" data-alt="perakende" aria-selected="false">
+            <span aria-hidden="true">👤</span>
+            <span class="align-middle ml-1">Web Perakende Müşterileri</span>
+          </button>
+        </div>
         <p class="mb-5 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
                   border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4">
  <svg class="ik" aria-hidden="true"><use href="#ik-bilgi"></use></svg> <b>Tüm Müşteriler</b> sitenize kayıtlı herkesi, <b>Onaylı Bayiler</b> toptan fiyat gören
@@ -3402,6 +3434,35 @@
                          son siparişi kopyala, ödeme + notlar
  Burada yalnızca KAPLAR durur.
  ============================================================ -->
+      <!-- ============================================================
+           SEKME — KENDİ SİPARİŞLERİM (plasiyer, Faz 10)
+           ------------------------------------------------------------
+           Yönetici sipariş gövdesinden bağımsız şablon. İçerik
+           src/renderer/modules/plasiyer-siparislerim.js tarafından çizilir:
+           üstte çevrimdışı KUYRUK ŞERİDİ (bekleyen / kilitli + Şimdi Eşitle),
+           altta sunucudan gelen KENDİ siparişleri (GET /plasiyer/siparislerim,
+           jetonla daraltılır). Kartta tek eylem: [📄 Sipariş / Fiş Detayı].
+           ============================================================ -->
+      <section id="sekme-siparislerim" class="sekme-govde" data-kabuk="plasiyer">
+        <div class="flex items-center gap-4 mb-5 flex-wrap">
+          <h1 class="text-3xl font-black">
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg> Kendi Siparişlerim
+          </h1>
+          <span id="siparislerimOzet"
+                class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
+                       dark:bg-slate-800 dark:text-slate-300"></span>
+          <div class="ml-auto flex gap-3">
+            <button type="button" id="siparislerimYenile"
+                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+          </div>
+        </div>
+        <!-- PLASİYER KUYRUK ŞERİDİ (Faz 9) — çevrimdışı yazılan siparişler
+             sunucuya gidene kadar burada durur. Çizim: plasiyer-musteri.js →
+             kuyrukSeridiniCiz. -->
+        <div id="plasiyerKuyrukKab" class="mb-5"></div>
+        <div id="siparislerimListe" class="flex flex-col gap-4"></div>
+      </section>
       <section id="sekme-satis" class="sekme-govde" data-kabuk="plasiyer">
 
         <!-- ÜST ŞERİT: müşteri + katalog durumu + görünüm anahtarı -->
@@ -4721,6 +4782,9 @@
 <script src="src/renderer/plasiyer-siparis-motor.js"></script>
 <script src="src/renderer/modules/plasiyer-vitrin.js"></script>
 <script src="src/renderer/modules/plasiyer-musteri.js"></script>
+<!-- Faz 10 — saha "Kendi Siparişlerim" şablonu. Müşteri modülünün kuyruk
+     şeridini çağırdığı için ondan SONRA; sekmeAc'ı SARAR. -->
+<script src="src/renderer/modules/plasiyer-siparislerim.js"></script>
 
 <!-- Plasiyer Faz 3 — çevrimdışı eşitleme, saha haritası, ziyaret notları.
      SIRA ZORUNLU:
@@ -4732,6 +4796,10 @@
      tarafı için yüklenir. -->
 <script src="src/renderer/plasiyer-sync-motor.js"></script>
 <script src="src/renderer/harita-veri.js"></script>
+<!-- Faz 10 — 81 il GERÇEK sınır yolları (Natural Earth, kamu malı; üretilmiş dosya).
+     harita-veri'den SONRA, kokpitten ÖNCE: kokpit açılışta yollariYukle ile besler.
+     Dosya yoksa/yüklenmezse kokpit şematik kutulara düşer (tüm testler iki kipi de kilitler). -->
+<script src="src/renderer/harita-yollar.js"></script>
 <script src="src/renderer/modules/harita-kokpit.js"></script>
 <script src="src/renderer/modules/plasiyer-ziyaret.js"></script>
 

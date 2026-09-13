@@ -499,3 +499,148 @@ test('ETIKETLER: altı hızlı etiket ve okunabilir adları', (t) => {
   assert.equal(H.etiketAdi('bilinmeyen'), 'bilinmeyen', 'taninmayan anahtar oldugu gibi doner');
   assert.equal(H.etiketAdi(null), '');
 });
+
+/* =========================================================================
+ * 9. FAZ 10 — TR IL KODU NORMALIZASYONU + GERCEK IL SINIRLARI
+ *    Saha denetimi Gorsel 2-3: WooCommerce billing_state "TR34" biciminde
+ *    ISO kodu saklar; harita "TR34 eslenemedi" diyip Istanbul'u kaybediyordu.
+ * ====================================================================== */
+
+test('ilBul: TR il kodlari ("TR-35", "TR35", "tr 35", "035", "35") ve adlar AYNI ile cozulur', (t) => {
+  ['TR-35', 'TR35', 'tr35', 'tr 35', 'TR_35', '035', '35', 35, 'İzmir', 'IZMIR', 'izmir', ' TR-35 '].forEach((y) => {
+    const il = H.ilBul(y);
+    assert.ok(il, 'cozuldu: ' + String(y));
+    assert.equal(il.plaka, 35, 'yazim: ' + String(y));
+  });
+
+  assert.equal(H.ilBul('TR34').plaka, 34, 'Istanbul kodu');
+  assert.equal(H.ilBul('TR-06').plaka, 6, 'basi sifirli kod');
+  assert.equal(H.ilBul('TR-81').plaka, 81, 'son plaka');
+  assert.equal(H.ilBul('TR1').plaka, 1, 'tek haneli kod');
+});
+
+test('ilBul: gecersiz kodlar null doner (82+, 0, harf karisimi)', (t) => {
+  ['TR-82', 'TR99', '0', 'TR-00', 'TR-0', '100', 'TR-3A', 'TRX35', 'US-35'].forEach((y) => {
+    assert.equal(H.ilBul(y), null, 'girdi: ' + y);
+  });
+});
+
+test('notlariSuz: notun ili "TR35" kodu, suzgec "İzmir" adi — yine eslesir', (t) => {
+  const liste = [
+    { id: 1, il: 'TR35', durum: 'beklemede' },
+    { id: 2, il: 'İzmir', durum: 'beklemede' },
+    { id: 3, il: 'TR34', durum: 'beklemede' },
+    { id: 4, il: 'Ankara', durum: 'beklemede' }
+  ];
+
+  assert.deepEqual(H.notlariSuz(liste, { il: 'İzmir' }).map((n) => n.id), [1, 2], 'kod ve ad ayni il');
+  assert.deepEqual(H.notlariSuz(liste, { il: 'TR-35' }).map((n) => n.id), [1, 2], 'suzgec kodla da verilebilir');
+  assert.deepEqual(H.notlariSuz(liste, { il: 'istanbul' }).map((n) => n.id), [3], 'TR34 = Istanbul');
+  assert.deepEqual(H.notlariSuz(liste, { il: 'TR06' }).map((n) => n.id), [4]);
+});
+
+test('haritayiKur: "TR34" kodlu il yaniti Istanbul kutusuna oturur, "eslenemedi" olmaz', (t) => {
+  const sonuc = H.haritayiKur({ iller: { 'TR34': { bayiSayisi: 3, siparis: 5, ciro: 1500 }, 'TR-35': { bayiSayisi: 1 } } });
+  const ist = sonuc.iller.find((i) => i.plaka === 34);
+  const izm = sonuc.iller.find((i) => i.plaka === 35);
+
+  assert.equal(ist.bayiSayisi, 3, 'TR34 Istanbul olcumune yazildi');
+  assert.equal(ist.ciro, 1500);
+  assert.equal(izm.bayiSayisi, 1, 'TR-35 Izmir');
+  assert.equal(sonuc.tanimsiz.length, 0, 'taninmayan il YOK ("TR34 eslenemedi" bitti)');
+  assert.equal(sonuc.toplam.ciro, 1500, 'ciro il toplamina girdi');
+});
+
+test('yollariYukle: merkez ve sinir kutusu da beslenir (zoom gercek agirlik merkezine gider)', (t) => {
+  delete require.cache[require.resolve('../src/renderer/harita-veri.js')];
+  const T = require('../src/renderer/harita-veri.js');
+
+  const eskiX = T.ilBul(35).x;
+  const sayi = T.yollariYukle(
+    { 35: 'M100 240L110 250L90 250Z' },
+    { 35: { x: 100, y: 239.9 } },
+    { 35: { x: 60, y: 200, w: 80, h: 70 } }
+  );
+
+  assert.equal(sayi, 1);
+  assert.equal(T.ilBul(35).x, 100, 'merkez gercek agirlik merkezine tasindi');
+  assert.equal(T.ilBul(35).y, 239.9);
+  assert.deepEqual(T.ilBul(35).sinir, { x: 60, y: 200, w: 80, h: 70 }, 'sinir kutusu yazildi');
+  assert.notEqual(eskiX, 100, 'sematik konum farkliydi (test anlamli)');
+
+  /* Bozuk merkez/sinir yol yazimini engellemez, konumu da bozmaz. */
+  const oncekiAnk = { x: T.ilBul(6).x, y: T.ilBul(6).y };
+  T.yollariYukle({ 6: 'M1 1L2 2Z' }, { 6: { x: 'a', y: null } }, { 6: { w: NaN } });
+  assert.ok(T.ilBul(6).yol, 'yol yazildi');
+  assert.deepEqual({ x: T.ilBul(6).x, y: T.ilBul(6).y }, oncekiAnk, 'bozuk merkez konumu bozmadi');
+  assert.equal(T.ilBul(6).sinir, undefined, 'bozuk sinir yazilmadi');
+
+  delete require.cache[require.resolve('../src/renderer/harita-veri.js')];
+});
+
+test('harita-yollar.js: 81 ilin GERCEK sinir yolu (Natural Earth, kamu mali) eksiksiz ve tuval icinde', (t) => {
+  const Y = require('../src/renderer/harita-yollar.js');
+
+  assert.equal(Y.IL_SAYISI, 81);
+  assert.match(Y.KAYNAK, /Natural Earth/);
+  assert.deepEqual(Y.TUVAL, { w: 1000, h: 420 }, 'kokpit tuvaliyle ayni');
+
+  const plakalar = Object.keys(Y.YOLLAR).map(Number).sort((a, b) => a - b);
+  assert.deepEqual(plakalar, Array.from({ length: 81 }, (_, i) => i + 1), 'plaka 1-81 eksiksiz, tekrarsiz');
+
+  plakalar.forEach((p) => {
+    const d = Y.YOLLAR[p];
+    assert.match(d, /^M[\d.\s\-]+(L[\d.\s\-]+)+Z/, 'SVG yol sozdizimi: ' + p);
+
+    /* Her koordinat tuvalin icinde. */
+    const sayilar = d.replace(/[MLZ]/g, ' ').trim().split(/\s+/).map(Number);
+    assert.ok(sayilar.length >= 6 && sayilar.length % 2 === 0, 'cift sayida koordinat: ' + p);
+    for (let i = 0; i < sayilar.length; i += 2) {
+      assert.ok(sayilar[i] >= 0 && sayilar[i] <= 1000, 'x tuval icinde: ' + p);
+      assert.ok(sayilar[i + 1] >= 0 && sayilar[i + 1] <= 420, 'y tuval icinde: ' + p);
+    }
+
+    const m = Y.MERKEZLER[p];
+    const s = Y.SINIRLAR[p];
+    assert.ok(m && isFinite(m.x) && isFinite(m.y), 'merkez var: ' + p);
+    assert.ok(s && s.w > 0 && s.h > 0, 'sinir kutusu var: ' + p);
+    assert.ok(m.x >= s.x && m.x <= s.x + s.w && m.y >= s.y && m.y <= s.y + s.h, 'merkez kendi sinir kutusunun icinde: ' + p);
+    assert.ok(s.x >= 0 && s.y >= 0 && s.x + s.w <= 1000 && s.y + s.h <= 420, 'sinir kutusu tuval icinde: ' + p);
+  });
+});
+
+test('harita-yollar.js: Natural Earth il adlari kutukle CAPRAZ eslesir (plaka = ISO 3166-2)', (t) => {
+  const Y = require('../src/renderer/harita-yollar.js');
+
+  Object.keys(Y.ADLAR).forEach((p) => {
+    const il = H.ilBul(Y.ADLAR[p]);
+    assert.ok(il, 'NE adi kutukte cozulur: ' + Y.ADLAR[p]);
+    assert.equal(il.plaka, Number(p), 'NE adi ile plaka ayni ile isaret eder: ' + Y.ADLAR[p]);
+  });
+
+  /* Cografi tutarlilik: gercek merkezler de yon iliskilerini korur. */
+  assert.ok(Y.MERKEZLER[35].x < Y.MERKEZLER[65].x, 'Izmir Vanin batisinda');
+  assert.ok(Y.MERKEZLER[57].y < Y.MERKEZLER[7].y, 'Sinop Antalyanin kuzeyinde');
+  assert.ok(Y.MERKEZLER[22].x < Y.MERKEZLER[6].x && Y.MERKEZLER[6].x < Y.MERKEZLER[30].x, 'Edirne < Ankara < Hakkari');
+});
+
+test('harita-yollar.js: kutuge tam beslenir — 81 il <path> kipine gecer, tanima/zoom verisi tutarli', (t) => {
+  delete require.cache[require.resolve('../src/renderer/harita-veri.js')];
+  const T = require('../src/renderer/harita-veri.js');
+  const Y = require('../src/renderer/harita-yollar.js');
+
+  assert.equal(T.yolluIlSayisi(), 0, 'beslenmeden once sematik');
+  assert.equal(T.yollariYukle(Y.YOLLAR, Y.MERKEZLER, Y.SINIRLAR), 81, '81 ile yol yazildi');
+  assert.equal(T.yolluIlSayisi(), 81);
+
+  T.ILLER.forEach((il) => {
+    assert.ok(il.yol && il.sinir, 'yol + sinir: ' + il.ad);
+    assert.equal(il.x, Y.MERKEZLER[il.plaka].x, 'merkez NE agirlik merkezi: ' + il.ad);
+  });
+
+  /* Izmir'e tiklaninca kokpit bu sinir kutusuyla yaklasir. */
+  const izmir = T.ilBul('TR-35');
+  assert.ok(izmir.sinir.w > 20 && izmir.sinir.h > 20, 'Izmir sinir kutusu anlamli buyuklukte');
+
+  delete require.cache[require.resolve('../src/renderer/harita-veri.js')];
+});

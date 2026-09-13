@@ -504,41 +504,106 @@
         '<div class="text-sm text-slate-500 dark:text-slate-400 mt-1">' + kacis(p.ad) + (p.bolge ? ' — ' + kacis(p.bolge) : '') + '</div></div>' +
         '<button type="button" id="plasiyerFormKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
       '</div>' +
-      '<div class="mt-5 text-slate-600 dark:text-slate-300">Bayiler yükleniyor…</div>';
+      '<div id="pfBayiYukleniyor" class="mt-5 text-slate-600 dark:text-slate-300">Bayiler yükleniyor…</div>';
 
     perde.hidden = false;
     el('plasiyerFormKapat').addEventListener('click', formuKapat);
 
-    /* Bayi listesi B2B üye listesinden gelir (mevcut uç). */
-    var cevap = await b2b('/dealers', { sorgu: { per_page: 200 } });
+    /*
+     * BAYİ LİSTESİ — /wc-b2b/v1/dealers (b2b_get_dealer_meta alanları:
+     * company_name, contact_name, first_name/last_name, city, district,
+     * assigned_plasiyer_id). Görsel 1'deki "#8, #7" hatası: eski kod
+     * `unvan/company/name` arıyordu, yanıt `company_name` taşıyordu → her
+     * satır ham kimliğe düşüyordu. Sayfalı toplu getirici (renderer.js
+     * tumSayfalariGetir) varsa kullanılır — 100'den fazla bayi kaybolmasın.
+     */
+    var cevap;
 
-    var bayiler = (cevap && cevap.ok && cevap.veri && (cevap.veri.dealers || cevap.veri.users || cevap.veri)) || [];
+    try {
+      cevap = ('function' === typeof window.tumSayfalariGetir)
+        ? await window.tumSayfalariGetir('b2b', 'dealers', { status: 'all' }, { sureAsimi: 30000 })
+        : await b2b('/dealers', { sorgu: { per_page: 200 } });
+    } catch (e) {
+      cevap = { ok: false, hata: (e && e.message) || 'Bayi listesi alınamadı.' };
+    }
 
-    if (!Array.isArray(bayiler) || !bayiler.length) {
-      form.insertAdjacentHTML('beforeend',
-        '<p class="mt-4 text-amber-700 dark:text-amber-400 font-semibold text-sm">' +
-        'Bayi listesi alınamadı. Atamayı WordPress kullanıcı profilinden de yapabilirsiniz ' +
-        '(Kullanıcılar ▸ Profil ▸ BYOM Plasiyer).</p>');
+    var yukleniyor = el('pfBayiYukleniyor');
+    var ham = cevap && cevap.ok ? cevap.veri : null;
+    var bayiler = Array.isArray(ham) ? ham : ((ham && (ham.dealers || ham.users)) || []);
+
+    if (!cevap || !cevap.ok || !Array.isArray(bayiler)) {
+      if (yukleniyor) {
+        yukleniyor.className = 'mt-4 text-amber-700 dark:text-amber-400 font-semibold text-sm';
+        yukleniyor.textContent = 'Bayi listesi alınamadı' + ((cevap && cevap.hata) ? ': ' + cevap.hata : '.') +
+          ' Atamayı WordPress kullanıcı profilinden de yapabilirsiniz (Kullanıcılar ▸ Profil ▸ BYOM Plasiyer).';
+      }
       return;
     }
 
     var satirlar = bayiler.map(function (b) {
-      var id = Number(b.id || b.ID || 0);
-      var ad = b.unvan || b.company || b.name || b.display_name || ('#' + id);
-      var bagliMi = Number(b.plasiyerId || b.assigned_plasiyer_id || 0) === Number(plasiyerId);
+      var k = bayiKunyesi(b);
+      var bagliMi = Number(b.assigned_plasiyer_id || b.plasiyerId || (b.byom && b.byom.plasiyerId) || 0) === Number(plasiyerId);
+      var baskasinin = !bagliMi && Number(b.assigned_plasiyer_id || b.plasiyerId || 0) > 0;
 
-      return '<label class="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-700">' +
-        '<input type="checkbox" class="bayi-sec w-5 h-5" data-id="' + id + '"' + (bagliMi ? ' checked' : '') + ' />' +
-        '<span class="font-semibold">' + kacis(ad) + '</span>' +
+      return '<label class="bayi-satir flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-700" data-arama="' + kacis(k.arama) + '">' +
+        '<input type="checkbox" class="bayi-sec w-5 h-5 shrink-0" data-id="' + k.id + '"' + (bagliMi ? ' checked' : '') + ' />' +
+        '<span class="min-w-0">' +
+          '<span class="block font-semibold truncate">' + kacis(k.baslik) + '</span>' +
+          (k.altSatir ? '<span class="block text-xs text-slate-500 dark:text-slate-400 truncate">' + kacis(k.altSatir) + '</span>' : '') +
+        '</span>' +
+        (baskasinin ? '<span class="ml-auto shrink-0 text-xs font-bold text-amber-700 dark:text-amber-400">başka plasiyerde</span>' : '') +
       '</label>';
     }).join('');
 
-    form.querySelector('div:last-child').outerHTML =
-      '<div class="mt-5 max-h-72 overflow-y-auto">' + satirlar + '</div>' +
-      '<p id="pfHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>' +
-      '<button type="button" id="pfAta" class="mt-5 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">Atamayı Kaydet</button>';
+    if (yukleniyor) {
+      yukleniyor.outerHTML =
+        '<input id="pfBayiAra" type="search" autocomplete="off" placeholder="Firma, yetkili, il ya da e-posta ara…" ' +
+               'class="mt-5 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold" />' +
+        '<div id="pfBayiListe" class="mt-3 max-h-72 overflow-y-auto">' +
+          (satirlar || '<p class="py-6 text-center text-slate-500">Kayıtlı bayi yok.</p>') +
+        '</div>' +
+        '<p id="pfHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>' +
+        '<button type="button" id="pfAta" class="mt-5 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">Atamayı Kaydet</button>';
+    }
 
-    el('pfAta').addEventListener('click', function () { atamayiKaydet(plasiyerId); });
+    var ara = el('pfBayiAra');
+
+    if (ara) {
+      ara.addEventListener('input', function () {
+        var q = ara.value.toLocaleLowerCase('tr');
+
+        document.querySelectorAll('#pfBayiListe .bayi-satir').forEach(function (satir) {
+          satir.hidden = !!q && String(satir.dataset.arama || '').indexOf(q) === -1;
+        });
+      });
+    }
+
+    var ata = el('pfAta');
+    if (ata) ata.addEventListener('click', function () { atamayiKaydet(plasiyerId); });
+  }
+
+  /**
+   * Bayi yanıtından okunur künye: "Firma Ünvanı (Yetkili Adı) — İl/İlçe".
+   *
+   * Alan adları iki kaynaktan gelebilir: /dealers (company_name, contact_name,
+   * city, district) ve plasiyer yükü (unvan, ad, il, ilce). İkisi de okunur.
+   */
+  function bayiKunyesi(b) {
+    var id = Number(b.id || b.ID || 0);
+    var firma = String(b.company_name || b.unvan || b.company || '').trim();
+    var yetkili = String(b.contact_name || b.ad || [b.first_name, b.last_name].filter(Boolean).join(' ') || b.name || b.display_name || b.username || '').trim();
+    var yer = [b.il || b.city, b.ilce || b.district].filter(Boolean).join('/');
+    var baslik = firma || yetkili || ('Bayi #' + id);
+
+    if (firma && yetkili && firma !== yetkili) baslik += ' (' + yetkili + ')';
+    if (yer) baslik += ' — ' + yer;
+
+    return {
+      id: id,
+      baslik: baslik,
+      altSatir: [b.email || b.eposta, b.tax_number || b.vergiNo].filter(Boolean).join(' · '),
+      arama: [firma, yetkili, yer, b.email || b.eposta, b.tax_number || b.vergiNo].filter(Boolean).join(' ').toLocaleLowerCase('tr')
+    };
   }
 
   async function atamayiKaydet(plasiyerId) {
@@ -669,6 +734,7 @@
   }
 
   window.PlasiyerYonetimi = {
+    bayiKunyesi: bayiKunyesi,
     listeyiGetir: listeyiGetir,
     tabloyuCiz: tabloyuCiz,
     formuAc: formuAc,

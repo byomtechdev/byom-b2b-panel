@@ -1231,6 +1231,98 @@ ipcMain.handle('plasiyer:logout', async function () {
   return { ok: true };
 });
 
+/**
+ * Plasiyerin KENDİ siparişleri — SUNUCUDA daraltılmış uç (Faz 10).
+ *
+ * Faz 6-9'da "Kendi Siparişlerim" yönetici listesinin panelde süzülmesiydi
+ * (görünüm süzgeci, yetki sınırı değil — §5.29 açık kalemi). Artık
+ * `GET /plasiyer/siparislerim` jetonla yalnızca `_b2b_plasiyer_id` bu
+ * plasiyer olan siparişleri döndürür; bütün şirket listesi cihaza HİÇ inmez.
+ */
+ipcMain.handle('plasiyer:get-orders', async function (olay, veri) {
+  veri = veri || {};
+
+  if (!plasiyerOturumuGecerliMi()) {
+    plasiyerOturumu = null;
+    return { ok: false, durum: 401, hata: 'Oturum süresi doldu. Tekrar PIN ile giriş yapın.' };
+  }
+
+  const cevap = await apiIstek({
+    alan: 'b2b',
+    yol: '/plasiyer/siparislerim',
+    metod: 'GET',
+    sorgu: {
+      plasiyerId: plasiyerOturumu.id,     // arayüzden DEĞİL, oturumdan
+      token: plasiyerOturumu.token,
+      per_page: Number(veri.adet || 50) || 50,
+      page: Number(veri.sayfa || 1) || 1
+    }
+  });
+
+  if (!cevap || !cevap.ok || !cevap.veri) {
+    if (cevap && 401 === cevap.durum) plasiyerOturumu = null;
+
+    return { ok: false, durum: cevap ? cevap.durum : 0, hata: (cevap && cevap.hata) || 'Siparişler alınamadı.' };
+  }
+
+  return { ok: true, veri: cevap.veri };
+});
+
+/**
+ * TEK müşteriyi ANINDA eşitler (Faz 10) — çevrimiçiyken eklenen müşteri
+ * sıradaki eşitleme turunu beklemez.
+ *
+ * Yerel kayıt sync motorunun beklediği biçimde işaretlenir (`senkron`,
+ * `gercekId`): sıradaki tur köprüyü kurar (bekleyen siparişleri gerçek
+ * kimliğe bağlar) ve temizlik kaydı düşürür. Yani bu yol, olağan eşitlemenin
+ * ÖNE ALINMIŞ hâlidir; ikinci bir mekanizma değil.
+ */
+ipcMain.handle('musteri:esitle-tek', async function (olay, veri) {
+  const id = String((veri && veri.id) || '');
+
+  if (!id) return { ok: false, hata: 'Müşteri kimliği yok.' };
+
+  if (!plasiyerOturumuGecerliMi()) {
+    return { ok: false, durum: 401, hata: 'Oturum kapalı. PIN ile giriş yapın.' };
+  }
+
+  const a = ayarlariOku();
+  const liste = Array.isArray(a.plasiyerYerelMusteriler) ? a.plasiyerYerelMusteriler : [];
+  const m = liste.find(function (x) { return x && String(x.id) === id; });
+
+  if (!m) return { ok: false, hata: 'Yerel müşteri kaydı bulunamadı.' };
+
+  if (m.senkron && Number(m.gercekId)) {
+    return { ok: true, user_id: Number(m.gercekId), tekrar: true };
+  }
+
+  const cevap = await plasiyerIstek('/plasiyer/musteri-esitle', {
+    plasiyerId: plasiyerOturumu.id,
+    token: plasiyerOturumu.token,
+    gecici: m
+  });
+
+  const yeniId = Number((cevap && cevap.veri && cevap.veri.user_id) || 0);
+
+  if (!cevap || !cevap.ok || !yeniId) {
+    return { ok: false, durum: cevap ? cevap.durum : 0, hata: (cevap && cevap.hata) || 'Sunucu yanıt vermedi.' };
+  }
+
+  m.senkron = true;
+  m.gercekId = yeniId;
+  m.durum = syncMotor.GONDERILDI;
+  m.hata = '';
+
+  ayarlariYaz({ plasiyerYerelMusteriler: liste });
+
+  return {
+    ok: true,
+    user_id: yeniId,
+    tekrar: !!cevap.veri.tekrar,
+    eslesme: String(cevap.veri.eslesme || '')
+  };
+});
+
 /* ==========================================================================
  *  3.7) ÇEVRİMDIŞI KATALOG VE GÖRSEL ÖNBELLEĞİ (Plasiyer Faz 2)
  *  ---------------------------------------------------------------------------

@@ -86,8 +86,10 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/modules/plasiyer-musteri.js`** | **Müşteri ve sipariş akışı** (Faz 2): seçim/arama, cari risk uyarısı, çevrimdışı müşteri, son siparişi kopyala, üç ödeme yöntemi + notlar | — |
 | **`src/renderer/plasiyer-sync-motor.js`** | **DOM'suz eşitleme motoru** (Faz 3): outbox dağıtıcı, kimlik köprüsü, hata toleransı. Ana süreç de `require` eder (→ §4.7) | — |
 | **`src/renderer/harita-veri.js`** | **DOM'suz 81 il kütüğü + ziyaret notu mantığı** (Faz 3): plaka/ad/bölge/konum, durum geçişleri, filtreler, yoğunluk. **Gerçek sınır yolları YOK** — gerekçe dosya başlığında (→ §4.8) | — |
-| **`src/renderer/modules/harita-kokpit.js`** | **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. `sekmeAc`'ı SARAR | — |
+| **`src/renderer/harita-yollar.js`** | **81 ilin GERÇEK sınır yolları** (Faz 10, üretilmiş dosya, 58 KB): Natural Earth 1:10m Admin-1 (kamu malı), ISO 3166-2 = plaka, `YOLLAR/MERKEZLER/SINIRLAR/ADLAR`, 1000×420 tuval. **Elle düzenlenmez**; `scratchpad/geo-donustur.js` yeniden üretir. Kokpit açılışta `yollariBesle()` ile `HaritaVeri`ye besler (→ §4.14) | — |
+| **`src/renderer/modules/harita-kokpit.js`** | **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. `sekmeAc`'ı SARAR. **Faz 10:** `yollariBesle()` — yollar yüklüyse `<path>`, zoom sınır kutusuna, komşular soluk gerçek şekil | — |
 | **`src/renderer/modules/plasiyer-ziyaret.js`** | **Saha ziyaret notu** (Faz 3): plasiyerin not girişi (İSTEĞE BAĞLI) + patron yanıtlarının düştüğü bildirim zili. `PlasiyerMusteri.seridiCiz`'i SARAR | — |
+| **`src/renderer/modules/plasiyer-siparislerim.js`** | **Kendi Siparişlerim — bağımsız saha şablonu** (Faz 10): `plasiyer:get-orders` ile **sunucudan daraltılmış** liste (`GET /plasiyer/siparislerim`), kartta TEK eylem `[📄 Sipariş / Fiş Detayı]`, kuyruk şeridi (`PlasiyerMusteri.kuyrukSeridiniCiz`). Yönetici sipariş isteği **hiç atılmaz**. `sekmeAc`'ı SARAR (→ §4.14) | — |
 | **`src/renderer/modules/plasiyer-otosync.js`** | **Otomatik eşitleme tetikleyicisi** (Faz 4): `online` olayı + 60 sn hafif yoklama + `visibilitychange`. Kuyruk boşsa **ağa çıkmaz**, hata sessizdir (→ §4.7) | — |
 | `lisans/lisans.html` + `lisans/lisans.js` | Lisans/aktivasyon penceresi — ana pencereden bağımsız | — |
 | `vendor/tailwind.js` | Yerel Tailwind kopyası (internetsiz sunum). Bulunamazsa CDN, o da olmazsa yedek CSS | — |
@@ -133,9 +135,11 @@ modules/plasiyer-yonetimi.js   ← sekmeAc'ı SARAR      (4226)
 src/renderer/plasiyer-siparis-motor.js  ← DOM'suz; vitrinden ÖNCE  (4233)
 modules/plasiyer-vitrin.js  ← sekmeAc'ı SARAR         (4234)
 modules/plasiyer-musteri.js ← vitrinin sepetini okur → ondan SONRA (4235)
+modules/plasiyer-siparislerim.js ← Faz 10: musteri'nin kuyruk şeridini çağırır → ondan SONRA
 ─── Plasiyer Faz 3 ────────────────────────────────────────────
 src/renderer/plasiyer-sync-motor.js  ← DOM'suz        (4245)
 src/renderer/harita-veri.js          ← DOM'suz; kokpitten ÖNCE (4246)
+src/renderer/harita-yollar.js        ← Faz 10: DOM'suz üretilmiş geometri; harita-veri'den SONRA, kokpitten ÖNCE
 modules/harita-kokpit.js    ← sekmeAc'ı SARAR         (4247)
 modules/plasiyer-ziyaret.js ← PlasiyerMusteri.seridiCiz'i SARAR → musteri'den SONRA (4248)
 ─── Plasiyer Faz 4 ────────────────────────────────────────────
@@ -178,11 +182,12 @@ listeye **elle** eklemen gerekir.
 | `uygulama:` | `main.js` | `uygulama:bilgi` (gerçek paket sürümü) |
 | `byom:` | `src/main/byom.js` | `byom:hwid`, `byom:durum`, `byom:aktive`, `byom:yeniden-dogrula`, `byom:lisans-sil`, `byom:hwid-yenile`, `byom:api-url:oku/yaz`, `byom:baglanti-testi`, `byom:uygulamayi-ac`, `byom:cikis`, `byom:panoya-kopyala`, `byom:dis-baglanti`, `byom:destek:liste/detay/olustur/yanit/secenekler` |
 | `byom:telemetri` | `src/main/byom-telemetri.js` | **Tek yönlü** (`ipcMain.on` + `ipcRenderer.send`) — cevap beklenmez |
-| `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout` |
+| `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout`, **`plasiyer:get-orders`** (Faz 10: `GET /plasiyer/siparislerim`, jeton bellekten — kendi siparişleri **sunucuda** daraltılır) |
 | `katalog:` | `main.js` § 3.7 | `katalog:guncelle` (sunucudan eşitle + görsel kuyruğu), `katalog:ara` (**AĞA ÇIKMAZ**, yerel indeks), `katalog:kategoriler`, `katalog:urun`, `katalog:barkod`, `katalog:durum` |
 | `gorsel:` | `main.js` § 3.7 | `gorsel:onbellege-al` (indirmeyi tetikle), `gorsel:yol` (yerel `file://` ya da uzak adres — **base64 DÖNMEZ**) |
 | `sync:` | `main.js` § 3.8 | `sync:esitle` (kuyruğu boşalt — **sıra: müşteri → köprü → sipariş → not**), `sync:durum` (bekleyen/hatalı sayıları) |
 | `ziyaret:` | `main.js` § 3.8 | `ziyaret:kuyruga` (notu **önce diske** yaz) |
+| `siparis:` / `musteri:` | `main.js` § 3.8 | `siparis:kuyruga`, `musteri:kuyruga` (Faz 9: kuyruğa ekleme ana süreçte, oku-değiştir-yaz yarışı yok), **`musteri:esitle-tek`** (Faz 10: çevrimiçiyken tek müşteriyi hemen `POST /plasiyer/musteri-esitle`; başarıda `senkron/gercekId` işaretlenir, kayıt bir sonraki turda köprülenir/temizlenir) |
 
 **Kural:** veri isteyen kanal `handle`/`invoke` (Promise), ateşle-ve-unut olan
 kanal `on`/`send`. Telemetri bilinçli olarak `on`/`send`'dir: arayüz beklemez.
@@ -686,7 +691,8 @@ döndürmediği için panel bu bilgiyi hiçbir yerden öğrenemiyordu).
 > DEĞİLDİR"). Çözülen sorun: plasiyer **ekranında** patronun siparişlerinin
 > görünmesi. Sızıntıyı tamamen kapatmak için sunucuda plasiyere daraltılmış bir
 > uç gerekir (`/plasiyer/siparislerim`) — **ayrı iş**, `../BYOM-REGISTRY.md
-> §5.29`'da açık kalem olarak kayıtlı.
+> §5.29`'da açık kalem olarak kayıtlı. **→ FAZ 10'DA KAPANDI:** `GET /plasiyer/siparislerim`
+> + bağımsız `#sekme-siparislerim` şablonu; yönetici sipariş listesi sahada hiç istenmez (§4.14).
 
 ---
 
@@ -1002,6 +1008,81 @@ ve doğrulama, renderer-plasiyer'den ÖNCE).
 
 ---
 
+## 4.14 Faz 10 — Saha denetimi sonrası kritik düzeltmeler
+
+**Şartname:** "Saha Denetimi Sonrası Kritik Düzeltmeler — Portföy Sızıntısı,
+Sipariş İzolasyonu, Harita ve Arayüz Düzenlemeleri" (`../BYOM-REGISTRY.md §5.33`).
+Eklenti 2.16.1 ile birlikte. Canlı `npm start` ortamından 7 ekran görüntüsü.
+
+### 4.14.1 🔴 KÖK SEBEP — `window.durum` hiç yoktu (OKUMADAN DEĞİŞTİRME)
+
+`renderer.js` en tepede `const durum = {…}` yazar. Bu bir **betik-düzeyi
+sözcüksel bağ**dır: klasik `<script>` içinde `const` **`window` özelliği
+OLUŞTURMAZ** (`var` ve `function` oluşturur). Faz 6-9'un bütün modülleri
+(`plasiyer-musteri.js`, `plasiyer-vitrin.js`, `plasiyer-otosync.js`,
+`plasiyer-siparislerim.js`…) `window.durum.oturum` üzerinden `plasiyerMi()`
+soruyordu → üretimde `window.durum === undefined` → **her modül "plasiyer
+değil" diyordu**:
+
+| Belirti (görsel) | Zincir |
+|---|---|
+| Müşterilerim'de sitenin bütün perakende müşterileri | `plasiyerMi()` false → yönetici yolu → `wc/v3/customers` |
+| İskonto tavanı %0 | oturum okunamadı → tavan yok → 0 |
+| Oto-eşitleme hiç çalışmadı | "yalnızca plasiyer oturumunda" kapısı hiç açılmadı |
+| Ziyaret Notu düğmesi yok | aynı kapı |
+
+**Testler neden görmedi:** her DOM harness'ı `w.durum = {…}`'u **kendisi
+kuruyor** (renderer.js jsdom'da yüklenmiyor). Yani test dünyasında `window.durum`
+hep vardı. Düzeltme tek satır (`window.durum = durum;`, Bölüm 4'ten hemen önce,
+uzun gerekçe yorumu ile) + `kabuk-yonlendirici.dom.test.js` kaynak denetimi
+(`^window\.durum = durum;`). **Bu satırı kaldırırsan dört fazın rol izolasyonu
+sessizce çöker ve hiçbir test kırılmaz** — o yüzden kaynak denetimi var.
+
+### 4.14.2 Kendi Siparişlerim — bağımsız şablon, sunucu ucu
+
+| Parça | Yer |
+|---|---|
+| Sunucu ucu | `GET /plasiyer/siparislerim` (jeton; `_b2b_plasiyer_id` daraltması) |
+| IPC | `main.js → plasiyer:get-orders` (oturum kimliği + jeton bellekten) |
+| Modül | `src/renderer/modules/plasiyer-siparislerim.js` (`sekmeAc('siparislerim')` sarar) |
+| Gövde | `#sekme-siparislerim` (`data-kabuk="plasiyer"`), `#siparislerimListe`, `#siparislerimOzet`, `#plasiyerKuyrukKab` (buraya taşındı) |
+
+- **Yönetici sipariş listesi isteği HİÇ atılmaz** — sızıntı cihaza inmeden
+  kapanır; §4.10'daki "görünüm süzgeci" uyarısı **kapandı**. Faz 6'nın
+  `siparisleriSuz()` süzgeci yönetici gövdesinde durur (zararsız).
+- **`#sekme-siparisler` artık YALNIZCA yönetici** (`data-kabuk="admin"`);
+  saha kabuğunda belgede yok. `siparisleriCiz`/`siparisleriYukle` kabı yoksa
+  sessizce döner (yönetici zamanlayıcısı plasiyerde TypeError üretmez).
+- Kartta **tek eylem** `[📄 Sipariş / Fiş Detayı]` (`.siparis-detay-ac`,
+  `aria-expanded`); revize/iptal/fiş/durum/bayi düğmeleri **yok** — test
+  `data-eylem` yokluğunu kilitler.
+- Sunucu hatasında liste kapıya düşmez: hata + "kuyrukta durur" açıklaması.
+- Yönetici tarafında kaynak süzgeci `#kaynakSuzgecler`:
+  `[Tümü] [🌐 Web Sitesi] [💼 Saha / Plasiyer]` (`sahaSiparisiMi`).
+
+### 4.14.3 Diğer düzeltmeler
+
+| Ne | Not |
+|---|---|
+| **Portföy** | `musterileriGetir`: rol `admin` değilse yönetici yoluna gidilmez; rol yoksa `{ok:false}`. Sunucu tarafı da yalnızca onaylı bayi rolleri (→ `../CLAUDE.md` §10 Faz 10) |
+| **Üye Onayları alt sekmeleri** | `#uyeAltSekmeler .uye-alt[data-alt="bayi\|perakende"]`, `uyeAltSekmeAc`, `perakendeMusterileriYukle` (`wc/v3/customers?role=customer`), kartta `[🏢 BAYİYE DÖNÜŞTÜR]` (→ `/dealers/{id}/approve`). **Sınıf `uye-alt`, `plasiyer-alt` DEĞİL:** `altSekmeAc` `.plasiyer-alt`ı yönetir; aynı sınıf olsa her harita tıklaması üye sekmesini bozardı (test) |
+| **Menü sırası** | `PLASIYER_SIRA`/`PLASIYER_ETIKET`/flex `order` **kaldırıldı**; DOM sırası tek doğru (`satis → siparislerim → musterilerim`), `#cikisYapDugme` `<nav>`'ın son çocuğu |
+| **Hızlı adet** | Kartta `[−] [input.hizli-adet-input type=number min=1 step=koli] [+] [Sepete Ekle]`. Yazılan adet `sepeteEkle(id, hizliAdet(id))` → motor koli katına **yukarı** tamamlar (25 → 48). −/+ sepete dokunmaz; Enter ekler; eklendikten sonra kutu birime döner |
+| **Anında eşitleme** | `anindaEsitle()`: kayıt **önce diske** (`musteri:kuyruga`), sonra `navigator.onLine && plasiyerMi()` ise `musteri:esitle-tek` → `POST /plasiyer/musteri-esitle`. `user_id` gelince geçici kayıt `{id:user_id, gecici:false, senkron:true, gercekId}` olur, seçim korunur, rozet kalkar. Başarısızsa kuyrukta bekler; sync motoru sonraki turda köprüler/temizler |
+| **Bayi atama modalı** | `bayiKunyesi(b)` → `Firma (Yetkili) — İl/İlçe` + alt satır; `#pfBayiAra` arama, `.bayi-satir[data-arama]`, mevcut atama `assigned_plasiyer_id` ile işaretli, başkasının bayisi söylenir. Liste `tumSayfalariGetir('b2b','dealers',{status:'all'})`; hata sebebiyle yazılır, "yükleniyor" asılı kalmaz |
+| **Harita** | `ilBul` TR kodu (`TR-35`/`TR35`/`tr 35`/`035` → 35); `notlariSuz` plaka üzerinden; `yollariYukle(harita, merkezler, sinirlar)` merkez + sınır kutusu yazar; **`src/renderer/harita-yollar.js`** (Natural Earth 1:10m, kamu malı; 81 il, 4317 nokta) kokpit açılışında `yollariBesle()` ile beslenir → `<path>`, zoom sınır kutusuna, komşular soluk gerçek şekil. Dosya yoksa şematik kutu. §4.8'deki "gerçek sınır yok" notu **tarihsel**: kapı aynı, artık besleniyor |
+
+### Bozmaman gereken sözler (Faz 10)
+- `window.durum = durum;` renderer.js'te durur (kaynak denetimi).
+- Plasiyer siparişleri **yalnızca** `plasiyer:get-orders` ile gelir; saha
+  kabuğunda `api:istek`/`woo:istek` sipariş listesi çağrısı yok (test).
+- `.uye-alt` ile `.plasiyer-alt` ayrı sınıflar; CSS iki sınıfı birden kapsar.
+- Menü sırası DOM'dur; `btn.style.order` yazılmaz.
+- `harita-yollar.js` **elle düzenlenmez**; `scratchpad/geo-donustur.js` ile
+  Natural Earth'ten yeniden üretilir.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1009,10 +1090,10 @@ ve doğrulama, renderer-plasiyer'den ÖNCE).
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**525 test**: panel 253 + kök 272).
+İkisini birden `../scripts/check-all.js` koşar (**548 test**: panel 261 + kök 287).
 
 ```bash
-# Bu submodule'un kendi birim testleri (253 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (261 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
@@ -1020,7 +1101,8 @@ node --test test/plasiyer-siparis.test.js   # 47 — koli matematigi, sepet, son
                                             #      kendiSiparisleri ("Kendi Siparislerim" suzgeci)
 node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprusu, hata toleransi,
                                             #      esitlemeGerekliMi (Faz 4 oto-esitleme karari)
-node --test test/harita-notlar.test.js      # 35 — 81 il kutugu, durum gecisleri, filtreler
+node --test test/harita-notlar.test.js      # 43 — 81 il kutugu, TR il kodlari, durum gecisleri, filtreler,
+                                            #      harita-yollar.js (81 gercek sinir, Natural Earth)
 node --test test/cihaz-kilidi.test.js       # 52 — Master PIN hash/kilit, cihaz tahsisi, PIN SIFIRLAMA, KAYNAK denetimi
 node --test test/rest-adres.test.js         # 13 — restYoluKur, tabanAdresiTemizle, sorgu korunmasi
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
@@ -1051,6 +1133,7 @@ node --test scripts/tests/plasiyer-kapi.dom.test.js   # 79 — çift kapı, Mast
 node --test scripts/tests/plasiyer-menu.dom.test.js   # 15 — menü hiyerarşisi, alt sekmeler, Saha Notlarım
 node --test scripts/tests/yonetici-pin.dom.test.js    # 17 — PIN değiştirme kartı + giriş kartı düzeni
 node --test scripts/tests/harita-kokpit.dom.test.js   # 15 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran
+node --test scripts/tests/saha-denetim.dom.test.js    # 15 — Faz 10: hızlı adet, Kendi Siparişlerim, anında eşitleme, bayi künyesi
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
 node --test scripts/tests/registry-parity.test.js     # 3 registry kopyası eşit mi
@@ -1061,7 +1144,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (525 test)
+# Bitirirken: üç katmanın tamamı (548 test)
 node scripts/check-all.js
 ```
 
@@ -1139,7 +1222,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 158 php / 81 js / 525 test
+cd .. && node scripts/check-all.js     # 0 hata / 158 php / 84 js / 548 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

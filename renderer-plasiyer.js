@@ -50,7 +50,7 @@
    * değiştirmek değil. `satis` sekmesi aynı veriyi salt-okunur gösterir ve
    * sipariş yazar.
    */
-  var PLASIYER_SEKMELERI = ['satis', 'siparisler', 'musterilerim'];
+  var PLASIYER_SEKMELERI = ['satis', 'siparislerim', 'musterilerim'];
 
   /** Kısıtlama uygulanan roller. Bunların dışı (oturum yok) kısıtlanmaz. */
   var ROLLER = ['admin', 'plasiyer'];
@@ -228,20 +228,17 @@
     return Y.kabukGec(Y.rolKabugu(rol));
   }
 
-  /**
-   * Plasiyer oturumunda sol menüdeki sıra.
-   *
-   * DOM sırası yöneticiye göre dizilmiş (Siparişler en üstte). Plasiyerin ilk
-   * işi SATIŞ YAZMAK olduğu için onun dünyasında Katalog başa alınır. Flex
-   * `order` kullanılıyor: DOM'u taşımak yöneticinin sırasını bozardı.
+  /*
+   * MENÜ SIRASI DOM SIRASIDIR (Faz 10). Faz 6-9'daki flex `order` takası
+   * (satis 1 · siparisler 2 · notlarim 3) KALDIRILDI: `#cikisYapDugme` order
+   * almadığı için 0 kalıyor ve order 1-3 alan saha sekmelerinin ÜSTÜNE
+   * çıkıyordu — Görsel 4'teki "sekmeler Çıkış'ın altına düştü" hatası. Kabuk
+   * sökme (Faz 9) yönetici düğmelerini belgeden kaldırdığı için saha
+   * düğmeleri artık index.html'de kendi sırasıyla arka arkaya durur:
+   * Katalog & Satış → Kendi Siparişlerim → Müşterilerim; Çıkış `mt-auto` ile
+   * en altta. Etiket takası da gereksizleşti: plasiyerin kendi
+   * `siparislerim` düğmesi var, yöneticinin `siparisler` düğmesine dokunulmaz.
    */
-  var PLASIYER_SIRA = { satis: '1', siparisler: '2', musterilerim: '3' };
-
-  /** Plasiyer oturumunda değişen menü etiketleri (çıkışta geri alınır). */
-  var PLASIYER_ETIKET = { siparisler: 'Kendi Siparişlerim' };
-
-  /** Özgün etiketler — ilk kısıtlamada bir kez saklanır. */
-  var ozgunEtiketler = null;
 
   var kapi = null;
   var pinPerde = null;
@@ -376,15 +373,6 @@
     var rol = (durum.oturum && durum.oturum.rol) || '';
     var kisitla = ROLLER.indexOf(rol) !== -1;
 
-    /* Etiketleri bir kez sakla: çıkışta geri yazmak için. */
-    if (!ozgunEtiketler) {
-      ozgunEtiketler = {};
-      document.querySelectorAll('.menu-btn').forEach(function (btn) {
-        var etiket = btn.querySelector('span.align-middle');
-        if (btn.dataset.sekme && etiket) ozgunEtiketler[btn.dataset.sekme] = etiket.textContent;
-      });
-    }
-
     /*
      * 1) KABUK — asıl ayrım (Faz 9). Karşı rolün düğmeleri, gövdeleri ve
      *    modalları belgeden SÖKÜLÜR; rol yoksa (kapı) iki taraf da sökülür,
@@ -417,16 +405,9 @@
       if (kapat) btn.setAttribute('aria-hidden', 'true');
       else btn.removeAttribute('aria-hidden');
 
-      /* Sıra ve etiket yalnızca plasiyer dünyasında değişir. */
-      var etiket = btn.querySelector('span.align-middle');
-
-      if ('plasiyer' === rol) {
-        btn.style.order = PLASIYER_SIRA[ad] || '';
-        if (etiket && PLASIYER_ETIKET[ad]) etiket.textContent = PLASIYER_ETIKET[ad];
-      } else {
-        btn.style.order = '';
-        if (etiket && ozgunEtiketler[ad]) etiket.textContent = ozgunEtiketler[ad];
-      }
+      /* Faz 10: sıra DOM'dan gelir, etiket takası yok. Eski sürümden kalmış
+         satır içi `order` varsa temizlenir (Çıkış düğmesinin üstüne çıkma hatası). */
+      btn.style.order = '';
     });
 
     /*
@@ -1541,7 +1522,6 @@
     cihaz: cihaz,
 
     PLASIYER_SEKMELERI: PLASIYER_SEKMELERI,
-    PLASIYER_SIRA: PLASIYER_SIRA,
     izinTablosunuKur: izinTablosunuKur,
     kabuguUygula: kabuguUygula,
     rolSekmeleri: rolSekmeleri,

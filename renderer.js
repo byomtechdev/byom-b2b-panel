@@ -600,10 +600,14 @@ const durum = {
   /* Teslim durumu süzgeci — sunucuda değil, yüklenen listede yerel olarak uygulanır
      (REST ucu meta alanına göre süzme desteklemiyor). */
   teslimSuzgec: '',
+  /* Sipariş KAYNAĞI süzgeci (Faz 10): '' | 'web' | 'saha' — yerel, damgaya bakar. */
+  kaynakSuzgec: '',
   /* Bayiler / Müşteriler sekmesi hangi filtreyle açılıyor.
      Varsayılan 'pending': panel açıldığında ilk görülmesi gereken şey karar
      bekleyen kurumsal başvurulardır. */
   uyeSuzgec: 'pending',
+  /* Üye alt sekmesi (Faz 10): 'bayi' (B2B başvuruları) | 'perakende' (web müşterileri). */
+  uyeAlt: 'bayi',
   urunDurumSuzgec: '',
   bekleyenUyeSayisi: 0,
 
@@ -998,6 +1002,9 @@ const B2B_BAYI_ROLU = 'b2b_customer';
 
 /* --- Bayi durumları --- */
 const BAYI_DURUMLARI = {
+  /* Web sitesinden kayıt olan PERAKENDE müşteri (WooCommerce "customer" rolü) —
+     bayi değildir; "Bayiye Dönüştür" ile b2b_customer olur (Faz 10). */
+  retail:    { etiket: 'WEB MÜŞTERİSİ',  sinif: 'bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30' },
   pending:   { etiket: 'ONAY BEKLİYOR', sinif: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30' },
   approved:  { etiket: 'ONAYLI BAYİ',   sinif: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30' },
   rejected:  { etiket: 'REDDEDİLDİ',    sinif: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30' },
@@ -1227,6 +1234,21 @@ const UYE_SUZGECLERI = [
   { kod: 'pending', simge: ikon('saat'), etiket: 'Onay Bekleyenler' },
   { kod: 'rejected', simge: ikon('carpi'), etiket: 'Reddedilen' }
 ];
+
+/*
+ * 🔴 `window.durum = durum` — ÜRETİM HATASI, OKUMADAN KALDIRMA (Faz 10).
+ *
+ * `const durum` klasik bir <script> içinde KÜRESEL SÖZLÜKSEL bağdır ama
+ * `window`'un ÖZELLİĞİ DEĞİLDİR. Modüller (`plasiyer-musteri.js`,
+ * `plasiyer-vitrin.js`, `plasiyer-otosync.js`, `plasiyer-ziyaret.js`,
+ * `kabuk-yonlendirici.js`) rolü `window.durum.oturum` üzerinden okuyordu ve
+ * üretimde `window.durum` TANIMSIZDI. Sonuç: `plasiyerMi()` her zaman false →
+ * Müşterilerim yönetici yoluna düşüp WooCommerce'in BÜTÜN perakende müşterilerini
+ * listeledi (Görsel 6-7), iskonto tavanı 0 okundu, oto-eşitleme hiç çalışmadı,
+ * ziyaret notu düğmesi hiç eklenmedi. Testler görmedi: jsdom harness'ı
+ * `w.durum`'u kendisi kuruyordu. Bir kaynak denetimi testi bu satırı kilitler.
+ */
+window.durum = durum;
 
 /* ==========================================================================
  *  BÖLÜM 4 — REST API KÖPRÜSÜ (wc-b2b/v1 + wc/v3)
@@ -2547,6 +2569,13 @@ async function siparisleriYukle(sessizMi) {
   };
 
   const kap = $('#siparisListesi');
+
+  /* Saha kabuğunda yönetici sipariş gövdesi belgede yok (Faz 10). */
+  if (!kap) {
+    durum.siparisYukleniyor = false;
+    return;
+  }
+
   const oncekiIdler = durum.siparisler.map(function (s) { return String(s.id); });
 
   if (!sessizMi) kap.innerHTML = yukleniyorHtml('Siparişler getiriliyor…');
@@ -2863,12 +2892,53 @@ function siparisleriSuz(liste) {
   return [];
 }
 
+/* --- SİPARİŞ KAYNAĞI SÜZGECİ (Faz 10) ---
+   Web sitesinden gelen sipariş ile sahada plasiyerin yazdığı sipariş aynı
+   listede karışıyordu. Damga sunucudan gelir (`order_source` /
+   `plasiyer_id`, eklenti ≥ 2.15.0); süzgeç yereldir, istek atmaz. */
+const KAYNAK_SUZGECLERI = [
+  { kod: '',     etiket: 'Tümü' },
+  { kod: 'web',  etiket: '🌐 Web Sitesi Siparişleri' },
+  { kod: 'saha', etiket: '💼 Saha / Plasiyer Siparişleri' }
+];
+
+/** Sipariş sahadan mı? — plasiyer damgası ya da kaynak damgası. */
+function sahaSiparisiMi(s) {
+  return Number(s && s.plasiyerId) > 0 || /plasiyer/i.test(String((s && s.siparisKaynagi) || ''));
+}
+
+function kaynakSuz(liste) {
+  if ('saha' === durum.kaynakSuzgec) return liste.filter(sahaSiparisiMi);
+  if ('web' === durum.kaynakSuzgec) return liste.filter(function (s) { return !sahaSiparisiMi(s); });
+  return liste;
+}
+
+function kaynakSuzgecleriCiz() {
+  const kap = $('#kaynakSuzgecler');
+  if (!kap) return;
+
+  kap.innerHTML = KAYNAK_SUZGECLERI.map(function (f) {
+    const aktif = f.kod === durum.kaynakSuzgec;
+    return '<button type="button" data-kaynak-suzgec="' + kacis(f.kod) + '" aria-pressed="' + (aktif ? 'true' : 'false') + '" ' +
+      'class="h-11 px-4 rounded-xl border-2 text-base font-bold transition active:scale-95 ' +
+      (aktif
+        ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
+        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700') +
+      '">' + kacis(f.etiket) + '</button>';
+  }).join('');
+}
+
 function siparisleriCiz() {
   const kap = $('#siparisListesi');
 
+  /* Saha kabuğunda bu gövde belgede DEĞİLDİR (Faz 10): plasiyerin kendi sipariş
+     şablonu ayrı (#sekme-siparislerim). Yönetici zamanlayıcısından gelen çağrı
+     sessizce döner. */
+  if (!kap) return;
+
   /* Rol süzgeci EN ÖNCE: özet kartlar, sayaçlar ve boş durum metni de ekranda
-     GÖRÜNEN listeyi anlatmalı. */
-  const kendi = siparisleriSuz(durum.siparisler);
+     GÖRÜNEN listeyi anlatmalı. Kaynak süzgeci onun üstüne gelir. */
+  const kendi = kaynakSuz(siparisleriSuz(durum.siparisler));
 
   /* Teslim süzgeci yereldir: sunucudan gelen liste süzülüp öyle çizilir.
      Özet kartlar da ekranda GÖRÜNEN listeyi anlatsın diye süzgeçten sonra hesaplanır. */
@@ -2885,9 +2955,14 @@ function siparisleriCiz() {
     return t + (s.durum === 'cancelled' || s.durum === 'refunded' || s.durum === 'failed' ? 0 : s.tutar);
   }, 0);
 
-  $('#ozetToplam').textContent = liste.length;
-  $('#ozetBekleyen').textContent = bekleyen;
-  $('#ozetTutar').textContent = para(toplamTutar);
+  const ozetYaz = function (secici, deger) {
+    const e = $(secici);
+    if (e) e.textContent = deger;
+  };
+
+  ozetYaz('#ozetToplam', liste.length);
+  ozetYaz('#ozetBekleyen', bekleyen);
+  ozetYaz('#ozetTutar', para(toplamTutar));
 
   if (liste.length === 0) {
     if (durum.teslimSuzgec) {
@@ -4740,10 +4815,92 @@ function yeniUrunuVurgula(id) {
  *  BÖLÜM 9 — B2B ÜYE ONAYLARI VE BAYİ KARTI
  * ========================================================================*/
 
+/**
+ * Üye alt sekmesi (Faz 10): [🏢 B2B Bayilik Başvuruları] | [👤 Web Perakende Müşterileri].
+ * Durum `aria-selected` ile taşınır; bayi süzgeçleri perakendede gizlenir
+ * (orada pending/approved anlamsız).
+ */
+function uyeAltSekmeAc(ad) {
+  durum.uyeAlt = ('perakende' === ad) ? 'perakende' : 'bayi';
+
+  $$('.uye-alt').forEach(function (d) {
+    d.setAttribute('aria-selected', d.dataset.alt === durum.uyeAlt ? 'true' : 'false');
+  });
+
+  uyeSuzgecleriCiz();
+  uyeleriYukle();
+}
+
+/**
+ * WEB PERAKENDE MÜŞTERİLERİ (Faz 10) — WooCommerce "customer" rolü.
+ *
+ * Bayi aileleri (b2b_*) BU listede DEĞİLDİR; wc/v3 `role=customer` yalnızca
+ * perakende rolünü döndürür. Kartta [Bayiye Dönüştür] → /dealers/{id}/approve
+ * (rol b2b_customer olur, toptan fiyatı görür).
+ */
+async function perakendeMusterileriYukle(arama) {
+  const kap = $('#uyeListesi');
+
+  if (durum.ayarlar.demoModu) {
+    durum.uyeler = [];
+    durum.uyelerToplam = 0;
+    uyeleriCiz();
+    return;
+  }
+
+  const cevap = await tumSayfalariGetir('woo', 'customers', {
+    role: 'customer',
+    orderby: 'registered_date',
+    order: 'desc',
+    search: arama
+  }, {
+    sureAsimi: 30000,
+    ilerleme: function (alinan, toplam) {
+      kap.innerHTML = '<div class="xl:col-span-2">' + yukleniyorHtml('Web müşterileri getiriliyor…  ' + alinan + (toplam > alinan ? ' / ' + toplam : '')) + '</div>';
+    }
+  });
+
+  if (!cevap.ok) {
+    durum.uyeler = [];
+    durum.uyelerToplam = 0;
+    kap.innerHTML = '<div class="xl:col-span-2">' + bosHtml(ikon('priz'), 'Web müşterileri alınamadı', cevap.hata) + '</div>';
+    return;
+  }
+
+  durum.uyeler = (cevap.veri || []).map(perakendeNormalle);
+  durum.uyelerToplam = Number(cevap.toplam) || durum.uyeler.length;
+  uyeleriCiz();
+}
+
+/** wc/v3 müşteri → kart nesnesi (durum: retail). */
+function perakendeNormalle(c) {
+  const fatura = c.billing || {};
+  const adSoyad = [c.first_name, c.last_name].filter(Boolean).join(' ');
+
+  return {
+    id: c.id,
+    ad: adSoyad || c.username || 'İsimsiz Müşteri',
+    firma: fatura.company || '',
+    vergiNo: '-',
+    vergiDairesi: '',
+    telefon: fatura.phone || '',
+    eposta: c.email || '',
+    adres: [fatura.address_1, fatura.city].filter(Boolean).join(', '),
+    tarih: c.date_created || '',
+    onayTarihi: '',
+    redSebebi: '',
+    not: '',
+    durum: 'retail'
+  };
+}
+
 function uyeSuzgecleriCiz() {
   const kap = $('#uyeSuzgecler');
 
   if (!kap) return;   // saha kabuğunda üye sekmesi belgede yok (Faz 9)
+
+  /* Perakende alt sekmesinde bayi süzgeçleri anlamsız — gizlenir. */
+  kap.hidden = ('perakende' === durum.uyeAlt);
 
   kap.innerHTML = UYE_SUZGECLERI.map(function (f) {
     const aktif = f.kod === durum.uyeSuzgec;
@@ -4823,6 +4980,12 @@ async function uyeleriYukle() {
   kap.innerHTML = '<div class="xl:col-span-2">' + yukleniyorHtml('Bayi başvuruları getiriliyor…') + '</div>';
 
   const arama = $('#uyeArama') ? $('#uyeArama').value.trim() : '';
+
+  /* ---------- WEB PERAKENDE (Faz 10) ---------- */
+  if ('perakende' === durum.uyeAlt) {
+    await perakendeMusterileriYukle(arama);
+    return;
+  }
 
   /* ---------- DEMO ---------- */
   if (durum.ayarlar.demoModu) {
@@ -5024,7 +5187,9 @@ function uyeleriCiz() {
           : 'Onay bekleyen üye görünmüyor.\n\nBaşvurular listelenmiyorsa: Ayarlar → Gelişmiş bölümünden\n' +
             'sitenizin kullandığı B2B alan adını kontrol edin.\n(Şu anki alan: "' + durum.ayarlar.b2bAlan +
             '", beklenen değer: "' + durum.ayarlar.b2bBekliyor + '")')
-      : '"' + suzgecAdi + '" süzgecine uyan bayi bulunamadı.';
+      : ('perakende' === durum.uyeAlt
+          ? 'Web sitesinden kayıt olan perakende (customer rolü) müşteri yok.'
+          : '"' + suzgecAdi + '" süzgecine uyan bayi bulunamadı.');
 
     kap.innerHTML = '<div class="xl:col-span-2">' +
       bosHtml(durum.uyeSuzgec === 'pending' ? ikon('parlak') : ikon('ara'),
@@ -5066,6 +5231,14 @@ function uyeleriCiz() {
                     dugmeSinifi('bg-slate-600 hover:bg-slate-700') + '>' +
                     ikon('durakla', 'ik-sm') + ' ASKIYA AL</button>'
           : '');
+    } else if (u.durum === 'retail') {
+      /* WEB PERAKENDE MÜŞTERİSİ (Faz 10): tek tıkla bayiye dönüştür.
+         Aynı /approve ucu — sunucu rolü b2b_customer yapar, meta'yı yazar. */
+      dugmeler =
+        '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
+                'title="Perakende müşteriyi B2B BAYİYE dönüştürür: rolü b2b_customer olur, toptan fiyatları görür." ' +
+                dugmeSinifi('bg-marka-700 hover:bg-marka-800') + '>' +
+                ikon('bina', 'ik-sm') + ' BAYİYE DÖNÜŞTÜR</button>';
     } else {
       dugmeler =
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
@@ -7292,6 +7465,25 @@ function olaylariBagla() {
   });
 
   /* --- Teslim durumu süzgeci (yerel: sunucuya yeni istek atılmaz) --- */
+  const kaynakKap = $('#kaynakSuzgecler');
+  if (kaynakKap) {
+    kaynakKap.addEventListener('click', function (o) {
+      const btn = o.target.closest('[data-kaynak-suzgec]');
+      if (!btn) return;
+      durum.kaynakSuzgec = btn.dataset.kaynakSuzgec || '';
+      kaynakSuzgecleriCiz();
+      siparisleriCiz();   // yerel süzgeç: sunucuya gidilmez
+    });
+  }
+
+  const uyeAltKap = $('#uyeAltSekmeler');
+  if (uyeAltKap) {
+    uyeAltKap.addEventListener('click', function (o) {
+      const btn = o.target.closest('.uye-alt');
+      if (btn) uyeAltSekmeAc(btn.dataset.alt);
+    });
+  }
+
   const teslimSuzgecKap = $('#teslimSuzgecler');
   if (teslimSuzgecKap) {
     teslimSuzgecKap.addEventListener('click', function (o) {
@@ -7706,6 +7898,7 @@ async function baslat() {
   faviconOnizlemeGuncelle();
   siparisSekmeleriCiz();
   siparisSuzgecleriCiz();
+  kaynakSuzgecleriCiz();
   teslimSuzgecleriCiz();
   uyeSuzgecleriCiz();
   olaylariBagla();
