@@ -50,7 +50,7 @@
    * değiştirmek değil. `satis` sekmesi aynı veriyi salt-okunur gösterir ve
    * sipariş yazar.
    */
-  var PLASIYER_SEKMELERI = ['satis', 'siparislerim', 'musterilerim'];
+  var PLASIYER_SEKMELERI = ['satis', 'siparislerim', 'musterilerim', 'performansim'];
 
   /** Kısıtlama uygulanan roller. Bunların dışı (oturum yok) kısıtlanmaz. */
   var ROLLER = ['admin', 'plasiyer'];

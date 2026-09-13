@@ -77,11 +77,23 @@
       musteri: String(bayi.company_name || fatura.company || [fatura.first_name, fatura.last_name].filter(Boolean).join(' ') || 'Müşteri'),
       odeme: String(s.payment_method_title || s.odeme_tipi || ''),
       iskonto: Number(s.plasiyer_iskonto || 0) || 0,
-      kalemler: (s.line_items || s.kalemler || []).map(function (k) {
+      /* ÜÇ ŞEKİL (Faz 11 — Görsel 6 "0 çeşit / 0 adet"): sunucu 2.17.0
+         `kalemler` verir; eski eklenti `line_items` (ince yük) ya da
+         prepare_order'ın `items`ı. Panel ve eklenti ayrı yayınlanır — üçü de
+         okunur ki hangisi eski kalırsa kalsın döküm boş görünmesin. */
+      kalemler: (s.kalemler || s.line_items || s.items || []).map(function (k) {
+        var adet = Number(k.quantity || k.adet || 0);
+        var tutar = Number(k.total || k.tutar || k.satir_toplami || 0);
+        var birim = Number(k.birim_fiyat || k.unit_price || 0) || (adet > 0 ? tutar / adet : 0);
+
         return {
+          urunId: Number(k.product_id || 0) || 0,
           ad: String(k.name || k.ad || ''),
-          adet: Number(k.quantity || k.adet || 0),
-          tutar: Number(k.total || k.tutar || 0)
+          adet: adet,
+          koliIci: Number(k.koli_ici_adet || k.box_quantity || 0) || 0,
+          koli: Number(k.koli || k.boxes || 0) || 0,
+          birim: birim,
+          tutar: tutar
         };
       }),
       notlar: String(s.customer_note || '')
@@ -143,7 +155,10 @@
               s.kalemler.map(function (k) {
                 return '<tr class="border-t border-slate-100 dark:border-slate-700">' +
                   '<td class="py-2 pr-3">' + kacis(k.ad) + '</td>' +
-                  '<td class="py-2 pr-3 text-right font-bold whitespace-nowrap">' + k.adet + ' adet</td>' +
+                  /* "24 adet" bitişik kalır (test kilidi); koli parantez içinde. */
+                  '<td class="py-2 pr-3 text-right font-bold whitespace-nowrap">' + k.adet + ' adet' +
+                    (k.koli > 0 && k.koliIci > 1 ? ' <span class="text-xs text-slate-500">(' + k.koli + ' koli × ' + k.koliIci + ')</span>' : '') + '</td>' +
+                  '<td class="py-2 pr-3 text-right text-slate-500 whitespace-nowrap">' + kacis(paraYaz(k.birim)) + '</td>' +
                   '<td class="py-2 text-right font-black whitespace-nowrap">' + kacis(paraYaz(k.tutar)) + '</td>' +
                 '</tr>';
               }).join('') +

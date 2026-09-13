@@ -252,6 +252,10 @@ function varsayilanAyarlar() {
     // Urun sekmesindeki liste gorunumu: 'tablo' (Excel tipi izgara) veya
     // 'kart' (surukle-birak siralamanin calistigi eski duzen).
     urunGorunumu: 'tablo',
+    /* Sol üst logo genişliği (px). Ayarlar → "Logo Genişliği" kaydırıcısı;
+       renderer --logo-width CSS değişkenine yazar (Faz 11, Orhan Bey talebi).
+       220 = eski sabit max-width, mevcut kurulumlar aynı görünür. */
+    logoGenislik: 220,
     // Canlı sipariş kontrolü: sipariş sekmesi açıkken kaç saniyede bir tazelensin.
     otoYenile: true,
     otoYenileSaniye: 60,
@@ -1269,6 +1273,36 @@ ipcMain.handle('plasiyer:get-orders', async function (olay, veri) {
 });
 
 /**
+ * PERFORMANSIM (Faz 11) — plasiyerin KENDİ günlük/haftalık/aylık özeti.
+ * Jeton yine ana süreç belleğinden; arayüz kimlik SÖYLEYEMEZ. GET olduğu için
+ * plasiyerIstek() (POST'a sabit) kullanılmaz, plasiyer:get-orders ile aynı kalıp.
+ */
+ipcMain.handle('plasiyer:performans', async function () {
+  if (!plasiyerOturumuGecerliMi()) {
+    plasiyerOturumu = null;
+    return { ok: false, durum: 401, hata: 'Oturum süresi doldu. Tekrar PIN ile giriş yapın.' };
+  }
+
+  const cevap = await apiIstek({
+    alan: 'b2b',
+    yol: '/plasiyer/performans',
+    metod: 'GET',
+    sorgu: {
+      plasiyerId: plasiyerOturumu.id,     // arayüzden DEĞİL, oturumdan
+      token: plasiyerOturumu.token
+    }
+  });
+
+  if (!cevap || !cevap.ok || !cevap.veri) {
+    if (cevap && 401 === cevap.durum) plasiyerOturumu = null;
+
+    return { ok: false, durum: cevap ? cevap.durum : 0, hata: (cevap && cevap.hata) || 'Performans verisi alınamadı.' };
+  }
+
+  return { ok: true, veri: cevap.veri };
+});
+
+/**
  * TEK müşteriyi ANINDA eşitler (Faz 10) — çevrimiçiyken eklenen müşteri
  * sıradaki eşitleme turunu beklemez.
  *
@@ -1651,6 +1685,61 @@ ipcMain.handle('musteri:kuyruga', function (olay, musteri) {
   ayarlariYaz({ plasiyerYerelMusteriler: liste });
 
   return { ok: true, bekleyen: liste.length };
+});
+
+/**
+ * ÇEVRİMDIŞI müşteriyi yerel listeden SİLER (Faz 11).
+ *
+ * Yalnızca sunucuya hiç gitmemiş (temp_musteri_… ve senkron değil) kayıt
+ * silinebilir: gerçek bayi sunucuda yaşar, burada silmek yalnızca önbelleği
+ * bozar. Kayda BAĞLI bekleyen sipariş/not varsa silme REDDEDİLİR — sync
+ * motoru geçici kimliği köprüleyemez, sipariş sonsuza dek "bekliyor" kalır
+ * ("Müşteri henüz eşitlenmedi", plasiyer-sync-motor.js). Mutasyon ana süreçte:
+ * renderer oku-değiştir-yaz yapsaydı eşitleme turuyla yarışırdı (§3.8).
+ */
+ipcMain.handle('musteri:kuyruktan-sil', function (olay, veri) {
+  const id = String((veri && veri.id) || '');
+
+  if (!id) return { ok: false, hata: 'Müşteri kimliği yok.' };
+
+  if (0 !== id.indexOf(syncMotor.GECICI_ONEK)) {
+    return { ok: false, hata: 'Yalnızca çevrimdışı (henüz eşitlenmemiş) müşteri silinebilir.' };
+  }
+
+  const a = ayarlariOku();
+  const liste = Array.isArray(a.plasiyerYerelMusteriler) ? a.plasiyerYerelMusteriler : [];
+  const m = liste.find(function (x) { return x && String(x.id) === id; });
+
+  if (!m) return { ok: false, durum: 404, hata: 'Kayıt bulunamadı (zaten silinmiş olabilir).' };
+
+  if (m.senkron) {
+    return { ok: false, hata: 'Bu müşteri sunucuya eşitlenmiş; artık cihazdan silinemez.' };
+  }
+
+  const siparisler = Array.isArray(a.plasiyerSiparisKuyrugu) ? a.plasiyerSiparisKuyrugu : [];
+  const notlar = Array.isArray(a.plasiyerZiyaretKuyrugu) ? a.plasiyerZiyaretKuyrugu : [];
+
+  const bekleyenSiparis = siparisler.filter(function (satir) {
+    return satir && syncMotor.GONDERILDI !== satir.durum && satir.kayit && String(satir.kayit.musteriId) === id;
+  }).length;
+  const bekleyenNot = notlar.filter(function (n) { return n && String(n.musteriId) === id; }).length;
+
+  if (bekleyenSiparis || bekleyenNot) {
+    return {
+      ok: false,
+      hata: 'Bu müşterinin bekleyen ' +
+        [bekleyenSiparis ? bekleyenSiparis + ' siparişi' : '', bekleyenNot ? bekleyenNot + ' notu' : ''].filter(Boolean).join(' ve ') +
+        ' var; önce eşitleyin ya da o kayıtları silin.',
+      siparis: bekleyenSiparis,
+      not: bekleyenNot
+    };
+  }
+
+  const kalan = liste.filter(function (x) { return !x || String(x.id) !== id; });
+
+  ayarlariYaz({ plasiyerYerelMusteriler: kalan });
+
+  return { ok: true, bekleyen: kalan.length };
 });
 
 /** Ziyaret notunu yerel kuyruğa yazar (çevrimdışı yol). */

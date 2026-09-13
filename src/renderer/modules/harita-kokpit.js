@@ -39,6 +39,7 @@
     toplam: null,
     notlar: [],
     gun: 0,              // 0 = tümü, 1 = günlük, 7 = haftalık
+    tarih: '',           // 'YYYY-MM-DD' — doluysa gun yok sayılır (Faz 11; iki süzgeç üst üste sessizce boş verirdi)
     olcut: 'ciro',       // ciro | siparis | bayi
     secili: null,        // bölünmüş ekranda açık il
     yukleniyor: false
@@ -86,7 +87,8 @@
 
     ciz();
 
-    var cevap = await b2b('/admin/harita', { sorgu: { gun: durumH.gun } });
+    /* Boş tarih main.js apiIstek süzgecinde düşer → eski istek birebir korunur. */
+    var cevap = await b2b('/admin/harita', { sorgu: { gun: durumH.gun, tarih: durumH.tarih } });
 
     durumH.yukleniyor = false;
 
@@ -115,7 +117,7 @@
   }
 
   async function notlariGetir() {
-    var cevap = await b2b('/admin/ziyaret', { sorgu: { gun: durumH.gun } });
+    var cevap = await b2b('/admin/ziyaret', { sorgu: { gun: durumH.gun, tarih: durumH.tarih } });
 
     durumH.notlar = (cevap && cevap.ok && cevap.veri && cevap.veri.notlar) || [];
   }
@@ -181,10 +183,22 @@
         '<div class="flex rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-600">' +
           gunSecenek.map(function (g) {
             return '<button type="button" class="harita-gun px-4 py-2.5 font-bold transition ' +
-              (durumH.gun === g.d ? 'bg-marka-700 text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-700') +
+              (!durumH.tarih && durumH.gun === g.d ? 'bg-marka-700 text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-700') +
               '" data-gun="' + g.d + '">' + g.ad + '</button>';
           }).join('') +
         '</div>' +
+
+        /* Belirli gün (Faz 11 — Görsel 1): HTML5 tarih seçici. Bağlama 'change'
+           ile — 'input' olsaydı yeniden çizimde value ataması istek üretebilirdi. */
+        '<label class="flex items-center gap-2 font-bold" title="Belirli bir günün sipariş, ciro ve notlarını göster">' +
+          '<span class="text-sm text-slate-500">Gün</span>' +
+          '<input type="date" id="haritaTarih" value="' + kacis(durumH.tarih) + '" ' +
+                 'class="px-3 py-2 rounded-xl border-2 ' + (durumH.tarih ? 'border-marka-700' : 'border-slate-200 dark:border-slate-600') +
+                 ' bg-white dark:bg-slate-900 font-bold" />' +
+          (durumH.tarih
+            ? '<button type="button" id="haritaTarihSil" class="px-2 py-2 rounded-lg font-black hover:bg-slate-100 dark:hover:bg-slate-700" title="Tarihi temizle">✕</button>'
+            : '') +
+        '</label>' +
 
         '<div class="flex rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-600">' +
           olcutSecenek.map(function (o) {
@@ -390,7 +404,18 @@
 
     if (!kap || !il) return;
 
-    var notlar = V().notlariSuz(durumH.notlar, { il: il.ad, gun: durumH.gun });
+    var notlar = V().notlariSuz(durumH.notlar, { il: il.ad, gun: durumH.gun, tarih: durumH.tarih });
+
+    /* Bayi kartındaki "son ziyaret notu": müşteri → en yeni not (liste DESC
+       geldiği için ilk eşleşme). Tarih süzgeci UYGULANMAZ — kart her zaman
+       son notu göstermeli. */
+    var sonNotlar = {};
+
+    V().notlariSuz(durumH.notlar, { il: il.ad }).forEach(function (n) {
+      var mid = Number(n && n.musteriId) || 0;
+
+      if (mid && !sonNotlar[mid]) sonNotlar[mid] = n;
+    });
 
     kap.innerHTML =
       '<div class="flex items-center gap-3 mb-4 flex-wrap">' +
@@ -416,7 +441,7 @@
 
         /* SAĞ: bayiler + notlar */
         '<div class="space-y-5">' +
-          bayiPaneli(il) +
+          bayiPaneli(il, sonNotlar) +
           notPaneli(notlar) +
         '</div>' +
       '</div>';
@@ -486,21 +511,66 @@
     '</svg>';
   }
 
-  function bayiPaneli(il) {
+  /**
+   * KOMPAKT BAYİ KARTI (Faz 11 — Görsel 2): unvan, yetkili, telefon, tanımlı
+   * iskonto, son sipariş tarihi/tutarı ve (varsa) son ziyaret notu etiketi.
+   * HER ALAN VARLIK KONTROLÜYLE basılır: eski eklenti yalnızca {id, unvan}
+   * gönderir; 'undefined' / 'NaN%' ekrana düşmemeli.
+   */
+  function bayiKarti(b, sonNotlar) {
+    var telefon = String(b.telefon || '').trim();
+    var yetkili = String(b.yetkili || b.ad || '').trim();
+    var iskonto = (b.iskonto !== undefined && b.iskonto !== null && b.iskonto !== '') ? Number(b.iskonto) : NaN;
+    var sonTarih = b.sonSiparisTarihi ? new Date(b.sonSiparisTarihi) : null;
+    var sonTarihYazi = sonTarih && !isNaN(sonTarih.getTime()) ? sonTarih.toLocaleDateString('tr-TR') : '';
+    var sonTutar = Number(b.sonSiparisTutari) || 0;
+    var not = sonNotlar[Number(b.id)] || null;
+    var notEtiket = '';
+
+    if (not) {
+      var e = Array.isArray(not.etiketler) && not.etiketler.length ? not.etiketler[0] : '';
+      notEtiket = e ? V().etiketAdi(e) : String(not.not || '').slice(0, 40);
+    }
+
+    return '<div class="bayi-kart p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border-2 border-slate-100 dark:border-slate-700" data-bayi="' + kacis(String(b.id || '')) + '">' +
+      '<div class="flex items-start gap-2">' +
+        '<div class="font-extrabold truncate min-w-0 flex-1">' + kacis(b.unvan || ('#' + b.id)) + '</div>' +
+        (!isNaN(iskonto)
+          ? '<span class="shrink-0 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 text-xs font-black" title="Tanımlı bayi iskontosu">%' + kacis(String(Math.round(iskonto * 10) / 10)) + '</span>'
+          : '') +
+      '</div>' +
+      ((yetkili || telefon)
+        ? '<div class="text-sm text-slate-600 dark:text-slate-300 mt-1 truncate">' +
+            (yetkili ? kacis(yetkili) : '') +
+            (yetkili && telefon ? ' · ' : '') +
+            (telefon ? '<span class="font-semibold">' + kacis(telefon) + '</span>' : '') +
+          '</div>'
+        : '') +
+      '<div class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">' +
+        (sonTarihYazi
+          ? 'Son sipariş: ' + kacis(sonTarihYazi) + ' · ' + kacis(paraYaz(sonTutar))
+          : 'Bu pencerede sipariş yok') +
+      '</div>' +
+      (notEtiket
+        ? '<div class="mt-1"><span class="inline-block px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-xs font-bold" title="Son ziyaret notu">📝 ' + kacis(notEtiket) + '</span></div>'
+        : '') +
+    '</div>';
+  }
+
+  function bayiPaneli(il, sonNotlar) {
     var liste = il.bayiler || [];
+
+    sonNotlar = sonNotlar || {};
 
     return '<div class="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-4">' +
       '<div class="font-extrabold mb-3">Bayiler <span class="text-sm font-bold text-slate-500">' + il.bayiSayisi + '</span></div>' +
       (liste.length
-        ? '<ul class="space-y-1 max-h-48 overflow-y-auto">' +
-          liste.map(function (b) {
-            return '<li class="px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/50 font-semibold truncate">' +
-              kacis(b.unvan || ('#' + b.id)) + '</li>';
-          }).join('') +
+        ? '<div class="space-y-2 max-h-96 overflow-y-auto">' +
+          liste.map(function (b) { return bayiKarti(b, sonNotlar); }).join('') +
           (il.bayiSayisi > liste.length
-            ? '<li class="px-3 py-2 text-sm text-slate-500">+ ' + (il.bayiSayisi - liste.length) + ' bayi daha</li>'
+            ? '<div class="px-3 py-2 text-sm text-slate-500">+ ' + (il.bayiSayisi - liste.length) + ' bayi daha</div>'
             : '') +
-          '</ul>'
+          '</div>'
         : '<div class="text-slate-500 dark:text-slate-400">Bu ilde kayıtlı bayi yok.</div>') +
     '</div>';
   }
@@ -650,9 +720,20 @@
     document.querySelectorAll('.harita-gun').forEach(function (d) {
       d.addEventListener('click', function () {
         durumH.gun = Number(d.dataset.gun) || 0;
+        durumH.tarih = '';   // gün düğmesi belirli tarihi iptal eder
         veriyiGetir();
       });
     });
+
+    var tarihG = el('haritaTarih');
+    if (tarihG) {
+      tarihG.addEventListener('change', function () {
+        tarihSec(tarihG.value);
+      });
+    }
+
+    var tarihSil = el('haritaTarihSil');
+    if (tarihSil) tarihSil.addEventListener('click', function () { tarihSec(''); });
 
     document.querySelectorAll('.harita-olcut').forEach(function (d) {
       d.addEventListener('click', function () {
@@ -776,10 +857,29 @@
     akisaBaglan();
   }
 
+  /** Belirli günü seçer ('' = temizle); gün düğmesi sıfırlanır, veri yeniden çekilir. */
+  function tarihSec(tarih) {
+    var metin = String(tarih || '');
+    var p = /^(\d{4})-(\d{2})-(\d{2})$/.exec(metin);
+    var dt = p ? new Date(Number(p[1]), Number(p[2]) - 1, Number(p[3])) : null;
+
+    /* Takvimde olmayan gün ('2026-13-99') sunucuda da reddedilir (tarih_normalle);
+       burada da düşürülür ki panel ile sunucu ayrışmasın. */
+    var gecerli = !!dt && dt.getFullYear() === Number(p[1]) && dt.getMonth() === Number(p[2]) - 1 && dt.getDate() === Number(p[3]);
+
+    durumH.tarih = gecerli ? metin : '';
+
+    if (durumH.tarih) durumH.gun = 0;
+
+    return veriyiGetir();
+  }
+
   window.HaritaKokpit = {
     yollariBesle: yollariBesle,
     sekmeyiAc: sekmeyiAc,
     veriyiGetir: veriyiGetir,
+    tarihSec: tarihSec,
+    bayiKarti: bayiKarti,
     ilSec: ilSec,
     geriDon: geriDon,
     rozetiTazele: rozetiTazele,

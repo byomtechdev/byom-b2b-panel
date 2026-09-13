@@ -186,6 +186,7 @@
 
     --kose:         6px;
     --kose-kucuk:   4px;
+    --logo-width:   220px;   /* Ayarlar → Logo Genişliği (Faz 11) */
   }
 
   html.dark {
@@ -602,7 +603,7 @@
     box-shadow: none !important;
     overflow: visible !important;
   }
-  #firmaLogo { display: block; max-height: 40px !important; width: auto !important; max-width: 220px; object-fit: contain; }
+  #firmaLogo { display: block; max-height: 40px !important; width: auto !important; max-width: var(--logo-width, 220px); object-fit: contain; }
   #firmaVarsayilanSimge .ik { width: 16px; height: 16px; }
   #firmaAdiBaslik { font-size: 14px !important; font-weight: 650 !important; }
 
@@ -1059,6 +1060,7 @@
   html:not(.dark) [data-eylem="uye-reddet"],
   html:not(.dark) [data-eylem="uye-sil"],
   html:not(.dark) [data-eylem="siparis-sil"],
+  html:not(.dark) [data-eylem="siparis-cope"],
   html:not(.dark) [data-eylem="urun-sil"] {
     background-color: var(--panel) !important;
     color: #b91c1c !important;
@@ -1068,6 +1070,7 @@
   html:not(.dark) [data-eylem="uye-reddet"]:hover,
   html:not(.dark) [data-eylem="uye-sil"]:hover,
   html:not(.dark) [data-eylem="siparis-sil"]:hover,
+  html:not(.dark) [data-eylem="siparis-cope"]:hover,
   html:not(.dark) [data-eylem="urun-sil"]:hover {
     background-color: #fef2f2 !important;
     border-color: #fca5a5 !important;
@@ -1075,6 +1078,7 @@
   html.dark [data-eylem="uye-reddet"],
   html.dark [data-eylem="uye-sil"],
   html.dark [data-eylem="siparis-sil"],
+  html.dark [data-eylem="siparis-cope"],
   html.dark [data-eylem="urun-sil"] {
     background-color: rgba(239, 68, 68, .10) !important;
     color: #fca5a5 !important;
@@ -2087,6 +2091,14 @@
               class="hidden absolute top-3 right-3 min-w-8 h-8 px-2 rounded-full bg-red-600 text-white
                      text-base font-black grid place-items-center shadow-lg">0</span>
       </button>
+      <!-- PERFORMANSIM (saha, Faz 11) — plasiyerin KENDİ günlük/haftalık/aylık
+           sipariş + net ciro kartları, bayilerinin ciro katkısı, il dağılımı.
+           Veri: plasiyer:performans → GET /plasiyer/performans (jetonla).
+           Çizim: src/renderer/modules/plasiyer-performansim.js -->
+      <button data-sekme="performansim" data-rol-izin="plasiyer" data-kabuk="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-liste"></use></svg>
+        <span class="align-middle">Performansım</span>
+      </button>
 
       <button data-sekme="urunler" data-rol-izin="admin" data-kabuk="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg>
@@ -2211,18 +2223,33 @@
  </button>
         </div>
 
-        <!-- Sipariş sekmeleri: [Aktif Siparişler] [Kargodakiler] [Teslim Edilenler]
-             Her sekme sunucudan KENDİ durum kümesini çeker (bkz. SIPARIS_SEKMELERI). -->
-        <div id="siparisSekmeler" class="flex flex-wrap gap-3 mb-5"></div>
-        <!-- KAYNAK SÜZGECİ (Faz 10): [Tümü] [🌐 Web Sitesi] [💼 Saha / Plasiyer]
-             Yerel süzgeç — siparisKaynagi / plasiyerId damgasına bakar. -->
-        <div id="kaynakSuzgecler" class="flex flex-wrap gap-2 mb-3"></div>
+        <!-- İKİ SEVİYELİ SÜZGEÇ (Faz 11 — Görsel 3: 14 düğmelik karmaşa sadeleşti)
+             Seviye 1 (KAYNAK, segmented switcher): [Tümü] [🌐 Web] [💼 Saha]
+               Yerel süzgeç — siparisKaynagi / plasiyerId damgasına bakar (Faz 10). -->
+        <div id="kaynakSuzgecler" role="group" aria-label="Sipariş kaynağı"
+             class="inline-flex flex-wrap gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900
+                    border-2 border-slate-200 dark:border-slate-700 mb-4"></div>
 
-        <!-- Durum süzgeci (açık sekmenin içini daraltır) -->
-        <div id="siparisSuzgecler" class="flex flex-wrap gap-2 mb-3"></div>
+        <!-- Seviye 2 (DURUM sekmeleri, sayaçlı rozet):
+             [Hazırlanacaklar (X)] [Kargoda / Yolda (Y)] [Tamamlananlar (Z)] [İptal / İadeler]
+             Her sekme sunucudan KENDİ durum kümesini çeker (bkz. SIPARIS_SEKMELERI);
+             rozet adetleri GET /stats'tan tek istekle gelir (sekmeSayaclariniYukle). -->
+        <div id="siparisSekmeler" class="flex flex-wrap gap-3 mb-4"></div>
 
-        <!-- Teslim durumu süzgeci (müşterinin web sitesinden verdiği cevap) -->
-        <div id="teslimSuzgecler" class="flex flex-wrap gap-2 mb-5"></div>
+        <!-- İkincil süzgeçler tek "Filtrele" açılırında (durum + teslimat onayı).
+             #siparisSuzgecler ve #teslimSuzgecler kimlikleri KORUNUR: renderer.js
+             olay bağlayıcıları bu kimlikleri arar. -->
+        <details id="siparisFiltreMenu" class="mb-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+          <summary id="siparisFiltreOzet" class="cursor-pointer select-none px-5 py-3 text-lg font-extrabold">
+            <svg class="ik" aria-hidden="true"><use href="#ik-ara"></use></svg> Filtrele
+          </summary>
+          <div class="px-5 pb-4 flex flex-col gap-3">
+            <!-- Durum süzgeci (açık sekmenin içini daraltır) -->
+            <div id="siparisSuzgecler" class="flex flex-wrap gap-2"></div>
+            <!-- Teslim durumu süzgeci (müşterinin web sitesinden verdiği cevap) -->
+            <div id="teslimSuzgecler" class="flex flex-wrap gap-2"></div>
+          </div>
+        </details>
 
         <!-- Özet kartlar -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -3091,6 +3118,25 @@
               <div id="zoomBilgi" class="mt-3 text-base font-bold text-slate-500 dark:text-slate-400"></div>
             </div>
 
+            <!-- Logo genişliği (Faz 11, Orhan Bey talebi): 120–300 px, ayarlar.json →
+                 logoGenislik; sol üst logoya --logo-width olarak ANINDA uygulanır.
+                 Kaydırırken yalnızca CSS değişkeni yazılır, diske 'change'te gider
+                 (her karede ayarlar.json yazmamak için). -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
+              <div class="text-xl font-black mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg> Logo Genişliği</div>
+              <p class="mb-4 text-base text-slate-600 dark:text-slate-300 leading-relaxed">
+                Sol üstteki firma logosunun genişliğini ayarlar (yükseklik üst çubuğa sığacak
+                şekilde sabittir). Değer bu bilgisayarda saklanır ve hemen uygulanır.
+              </p>
+              <div class="flex items-center gap-4">
+                <span class="text-sm font-bold text-slate-500">120px</span>
+                <input id="logoGenislikAralik" type="range" min="120" max="300" step="10" value="220"
+                       class="flex-1 accent-marka-600" aria-label="Logo genişliği (piksel)" />
+                <span class="text-sm font-bold text-slate-500">300px</span>
+                <span id="logoGenislikDeger" class="w-20 text-right text-lg font-black tabular-nums">220px</span>
+              </div>
+            </div>
+
             <!-- Firma & API bilgileri -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700 shadow-sm flex flex-col gap-5">
 
@@ -3443,6 +3489,26 @@
            altta sunucudan gelen KENDİ siparişleri (GET /plasiyer/siparislerim,
            jetonla daraltılır). Kartta tek eylem: [📄 Sipariş / Fiş Detayı].
            ============================================================ -->
+      <!-- PERFORMANSIM (Faz 11) — Burada yalnızca KAPLAR durur; kartlar
+           plasiyer-performansim.js tarafından çizilir. -->
+      <section id="sekme-performansim" class="sekme-govde" data-kabuk="plasiyer">
+        <div class="flex items-center gap-4 mb-5 flex-wrap">
+          <h1 class="text-3xl font-black">
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-liste"></use></svg> 📊 Performansım
+          </h1>
+          <span id="performansimOzet"
+                class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
+                       dark:bg-slate-800 dark:text-slate-300"></span>
+          <div class="ml-auto flex gap-3">
+            <button type="button" id="performansimYenile"
+                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+          </div>
+        </div>
+        <div id="performansimKartlar" class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(14rem,1fr))] mb-6"></div>
+        <div id="performansimBayiler" class="flex flex-col gap-4 mb-6"></div>
+        <div id="performansimIller"></div>
+      </section>
       <section id="sekme-siparislerim" class="sekme-govde" data-kabuk="plasiyer">
         <div class="flex items-center gap-4 mb-5 flex-wrap">
           <h1 class="text-3xl font-black">
@@ -4091,9 +4157,12 @@
       </div>
 
       <div class="md:col-span-2">
-        <label class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg> Ürün Görseli</label>
+        <label class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg> Ürün Görselleri <span class="text-base font-bold text-slate-500">(Ana Görsel · Görsel 2 · Görsel 3)</span></label>
 
-        <div id="duzenleGorselKutu" class="flex flex-wrap gap-3 mb-3"></div>
+        <!-- ÜÇ YUVA (Faz 11): 0 = öne çıkan (image_id), 1-2 = galeri (gallery_image_ids).
+             Yuvalar renderer-ek.js → duzenleGorselKutusuCiz tarafından çizilir;
+             yuvaya tıklamak o yuva için dosya seçtirir. -->
+        <div id="duzenleGorselKutu" class="grid grid-cols-3 gap-3 mb-3"></div>
 
         <div id="duzenleGorselBirak"
              class="rounded-2xl border-4 border-dashed border-slate-300 dark:border-slate-600
@@ -4104,7 +4173,7 @@
             Yeni görsel bırakın veya tıklayarak seçin
           </div>
           <div class="text-base text-slate-500 dark:text-slate-400 mt-1 pointer-events-none">
-            Yeni görsel yüklerseniz ürünün öne çıkan görseli değişir · JPG, PNG, WEBP, GIF
+            Bırakılan görseller boş yuvalara sırayla yerleşir; bir yuvayı değiştirmek için üstündeki kutuya tıklayın · JPG, PNG, WEBP, GIF
           </div>
           <div id="duzenleGorselDurum" class="mt-2 text-base font-bold"></div>
         </div>
@@ -4785,6 +4854,7 @@
 <!-- Faz 10 — saha "Kendi Siparişlerim" şablonu. Müşteri modülünün kuyruk
      şeridini çağırdığı için ondan SONRA; sekmeAc'ı SARAR. -->
 <script src="src/renderer/modules/plasiyer-siparislerim.js"></script>
+<script src="src/renderer/modules/plasiyer-performansim.js"></script>
 
 <!-- Plasiyer Faz 3 — çevrimdışı eşitleme, saha haritası, ziyaret notları.
      SIRA ZORUNLU:

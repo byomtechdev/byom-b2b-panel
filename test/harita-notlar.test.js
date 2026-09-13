@@ -644,3 +644,51 @@ test('harita-yollar.js: kutuge tam beslenir — 81 il <path> kipine gecer, tanim
 
   delete require.cache[require.resolve('../src/renderer/harita-veri.js')];
 });
+
+/* =========================================================================
+ * 10. FAZ 11 — BELIRLI GUN (tarih) SUZGECI: harita ust barindaki <input type="date">
+ * ====================================================================== */
+
+function yerelGun(kaydir) {
+  const t = new Date();
+  t.setDate(t.getDate() + (kaydir || 0));
+  const p = (n) => String(n).padStart(2, '0');
+  return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate());
+}
+
+test('notlariSuz: tarih (YYYY-MM-DD) YALNIZCA o yerel gunun notlarini birakir; gun penceresi yok sayilir', (t) => {
+  const bugun = new Date();
+  const dun = new Date(Date.now() - 86400000);
+  const liste = [
+    { id: 1, zaman: bugun.toISOString(), durum: 'beklemede' },
+    { id: 2, zaman: dun.toISOString(), durum: 'beklemede' },
+    { id: 3, zaman: new Date(Date.now() - 40 * 86400000).toISOString(), durum: 'beklemede' }
+  ];
+
+  assert.deepEqual(H.notlariSuz(liste, { tarih: yerelGun(0) }).map((n) => n.id), [1], 'bugun');
+  assert.deepEqual(H.notlariSuz(liste, { tarih: yerelGun(-1) }).map((n) => n.id), [2], 'dun');
+  assert.deepEqual(H.notlariSuz(liste, { tarih: yerelGun(-1), gun: 1 }).map((n) => n.id), [2], 'tarih varken gun=1 YOK SAYILIR (ikisi ust uste bos verirdi)');
+  assert.deepEqual(H.notlariSuz(liste, { tarih: yerelGun(-3) }), [], 'notsuz gun bos');
+  assert.equal(H.notlariSuz(liste, { tarih: 'bozuk' }).length, 3, 'bozuk tarih suzgec uygulamaz');
+  assert.equal(H.notlariSuz(liste, { tarih: '', gun: 7 }).length, 2, 'bos tarih → gun penceresi calisir');
+});
+
+test('notlariSuz: tarih suzgecinde de ZAMANI OKUNAMAYAN not SUZULMEZ (sikayet kaybolmaz)', (t) => {
+  const liste = [
+    { id: 1, zaman: 'bozuk-tarih', durum: 'beklemede' },
+    { id: 2, zaman: '', durum: 'beklemede' },
+    { id: 3, zaman: new Date(Date.now() - 40 * 86400000).toISOString(), durum: 'beklemede' }
+  ];
+
+  assert.deepEqual(H.notlariSuz(liste, { tarih: yerelGun(0) }).map((n) => n.id), [1, 2], 'okunamayan tarihler kalir, eski not duser');
+});
+
+test('notlariSuz: tarih + il + durum birlikte kesisir', (t) => {
+  const liste = [
+    { id: 1, zaman: new Date().toISOString(), il: 'TR35', durum: 'beklemede' },
+    { id: 2, zaman: new Date().toISOString(), il: 'İzmir', durum: 'cozuldu' },
+    { id: 3, zaman: new Date().toISOString(), il: 'Ankara', durum: 'beklemede' }
+  ];
+
+  assert.deepEqual(H.notlariSuz(liste, { tarih: yerelGun(0), il: 'izmir', durum: 'beklemede' }).map((n) => n.id), [1]);
+});

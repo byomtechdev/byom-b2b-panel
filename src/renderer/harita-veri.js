@@ -385,7 +385,7 @@
    * Notları süzer.
    *
    * @param {Array}  notlar Not listesi.
-   * @param {object} filtre { il, plasiyerId, durum, gun, etiket }
+   * @param {object} filtre { il, plasiyerId, durum, gun, tarih, etiket } — tarih ('YYYY-MM-DD', yerel gün) doluysa gun yok sayılır
    * @returns {Array}
    */
   function notlariSuz(notlar, filtre) {
@@ -398,8 +398,19 @@
        olabilir — ikisi de çözülüyorsa plaka eşitliği yeter (Faz 10). */
     var ilHedef = filtre.il ? ilBul(filtre.il) : null;
     var sinir = 0;
+    var gunBasi = 0;
+    var gunSonu = 0;
 
-    if (Number(filtre.gun) > 0) {
+    /* Belirli gün (Faz 11): yerel takvim günü [00:00, ertesi 00:00). Tarih
+       seçiliyken kayan pencere UYGULANMAZ — ikisi üst üste sessizce boş verirdi. */
+    var g = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(filtre.tarih || ''));
+
+    if (g) {
+      gunBasi = new Date(Number(g[1]), Number(g[2]) - 1, Number(g[3]), 0, 0, 0, 0).getTime();
+      gunSonu = gunBasi + 86400000;
+    }
+
+    if (!gunBasi && Number(filtre.gun) > 0) {
       sinir = Date.now() - (Number(filtre.gun) * 86400000);
     }
 
@@ -421,6 +432,13 @@
       if (filtre.durum && String(n.durum) !== String(filtre.durum)) return false;
 
       if (filtre.etiket && (!Array.isArray(n.etiketler) || n.etiketler.indexOf(filtre.etiket) === -1)) return false;
+
+      if (gunBasi) {
+        var td = Date.parse(n.zaman || '');
+
+        /* Aynı söz: okunamayan zaman süzülmez. */
+        if (!isNaN(td) && (td < gunBasi || td >= gunSonu)) return false;
+      }
 
       if (sinir) {
         var t = Date.parse(n.zaman || '');

@@ -602,6 +602,10 @@ const durum = {
   teslimSuzgec: '',
   /* Sipariş KAYNAĞI süzgeci (Faz 10): '' | 'web' | 'saha' — yerel, damgaya bakar. */
   kaynakSuzgec: '',
+  /* Durum sekmelerinin rozet adetleri (Faz 11): { active: X, shipped: Y, … }.
+     Kaynak GET /stats → orders[<slug>] — mağaza GENELİ sayaç; kaynak/rol
+     süzgeci uygulanmış liste adedi DEĞİLDİR (rozet "toplam" anlamındadır). */
+  sekmeSayaclari: {},
   /* Bayiler / Müşteriler sekmesi hangi filtreyle açılıyor.
      Varsayılan 'pending': panel açıldığında ilk görülmesi gereken şey karar
      bekleyen kurumsal başvurulardır. */
@@ -720,8 +724,8 @@ const SIPARIS_SEKMELERI = [
   {
     kod: 'active',
     simge: ikon('paket'),
-    etiket: 'Aktif Siparişler',
-    aciklama: 'Henüz kargolanmamış tüm siparişler',
+    etiket: 'Hazırlanacaklar',
+    aciklama: 'Yeni düşen ve onay bekleyen — henüz kargolanmamış tüm siparişler',
     durumlar: ['pending', 'on-hold', 'processing', 'order-ready', 'b2b-received', 'b2b-preparing', 'b2b-ready'],
     /* Eklenti yokken WooCommerce'in kendi durumları */
     wooDurumlar: ['pending', 'on-hold', 'processing']
@@ -729,7 +733,7 @@ const SIPARIS_SEKMELERI = [
   {
     kod: 'shipped',
     simge: ikon('kamyon'),
-    etiket: 'Kargodakiler',
+    etiket: 'Kargoda / Yolda',
     aciklama: 'Kargoya / ambara verilmiş siparişler',
     durumlar: ['shipped', 'b2b-shipped'],
     wooDurumlar: ['shipped']
@@ -737,7 +741,7 @@ const SIPARIS_SEKMELERI = [
   {
     kod: 'delivered',
     simge: ikon('bayrak'),
-    etiket: 'Teslim Edilenler',
+    etiket: 'Tamamlananlar',
     aciklama: 'Bayinin teslim aldığını bildirdiği siparişler',
     durumlar: ['delivered', 'completed'],
     wooDurumlar: ['completed']
@@ -752,10 +756,10 @@ const SIPARIS_SEKMELERI = [
        gönderilir. */
     kod: 'cancelled',
     simge: ikon('yasak'),
-    etiket: 'İptal Edilenler',
-    aciklama: 'İptal edilmiş siparişler — buradan kalıcı olarak silinebilir',
-    durumlar: ['cancelled'],
-    wooDurumlar: ['cancelled'],
+    etiket: 'İptal / İadeler',
+    aciklama: 'İptal ve iade edilmiş siparişler — buradan çöpe taşınabilir ya da kalıcı silinebilir',
+    durumlar: ['cancelled', 'refunded'],
+    wooDurumlar: ['cancelled', 'refunded'],
     grupYok: true
   }
 ];
@@ -1543,6 +1547,7 @@ function b2bSiparisNormalle(s) {
        panel bu bilgiyi 2.15.0'dan önce hiçbir yerden öğrenemiyordu ve plasiyere
        bütün şirketin siparişleri görünüyordu. */
     plasiyerId: Number(s.plasiyer_id || b2bMeta._b2b_plasiyer_id || 0) || 0,
+    plasiyerAd: String(s.plasiyer_ad || b2bMeta._b2b_plasiyer_ad || ''),
     siparisKaynagi: String(s.order_source || b2bMeta._b2b_siparis_kaynagi || ''),
     kdvToplam: Number(s.vat_total || 0),
     kdvHaric: !!s.vat_excluded,
@@ -1677,6 +1682,7 @@ function siparisNormalle(s) {
     /* Plasiyer künyesi — eklentisiz (wc/v3) yolda yalnızca meta'dan okunabilir.
        Bkz. b2bSiparisNormalle'deki aynı alan. */
     plasiyerId: Number(meta._b2b_plasiyer_id || 0) || 0,
+    plasiyerAd: String(meta._b2b_plasiyer_ad || ''),
     siparisKaynagi: String(meta._b2b_siparis_kaynagi || ''),
     /* Eklentisiz yolda vergi künyesi yalnızca meta'da olabilir; depo fişinin
        kurumsal başlığı bu iki alana bağlı olduğu için yaygın adlar taranır. */
@@ -1859,6 +1865,12 @@ function urunNormalle(u) {
     /* --- Düzenleme paneli ve sürükle-bırak sıralaması için ek alanlar --- */
     menuSira: Number(u.menu_order || 0),
     gorselId: Number(u.image_id || (u.images && u.images[0] && u.images[0].id) || 0),
+    /* Galeri (Faz 11): b2b-core `gallery` [{id,url}] ya da wc/v3 `images[1..]`.
+       Düzenleme penceresinin 2. ve 3. yuvası buradan dolar; eskiden düşürülüyordu
+       ve replace_images ile kayıt galeriyi siliyordu. */
+    galeri: Array.isArray(u.gallery)
+      ? u.gallery.map(function (g) { return { id: Number(g && g.id) || 0, url: String((g && g.url) || '') }; })
+      : (Array.isArray(u.images) ? u.images.slice(1).map(function (g) { return { id: Number(g && g.id) || 0, url: String((g && g.src) || '') }; }) : []),
     barkod: String(u.barcode || u.sku || ''),
     aciklama: String(u.description || ''),
     stokTakip: !!u.manage_stock,
@@ -2220,7 +2232,19 @@ function logoAdresi(kaynak, damga) {
   return s + (s.indexOf('?') === -1 ? '?' : '&') + 'b2bv=' + (damga || durum.logoDamgasi || '1');
 }
 
+/** Ayarlardaki logo genişliğini (120–300 px) --logo-width'e yazar (Faz 11). */
+function logoGenisligiUygula(deger) {
+  const ham = Number(deger !== undefined ? deger : (durum.ayarlar && durum.ayarlar.logoGenislik));
+  const px = Math.min(300, Math.max(120, isNaN(ham) || !ham ? 220 : ham));
+
+  document.documentElement.style.setProperty('--logo-width', px + 'px');
+
+  return px;
+}
+
 function firmaLogosunuUygula() {
+  logoGenisligiUygula();
+
   const kutu = $('#firmaLogoKutu');
   const img = $('#firmaLogo');
   const varsayilan = $('#firmaVarsayilanSimge');
@@ -2443,6 +2467,42 @@ function sekmeAc(ad) {
  * Sekmeler süzgeçlerden AYRI bir katmandır: süzgeç sekmenin içini daraltır,
  * sekme ise hangi sipariş kümesinin sunucudan çekileceğini belirler.
  */
+/**
+ * Sekme rozetleri için durum sayaçları (Faz 11) — TEK istek: GET /stats
+ * `orders[<slug>]` haritasını sekmelerin `durumlar` kümeleri üzerinden toplar.
+ * Hata/eksik uçta sessizce döner (rozet gizlenir, liste bozulmaz); await
+ * EDİLMEZ, liste çizimi sayaç gecikirse beklemez.
+ */
+async function sekmeSayaclariniYukle() {
+  const sayaclar = {};
+
+  if (durum.ayarlar.demoModu) {
+    const liste = (typeof DEMO_SIPARISLER !== 'undefined' && Array.isArray(DEMO_SIPARISLER)) ? DEMO_SIPARISLER : [];
+
+    SIPARIS_SEKMELERI.forEach(function (t) {
+      sayaclar[t.kod] = liste.filter(function (s) {
+        return t.durumlar.indexOf(durumNormalle(s.durum)) !== -1 || t.durumlar.indexOf(String(s.durum)) !== -1;
+      }).length;
+    });
+  } else if (durum.b2bVar) {
+    const c = await b2b('stats');
+    const orders = c && c.ok && c.veri && c.veri.orders;
+
+    if (!orders || 'object' !== typeof orders) return;
+
+    SIPARIS_SEKMELERI.forEach(function (t) {
+      sayaclar[t.kod] = t.durumlar.reduce(function (toplam, slug) {
+        return toplam + (Number(orders[slug]) || 0);
+      }, 0);
+    });
+  } else {
+    return;
+  }
+
+  durum.sekmeSayaclari = sayaclar;
+  siparisSekmeleriCiz();
+}
+
 function siparisSekmeleriCiz() {
   const kap = $('#siparisSekmeler');
   if (!kap) return;
@@ -2450,11 +2510,15 @@ function siparisSekmeleriCiz() {
   kap.innerHTML = SIPARIS_SEKMELERI.map(function (t) {
     const aktif = t.kod === durum.siparisSekme;
 
-    /* Sayaç yalnızca AÇIK sekme için gösterilir: diğer sekmelerin adedi
-       sunucuya ek istek atmadan bilinemez ve tahmini bir sayı yazmak
-       kullanıcıyı yanıltırdı. */
-    const sayac = aktif && durum.siparislerToplam
-      ? ' <span class="ml-2 px-2 py-0.5 rounded-lg text-base bg-white/25">' + durum.siparislerToplam + '</span>'
+    /* Rozet HER sekmede (Faz 11): açık sekmede sunucunun döndürdüğü gerçek
+       toplam (X-WP-Total), diğerlerinde GET /stats sayacı. Sayı yoksa rozet
+       basılmaz — tahmini bir sayı yazmak kullanıcıyı yanıltırdı. */
+    const adet = aktif && durum.siparislerToplam
+      ? durum.siparislerToplam
+      : (Number(durum.sekmeSayaclari[t.kod]) || 0);
+    const sayac = adet > 0
+      ? ' <span data-sekme-sayac="' + kacis(t.kod) + '" class="ml-2 px-2 py-0.5 rounded-lg text-base ' +
+        (aktif ? 'bg-white/25' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100') + '">' + adet + '</span>'
       : '';
 
     return '<button data-siparis-sekme="' + kacis(t.kod) + '" ' +
@@ -2503,6 +2567,8 @@ function siparisSuzgecleriCiz() {
                'dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700') +
            '">' + f.simge + ' ' + kacis(f.etiket) + '</button>';
   }).join('');
+
+  filtreOzetiniTazele();
 }
 
 /** Teslim durumu süzgeci düğmelerini çizer. */
@@ -2521,6 +2587,22 @@ function teslimSuzgecleriCiz() {
                'dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700') +
            '">' + f.simge + ' ' + kacis(f.etiket) + '</button>';
   }).join('');
+
+  filtreOzetiniTazele();
+}
+
+/**
+ * "Filtrele" açılırının başlığı (Faz 11): etkin ikincil süzgeç sayısını
+ * gösterir ki kapalı açılırda gizli bir daraltma olduğu anlaşılsın.
+ */
+function filtreOzetiniTazele() {
+  const ozet = $('#siparisFiltreOzet');
+  if (!ozet) return;
+
+  const etkin = (durum.siparisSuzgec ? 1 : 0) + (durum.teslimSuzgec ? 1 : 0);
+
+  ozet.innerHTML = ikon('ara') + ' Filtrele' +
+    (etkin ? ' <span class="ml-2 px-2 py-0.5 rounded-lg text-base bg-marka-700 text-white">' + etkin + '</span>' : '');
 }
 
 /** "Son kontrol: 10:42:15" yazısını tazeler. */
@@ -2767,6 +2849,7 @@ async function siparisleriYukle(sessizMi) {
 
     durum.siparisler = (cevap.veri || []).map(normalle);
     durum.siparislerToplam = Number(cevap.toplam) || durum.siparisler.length;
+    sekmeSayaclariniYukle();   // rozetler (await edilmez — liste beklemez)
     durum.siparislerKesildi = !!cevap.kesildi;
     durum.sonKontrol = new Date();
 
@@ -2902,6 +2985,66 @@ const KAYNAK_SUZGECLERI = [
   { kod: 'saha', etiket: '💼 Saha / Plasiyer Siparişleri' }
 ];
 
+/**
+ * WhatsApp fişi (Faz 11): telefonu wa.me biçimine çevirir.
+ * "0532 415 22 78" → "905324152278"; 10 hane → 90 öneki; yetersiz → ''.
+ * Sabit bir numara YOKTUR — daima siparişin telefonundan türetilir.
+ */
+function waTelefon(ham) {
+  let r = String(ham || '').replace(/[^0-9]/g, '');
+
+  if (r.indexOf('00') === 0) r = r.slice(2);
+  if (r.length === 11 && r.charAt(0) === '0') r = r.slice(1);
+  if (r.length === 10) r = '90' + r;
+
+  return (r.length >= 11 && r.length <= 15) ? r : '';
+}
+
+/** WhatsApp'a gidecek düz metin fiş (sipariş no, müşteri, tutar, kalemler). */
+function whatsAppFisiMetni(s) {
+  const kalemler = Array.isArray(s.kalemler) ? s.kalemler : [];
+  const EN_COK = 15;   // çok uzun URL Windows'ta açılmayabilir
+
+  const satirlar = [
+    'SİPARİŞ FİŞİ',
+    'Sipariş No: #' + (s.numara || s.id),
+    'Müşteri: ' + (s.firma || s.musteri || '—'),
+    'Tutar: ' + para(s.tutar),
+    ''
+  ].concat(kalemler.slice(0, EN_COK).map(function (k) {
+    return '• ' + (k.ad || k.name || 'Ürün') + ' × ' + (Number(k.adet || k.quantity) || 0);
+  }));
+
+  if (kalemler.length > EN_COK) satirlar.push('… ve ' + (kalemler.length - EN_COK) + ' kalem daha');
+
+  return satirlar.join('\n');
+}
+
+/** wa.me adresi; telefon yoksa ''. */
+function whatsAppFisiAdresi(s) {
+  const tel = waTelefon(s && s.telefon);
+
+  if (!tel) return '';
+
+  return 'https://wa.me/' + tel + '?text=' + encodeURIComponent(whatsAppFisiMetni(s));
+}
+
+/** Kart düğmesi: varsayılan tarayıcıda WhatsApp Web'i açar (main.js setWindowOpenHandler → shell.openExternal). */
+function whatsAppFisiAc(id) {
+  const s = (durum.siparisler || []).filter(function (x) { return String(x.id) === String(id); })[0];
+
+  if (!s) return;
+
+  const adres = whatsAppFisiAdresi(s);
+
+  if (!adres) {
+    bildir('Bu siparişte telefon numarası yok; WhatsApp fişi gönderilemez.', 'uyari');
+    return;
+  }
+
+  window.open(adres);
+}
+
 /** Sipariş sahadan mı? — plasiyer damgası ya da kaynak damgası. */
 function sahaSiparisiMi(s) {
   return Number(s && s.plasiyerId) > 0 || /plasiyer/i.test(String((s && s.siparisKaynagi) || ''));
@@ -2919,11 +3062,13 @@ function kaynakSuzgecleriCiz() {
 
   kap.innerHTML = KAYNAK_SUZGECLERI.map(function (f) {
     const aktif = f.kod === durum.kaynakSuzgec;
+    /* Segmented switcher (Faz 11): tek kapta, seçili parça dolu — sekme değil,
+       kaynak anahtarı olduğu ekrandan okunur. */
     return '<button type="button" data-kaynak-suzgec="' + kacis(f.kod) + '" aria-pressed="' + (aktif ? 'true' : 'false') + '" ' +
-      'class="h-11 px-4 rounded-xl border-2 text-base font-bold transition active:scale-95 ' +
+      'class="h-11 px-4 rounded-xl text-base font-bold transition active:scale-95 ' +
       (aktif
-        ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
-        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700') +
+        ? 'bg-white text-slate-900 shadow-md dark:bg-slate-700 dark:text-white'
+        : 'text-slate-600 hover:bg-white/60 dark:text-slate-300 dark:hover:bg-slate-800') +
       '">' + kacis(f.etiket) + '</button>';
   }).join('');
 }
@@ -3028,6 +3173,13 @@ function siparisleriCiz() {
           '<div class="flex items-center gap-2 flex-wrap">' +
             /* Alıcı rolü rozeti: mavi [MÜŞTERİ] / yeşil [BAYİ] */
             aliciRozetiHtml(s) +
+            /* Saha siparişi: [Plasiyer: Ad] ➔ Müşteri (Faz 11, Görsel 4). Ad eklenti
+               2.17.0'dan gelir; eski eklentide #kimlik yazılır. */
+            (sahaSiparisiMi(s)
+              ? '<span class="shrink-0 px-2 py-0.5 rounded-lg text-base font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-200" data-plasiyer="' + kacis(String(s.plasiyerId || '')) + '">' +
+                  ikon('kisi', 'ik-sm') + ' Plasiyer: ' + kacis(s.plasiyerAd || ('#' + s.plasiyerId)) + '</span>' +
+                '<span class="shrink-0 text-slate-400" aria-hidden="true">&#10148;</span>'
+              : '') +
             '<span class="min-w-0 text-xl font-extrabold truncate">' + kacis(s.firma || s.musteri) + '</span>' +
           '</div>' +
           (s.firma ? '<div class="text-base font-semibold text-slate-500 dark:text-slate-400 truncate">' +
@@ -3098,12 +3250,31 @@ function siparisleriCiz() {
         /* Kalıcı silme — YALNIZCA iptal edilmiş siparişlerde görünür.
            Sipariş sitedeki veritabanından tamamen kaldırılır (force=true),
            çöp kutusuna bile düşmez; bu yüzden ayrı ve koyu kırmızıdır. */
+        /* Çöpe taşı (Faz 11): WordPress çöp kutusu — geri alınabilir, force=false. */
+        (yoneticiEylemleri && ['cancelled', 'refunded'].indexOf(durumNormalle(s.durum)) !== -1
+          ? '<button data-eylem="siparis-cope" data-id="' + s.id + '" ' +
+                    'title="Siparişi WordPress çöp kutusuna taşır (geri alınabilir)." ' +
+                    'class="h-14 px-5 rounded-2xl border-2 border-red-300 dark:border-red-500/40 ' +
+                           'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 ' +
+                           'hover:bg-red-100 dark:hover:bg-red-500/20 active:scale-95 ' +
+                           'text-lg font-extrabold shadow-sm transition">' + ikon('cop') + ' ÇÖPE TAŞI</button>'
+          : '') +
+
         (yoneticiEylemleri && durumNormalle(s.durum) === 'cancelled'
           ? '<button data-eylem="siparis-sil" data-id="' + s.id + '" ' +
                     'title="Siparişi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
                     'class="h-14 px-5 rounded-2xl bg-red-700 hover:bg-red-800 active:scale-95 ' +
                            'text-white text-lg font-extrabold shadow-md transition">' +
               ikon('cop') + ' SİPARİŞİ KALICI SİL</button>'
+          : '') +
+
+        /* WhatsApp fişi (Faz 11): yalnızca yönetici + saha siparişi + telefon varsa. */
+        (yoneticiEylemleri && sahaSiparisiMi(s) && waTelefon(s.telefon)
+          ? '<button data-eylem="siparis-whatsapp" data-id="' + s.id + '" ' +
+                    'title="Sipariş özetini müşterinin WhatsApp\'ına gönder" ' +
+                    'class="h-14 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
+                           'text-white text-lg font-extrabold shadow-md transition">' +
+              ikon('gonder') + ' 📲 WHATSAPP FİŞİ</button>'
           : '') +
 
         '<button data-eylem="siparis-detay" data-id="' + s.id + '" ' +
@@ -5253,7 +5424,7 @@ function uyeleriCiz() {
     dugmeler += '<button data-eylem="uye-sil" data-id="' + u.id + '" ' +
                 'title="Bu müşteriyi/bayiyi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
                 dugmeSinifi('bg-red-800 hover:bg-red-900') + '>' +
-                ikon('cop', 'ik-sm') + ' SİL</button>';
+                ikon('cop', 'ik-sm') + ' 🗑️ BAYİYİ KALICI OLARAK SİL</button>';
 
     return '' +
     '<div data-bayi="' + u.id + '" ' +
@@ -6906,6 +7077,14 @@ function ayarFormunuDoldur() {
   $('#girdiOnayEpostasi').checked = durum.ayarlar.onayEpostasi !== false;
   $('#girdiDurumEpostasi').checked = durum.ayarlar.durumEpostasi !== false;
   $('#otoYenileKutu').checked = !!durum.ayarlar.otoYenile;
+
+  const logoAralik = $('#logoGenislikAralik');
+  if (logoAralik) {
+    const px = logoGenisligiUygula();
+    logoAralik.value = String(px);
+    const deger = $('#logoGenislikDeger');
+    if (deger) deger.textContent = px + 'px';
+  }
   modToggleTazele();
   apiKilidiniUygula();
   logoOnizlemeGuncelle();
@@ -7156,6 +7335,7 @@ async function ayarlariKaydet(sessizMi) {
     tema: durum.ayarlar.tema,
     otoYenile: !!$('#otoYenileKutu').checked,
     otoYenileSaniye: durum.ayarlar.otoYenileSaniye || 60,
+    logoGenislik: Number(durum.ayarlar.logoGenislik) || 220,
     onayEpostasi: !!$('#girdiOnayEpostasi').checked,
     durumEpostasi: !!$('#girdiDurumEpostasi').checked,
     b2bAlan: $('#girdiB2bAlan').value.trim() || 'b2b_durum',
@@ -7505,6 +7685,21 @@ function olaylariBagla() {
       : 'Otomatik yenileme kapatıldı.', 'bilgi');
   });
 
+  /* --- Logo genişliği kaydırıcısı (Faz 11): input → anında CSS, change → disk --- */
+  const logoAralik = $('#logoGenislikAralik');
+  if (logoAralik) {
+    logoAralik.addEventListener('input', function () {
+      const px = logoGenisligiUygula(logoAralik.value);
+      const deger = $('#logoGenislikDeger');
+      if (deger) deger.textContent = px + 'px';
+    });
+    logoAralik.addEventListener('change', async function () {
+      const px = logoGenisligiUygula(logoAralik.value);
+      durum.ayarlar.logoGenislik = px;
+      await ipcRenderer.invoke('ayar:yaz', { logoGenislik: px });
+    });
+  }
+
   /* --- Sipariş listesi eylemleri --- */
   $('#siparisListesi').addEventListener('click', function (o) {
     const fisBtn = o.target.closest('[data-eylem="fis"]');
@@ -7526,6 +7721,18 @@ function olaylariBagla() {
     const iptalBtn = o.target.closest('[data-eylem="siparis-iptal"]');
     if (iptalBtn && typeof siparisIptalEt === 'function') {
       siparisIptalEt(iptalBtn.dataset.id, iptalBtn);
+      return;
+    }
+
+    const waBtn = o.target.closest('[data-eylem="siparis-whatsapp"]');
+    if (waBtn) {
+      whatsAppFisiAc(waBtn.dataset.id);
+      return;
+    }
+
+    const copBtn = o.target.closest('[data-eylem="siparis-cope"]');
+    if (copBtn && typeof siparisCopeTasi === 'function') {
+      siparisCopeTasi(copBtn.dataset.id, copBtn);
       return;
     }
 

@@ -1180,91 +1180,129 @@ function duzenleGorselDurumYaz(mesaj, renkSinifi) {
     (renkSinifi || 'text-slate-500 dark:text-slate-400');
 }
 
-/** Mevcut görsel + yeni yüklenen görsellerin küçük resimleri. */
+/* --------------------------------------------------------------------------
+ *  ÜÇ GÖRSEL YUVASI (Faz 11 — Orhan Bey talebi)
+ *  durum.duzenleYuvalari = [ana, görsel2, görsel3]; her yuva
+ *  { id, onizleme, url, mevcut? } ya da null. Yuva 0 öne çıkan görsel
+ *  (image_id), 1-2 galeri (gallery_image_ids) — WooCommerce images[] sırası.
+ *  Pencere açılırken ürünün MEVCUT görselleri yuvalara dolar; kullanıcı
+ *  dokunmadıkça (duzenleYuvaDegisti=false) kayıtta images GÖNDERİLMEZ, yani
+ *  galeri silinmez. duzenleGorselleri = yeni yüklenenler (toast sayacı).
+ * ------------------------------------------------------------------------*/
+
+const YUVA_ETIKETLERI = ['ANA GÖRSEL', 'GÖRSEL 2', 'GÖRSEL 3'];
+
+/** Yuvaları üründen kurar (pencere açılışı). */
+function duzenleYuvalariniKur(urun) {
+  const d = ekDurum();
+  if (!d) return;
+
+  const yuvalar = [null, null, null];
+
+  if (urun) {
+    if (urun.gorsel && urun.gorsel !== YEDEK_GORSEL) {
+      yuvalar[0] = { id: Number(urun.gorselId) || 0, onizleme: urun.gorsel, url: urun.gorsel, mevcut: true };
+    }
+
+    (Array.isArray(urun.galeri) ? urun.galeri : []).slice(0, 2).forEach(function (g, i) {
+      if (g && (g.id || g.url)) {
+        yuvalar[i + 1] = { id: Number(g.id) || 0, onizleme: g.url, url: g.url, mevcut: true };
+      }
+    });
+  }
+
+  d.duzenleYuvalari = yuvalar;
+  d.duzenleYuvaDegisti = false;
+  d.duzenleHedefYuva = null;
+}
+
+/** Dolu yuvalar, sırayla (kayıt yükü). */
+function duzenleYuvaGorselleri() {
+  const d = ekDurum();
+  return ((d && d.duzenleYuvalari) || []).filter(Boolean);
+}
+
+/** Üç yuvayı çizer. */
 function duzenleGorselKutusuCiz() {
   const kap = $('#duzenleGorselKutu');
   if (!kap) return;
 
   const d = ekDurum();
-  const urun = d ? d.duzenlenenUrun : null;
-  const yeniler = (d && d.duzenleGorselleri) ? d.duzenleGorselleri : [];
+  if (d && !d.duzenleYuvalari) d.duzenleYuvalari = [null, null, null];
 
-  let html = '<div class="flex flex-wrap gap-4 items-start">';
+  const yuvalar = (d && d.duzenleYuvalari) || [null, null, null];
 
-  if (urun) {
-    html += '' +
-    '<div class="relative w-28 h-28 rounded-2xl overflow-hidden border-2 ' +
-         (yeniler.length
-           ? 'border-slate-300 dark:border-slate-600 opacity-50'
-           : 'border-marka-500') +
-         ' bg-slate-100 dark:bg-slate-700">' +
-      '<img src="' + kacis(urun.gorsel || YEDEK_GORSEL) + '" alt="" ' +
-           'onerror="this.onerror=null;this.src=\'' + YEDEK_GORSEL + '\'" ' +
-           'class="w-full h-full object-cover" />' +
-      '<span class="absolute bottom-0 inset-x-0 bg-slate-800/85 text-white text-xs ' +
-            'font-black text-center py-1">ŞU ANKİ</span>' +
-    '</div>';
-  }
+  kap.innerHTML = yuvalar.map(function (g, i) {
+    const etiket = YUVA_ETIKETLERI[i];
 
-  html += yeniler.map(function (g, i) {
+    if (!g) {
+      return '' +
+      '<button type="button" data-duzenle-gorsel-yuva="' + i + '" ' +
+              'title="' + etiket + ' için görsel seç" ' +
+              'class="duzenle-yuva h-28 w-full rounded-2xl border-4 border-dashed border-slate-300 dark:border-slate-600 ' +
+                     'bg-slate-50 dark:bg-slate-900/60 flex flex-col items-center justify-center gap-1 ' +
+                     'text-slate-500 dark:text-slate-400 hover:border-marka-500 transition">' +
+        '<span class="text-2xl font-black">+</span>' +
+        '<span class="text-xs font-black">' + etiket + '</span>' +
+      '</button>';
+    }
+
     return '' +
-    '<div class="relative w-28 h-28 rounded-2xl overflow-hidden border-2 ' +
-         'border-emerald-400 dark:border-emerald-500/50 bg-slate-100 dark:bg-slate-700">' +
-      '<img src="' + kacis(g.onizleme || YEDEK_GORSEL) + '" alt="" ' +
+    '<div class="duzenle-yuva relative h-28 w-full rounded-2xl overflow-hidden border-2 ' +
+         (i === 0 ? 'border-marka-500' : 'border-emerald-400 dark:border-emerald-500/50') +
+         ' bg-slate-100 dark:bg-slate-700" data-yuva="' + i + '">' +
+      '<img src="' + kacis(g.onizleme || g.url || YEDEK_GORSEL) + '" alt="" ' +
            'onerror="this.onerror=null;this.src=\'' + YEDEK_GORSEL + '\'" ' +
            'class="w-full h-full object-cover" />' +
-      (i === 0
-        ? '<span class="absolute bottom-0 inset-x-0 bg-emerald-600 text-white text-xs ' +
-          'font-black text-center py-1">ÖNE ÇIKAN</span>'
-        : '') +
-      '<button type="button" data-duzenle-gorsel-sil="' + kacis(String(g.id)) + '" title="Kaldır" ' +
+      '<button type="button" data-duzenle-gorsel-yuva="' + i + '" title="' + etiket + ' değiştir" ' +
+              'class="absolute inset-x-0 bottom-0 bg-slate-800/85 text-white text-xs font-black text-center py-1 ' +
+                     'hover:bg-marka-700 transition">' + etiket + (g.mevcut ? '' : ' · YENİ') + '</button>' +
+      '<button type="button" data-duzenle-gorsel-sil="' + i + '" title="Kaldır" ' +
               'class="absolute top-1 right-1 w-8 h-8 rounded-lg bg-red-600 hover:bg-red-700 ' +
                      'text-white text-lg font-black grid place-items-center shadow-lg transition">' +
                      ikon('carpi', 'ik-sm') + '</button>' +
     '</div>';
   }).join('');
-
-  html += '</div>';
-
-  html += '<div class="mt-3 text-base font-semibold text-slate-500 dark:text-slate-400 leading-relaxed">' +
-    (yeniler.length
-      ? kacis('Kaydettiğinizde ürünün görselleri yukarıdaki ' + yeniler.length +
-              ' yeni görselle DEĞİŞTİRİLİR. İlk görsel öne çıkan görsel olur.')
-      : kacis('Yeni görsel bırakmazsanız ürünün mevcut görseli olduğu gibi kalır.')) +
-    '</div>';
-
-  kap.innerHTML = html;
 }
 
-/** Yüklenen görseli listeden çıkarır. */
-function duzenleGorselKaldir(gorselId) {
+/** Bir yuvayı boşaltır (indeks 0-2). */
+function duzenleGorselKaldir(yuvaIndeksi) {
   const d = ekDurum();
   if (!d) return;
 
-  d.duzenleGorselleri = (d.duzenleGorselleri || []).filter(function (g) {
-    return String(g.id) !== String(gorselId);
-  });
+  const i = Number(yuvaIndeksi);
+  if (!d.duzenleYuvalari || isNaN(i) || i < 0 || i > 2) return;
+
+  const g = d.duzenleYuvalari[i];
+
+  d.duzenleYuvalari[i] = null;
+  d.duzenleYuvaDegisti = true;
+
+  if (g && !g.mevcut) {
+    d.duzenleGorselleri = (d.duzenleGorselleri || []).filter(function (x) { return String(x.id) !== String(g.id); });
+  }
 
   duzenleGorselKutusuCiz();
+
+  const dolu = duzenleYuvaGorselleri().length;
   duzenleGorselDurumYaz(
-    d.duzenleGorselleri.length
-      ? d.duzenleGorselleri.length + ' yeni görsel hazır.'
-      : 'Yeni görsel seçilmedi — mevcut görsel korunacak.',
-    d.duzenleGorselleri.length
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : 'text-slate-500 dark:text-slate-400'
+    dolu ? dolu + ' görsel yuvası dolu — kaydettiğinizde ürün görselleri bunlarla değiştirilir.'
+         : 'Tüm yuvalar boş — kaydettiğinizde ürünün görselleri kaldırılır.',
+    dolu ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
   );
 }
 
 /**
- * Düzenleme penceresine sürükle-bırak / dosya seçimiyle gelen görselleri
- * POST /wc-b2b/v1/media ucuna yükler ve durum.duzenleGorselleri içine ekler.
+ * Sürükle-bırak / dosya seçimiyle gelen görselleri POST /wc-b2b/v1/media
+ * ucuna yükler ve yuvalara yerleştirir. hedefYuva verilirse ilk dosya o yuvaya,
+ * kalanlar sonraki BOŞ yuvalara; verilmezse boş yuvalar soldan sağa dolar.
  */
-async function duzenleGorselleriYukle(dosyalar) {
+async function duzenleGorselleriYukle(dosyalar, hedefYuva) {
   const d = ekDurum();
   if (!d) return;
 
   if (!d.duzenleGorselleri) d.duzenleGorselleri = [];
+  if (!d.duzenleYuvalari) d.duzenleYuvalari = [null, null, null];
 
   const liste = Array.prototype.slice.call(dosyalar || []).filter(function (dosya) {
     return dosya && (GECERLI_GORSEL_TURLERI.indexOf(dosya.type) !== -1 || /^image\//.test(dosya.type || ''));
@@ -1276,11 +1314,36 @@ async function duzenleGorselleriYukle(dosyalar) {
     return;
   }
 
+  /* Hedef yuvalar: [hedef] + boş yuvalar. */
+  const hedefler = [];
+  const hedefIndeksi = Number(hedefYuva);
+
+  if (!isNaN(hedefIndeksi) && hedefYuva !== null && hedefYuva !== undefined && hedefIndeksi >= 0 && hedefIndeksi <= 2) {
+    hedefler.push(hedefIndeksi);
+  }
+
+  d.duzenleYuvalari.forEach(function (g, i) {
+    if (!g && hedefler.indexOf(i) === -1) hedefler.push(i);
+  });
+
+  if (hedefler.length === 0) {
+    duzenleGorselDurumYaz('Üç yuva da dolu — önce bir görseli kaldırın ya da değiştirmek için yuvaya tıklayın.',
+                          'text-amber-600 dark:text-amber-400');
+    return;
+  }
+
   const adAlani = $('#duzenleAd');
   const urunAdi = adAlani ? adAlani.value.trim() : '';
+  let atlanan = 0;
 
   for (let i = 0; i < liste.length; i++) {
     const dosya = liste[i];
+    const yuva = hedefler[i];
+
+    if (yuva === undefined) {
+      atlanan = liste.length - i;   // özet iletide söylenir; sessiz kayıp yok
+      break;
+    }
 
     if (dosya.size > EN_BUYUK_GORSEL_MB * 1024 * 1024) {
       duzenleGorselDurumYaz('"' + dosya.name + '" çok büyük (en fazla ' + EN_BUYUK_GORSEL_MB + ' MB).',
@@ -1299,66 +1362,63 @@ async function duzenleGorselleriYukle(dosyalar) {
       continue;
     }
 
+    let kayit;
+
     /* ---------- DEMO ---------- */
     if (ekDemoMu()) {
       await bekle(320);
-      d.duzenleGorselleri.push({
-        id: 'demo-' + Date.now() + '-' + i,
-        onizleme: veriAdresi,
-        url: veriAdresi,
-        demo: true
-      });
-      duzenleGorselKutusuCiz();
-      continue;
+      kayit = { id: 'demo-' + Date.now() + '-' + i, onizleme: veriAdresi, url: veriAdresi, demo: true };
+    } else {
+      /* ---------- CANLI ---------- */
+      if (!ekEklentiVarMi()) {
+        duzenleGorselDurumYaz('Dosya yükleme için sitenizde "B2B Core" eklentisi gerekir.\n' +
+                              'Eklenti yokken aşağıdaki "Görsel bağlantısı (URL)" alanını kullanın.',
+                              'text-red-600 dark:text-red-400');
+        return;
+      }
+
+      let cevap;
+      try {
+        cevap = await b2b('media', {
+          metod: 'POST',
+          sureAsimi: 120000,
+          govde: {
+            filename: dosya.name,
+            data: veriAdresi,
+            title: urunAdi || dosya.name.replace(/\.[^.]+$/, ''),
+            alt: urunAdi || ''
+          }
+        });
+      } catch (e) {
+        duzenleGorselDurumYaz('"' + dosya.name + '" yüklenemedi: ' + String((e && e.message) || e),
+                              'text-red-600 dark:text-red-400');
+        continue;
+      }
+
+      if (!cevap || !cevap.ok || !cevap.veri) {
+        duzenleGorselDurumYaz('"' + dosya.name + '" yüklenemedi: ' + ekHataMetni(cevap),
+                              'text-red-600 dark:text-red-400');
+        continue;
+      }
+
+      kayit = { id: cevap.veri.id, onizleme: cevap.veri.thumbnail || cevap.veri.url || veriAdresi, url: cevap.veri.url || '' };
     }
 
-    /* ---------- CANLI ---------- */
-    if (!ekEklentiVarMi()) {
-      duzenleGorselDurumYaz('Dosya yükleme için sitenizde "B2B Core" eklentisi gerekir.\n' +
-                            'Eklenti yokken aşağıdaki "Görsel bağlantısı (URL)" alanını kullanın.',
-                            'text-red-600 dark:text-red-400');
-      return;
-    }
-
-    let cevap;
-    try {
-      cevap = await b2b('media', {
-        metod: 'POST',
-        sureAsimi: 120000,
-        govde: {
-          filename: dosya.name,
-          data: veriAdresi,
-          title: urunAdi || dosya.name.replace(/\.[^.]+$/, ''),
-          alt: urunAdi || ''
-        }
-      });
-    } catch (e) {
-      duzenleGorselDurumYaz('"' + dosya.name + '" yüklenemedi: ' + String((e && e.message) || e),
-                            'text-red-600 dark:text-red-400');
-      continue;
-    }
-
-    if (!cevap || !cevap.ok || !cevap.veri) {
-      duzenleGorselDurumYaz('"' + dosya.name + '" yüklenemedi: ' + ekHataMetni(cevap),
-                            'text-red-600 dark:text-red-400');
-      continue;
-    }
-
-    d.duzenleGorselleri.push({
-      id: cevap.veri.id,
-      onizleme: cevap.veri.thumbnail || cevap.veri.url || veriAdresi,
-      url: cevap.veri.url || ''
-    });
+    d.duzenleYuvalari[yuva] = kayit;
+    d.duzenleYuvaDegisti = true;
+    d.duzenleGorselleri.push(kayit);
 
     duzenleGorselKutusuCiz();
   }
 
-  const adet = d.duzenleGorselleri.length;
+  const dolu = duzenleYuvaGorselleri().length;
+  const yeni = d.duzenleGorselleri.length;
   duzenleGorselDurumYaz(
-    adet
-      ? adet + ' yeni görsel hazır. Kaydettiğinizde ürünün görselleri bunlarla değiştirilir.'
-      : 'Yeni görsel seçilmedi — mevcut görsel korunacak.',
-    adet ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
+    (yeni
+      ? yeni + ' yeni görsel hazır (' + dolu + '/3 yuva dolu). Kaydettiğinizde ürünün görselleri bunlarla değiştirilir.'
+      : 'Yeni görsel seçilmedi — mevcut görseller korunacak.') +
+    (atlanan ? ' · ' + atlanan + ' dosya atlandı (en fazla 3 görsel).' : ''),
+    atlanan ? 'text-amber-600 dark:text-amber-400' : (yeni ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400')
   );
 }
 
@@ -1429,6 +1489,7 @@ async function urunDuzenleAc(id) {
   try {
     d.duzenlenenUrun = urun;
     d.duzenleGorselleri = [];
+    duzenleYuvalariniKur(urun);
 
     /* --- Başlıklar --- */
     /* Emoji başlıkta ZATEN var (index.html'deki büyük ikonu); burada
@@ -1507,7 +1568,7 @@ async function urunDuzenleAc(id) {
     /* --- Görsel bölümü --- */
     duzenleUyar('');
     duzenleGorselKutusuCiz();
-    duzenleGorselDurumYaz('Yeni görsel seçilmedi — mevcut görsel korunacak.',
+    duzenleGorselDurumYaz('Yeni görsel seçilmedi — mevcut görseller korunacak.',
                           'text-slate-500 dark:text-slate-400');
 
     /* --- Pencereyi aç --- */
@@ -1543,6 +1604,9 @@ function urunDuzenleKapat() {
   if (d) {
     d.duzenlenenUrun = null;
     d.duzenleGorselleri = [];
+    d.duzenleYuvalari = [null, null, null];
+    d.duzenleYuvaDegisti = false;
+    d.duzenleHedefYuva = null;
   }
 
   duzenleUyar('');
@@ -1863,8 +1927,15 @@ async function urunDuzenleKaydet() {
     if (aciklamaDegistiMi) govde.description = aciklama;
     if (kategoriDegistiMi && kategoriId) govde.categories = [{ id: Number(kategoriId) }];
 
-    if (yeniGorseller.length) {
-      govde.images = yeniGorseller.map(function (g) { return { id: Number(g.id) }; });
+    /* Üç yuva (Faz 11): SIRA sözleşmedir — images[0] öne çıkan, images[1..]
+       galeri (gallery_image_ids). Kullanıcı yuvalara DOKUNMADIYSA images
+       gönderilmez (mevcut galeri korunur); hepsini boşalttıysa [] gider. */
+    const yuvaGorselleri = duzenleYuvaGorselleri();
+
+    if (d.duzenleYuvaDegisti) {
+      govde.images = yuvaGorselleri.map(function (g) {
+        return g.id && !g.demo ? { id: Number(g.id) } : { src: g.url };
+      });
     } else if (gorselUrl) {
       govde.images = [{ src: gorselUrl }];
     }
@@ -1896,8 +1967,8 @@ async function urunDuzenleKaydet() {
       if (kod) b2bGovde.barcode = kod;
       if (kategoriDegistiMi && kategoriId) b2bGovde.categories = [Number(kategoriId)];
 
-      if (yeniGorseller.length) {
-        b2bGovde.images = yeniGorseller.map(function (g) { return g.id; });
+      if (d.duzenleYuvaDegisti) {
+        b2bGovde.images = yuvaGorselleri.map(function (g) { return g.id && !g.demo ? g.id : g.url; });
         b2bGovde.replace_images = true;
       } else if (gorselUrl) {
         b2bGovde.images = [gorselUrl];
@@ -3285,8 +3356,78 @@ async function siparisSil(id, buton) {
   }
 }
 
+/**
+ * ÇÖPE TAŞI (Faz 11) — kalıcı silmenin YUMUŞAK kardeşi: WordPress çöp kutusu
+ * (force=false), yöneticinin siteden geri alabileceği yol. İptal/iade
+ * sekmesinde "Siparişi Kalıcı Sil"in yanında durur.
+ */
+async function siparisCopeTasi(id, buton) {
+  const d = ekDurum();
+  if (!d) return;
+
+  const s = (d.siparisler || []).filter(function (x) { return String(x.id) === String(id); })[0];
+  if (!s) return;
+
+  if (typeof durumNormalle === 'function' && ['cancelled', 'refunded'].indexOf(durumNormalle(s.durum)) === -1) {
+    bildir('Yalnızca iptal ya da iade edilmiş siparişler çöpe taşınabilir.', 'uyari');
+    return;
+  }
+
+  const eminMi = await onayla(
+    'Siparişi Çöpe Taşı',
+    '#' + s.numara + '  ·  ' + (s.firma || s.musteri) + '  ·  ' + para(s.tutar) + '\n\n' +
+    (ekDemoMu()
+      ? '(Demo Modu: sipariş yalnızca bu ekrandan kaldırılır.)'
+      : 'Sipariş WordPress çöp kutusuna taşınır; site yönetiminden geri alınabilir.'),
+    'ÇÖPE TAŞI',
+    false
+  );
+  if (!eminMi) return;
+
+  const geriAl = butonuMesgulEt(buton, 'TAŞINIYOR…');
+
+  try {
+    if (ekDemoMu()) {
+      await bekle(280);
+
+      if (typeof DEMO_SIPARISLER !== 'undefined') {
+        const yer = ekUrunIndeksi(DEMO_SIPARISLER, id);
+        if (yer !== -1) DEMO_SIPARISLER.splice(yer, 1);
+      }
+    } else {
+      const cevap = await woo('orders/' + id, {
+        metod: 'DELETE',
+        sorgu: { force: false },
+        sureAsimi: 45000
+      });
+
+      if (!cevap || !cevap.ok) {
+        bildir('Sipariş çöpe taşınamadı:\n' + ekHataMetni(cevap), 'hata');
+        return;
+      }
+    }
+
+    d.siparisler = (d.siparisler || []).filter(function (x) { return String(x.id) !== String(id); });
+    if (d.siparislerToplam > 0) d.siparislerToplam -= 1;
+
+    if (typeof siparisleriCiz === 'function') siparisleriCiz();
+    if (typeof siparisSekmeleriCiz === 'function') siparisSekmeleriCiz();
+
+    bildir('Sipariş çöp kutusuna taşındı.\n#' + s.numara, 'basari');
+  } catch (e) {
+    bildir('Sipariş çöpe taşınırken beklenmeyen bir hata oluştu:\n' + String((e && e.message) || e), 'hata');
+  } finally {
+    geriAl();
+  }
+}
+
 /* ==========================================================================
  *  BÖLÜM G — BAYİ (MÜŞTERİ) KALICI SİLME
+ *  ---------------------------------------------------------------------------
+ *  FAZ 11 (b2b-core 2.17.0): önce `DELETE /wc-b2b/v1/dealers/{id}` — sunucu
+ *  b2b_* metasını ve WordPress hesabını birlikte temizler, yönetici hesaplarını
+ *  REDDEDER (b2b_user_is_staff). Uç yoksa (eski eklenti) wc/v3/customers
+ *  force=true yedek yol olarak kalır — o yol b2b metasını temizlemez.
  *  ---------------------------------------------------------------------------
  *  Bayi kartındaki durumdan (bekliyor/onaylı/reddedilmiş/askıda) bağımsız
  *  olarak her zaman görünür: müşteri hesabı WooCommerce çekirdek ucundan
@@ -3304,12 +3445,13 @@ async function uyeSil(id, buton) {
   if (!u) return;
 
   const eminMi = await onayla(
-    'Müşteriyi Kalıcı Sil',
-    'Bu müşteriyi/bayiyi sitenizden KALICI olarak silmek istediğinize emin misiniz?\n\n' +
+    'Bayiyi Kalıcı Olarak Sil',
+    'Bu bayiyi sitenizden KALICI olarak silmek istediğinize emin misiniz?\n\n' +
     (u.firma || u.ad) + (u.eposta ? '  ·  ' + u.eposta : '') + '\n\n' +
     (ekDemoMu()
       ? '(Demo Modu: kayıt yalnızca bu ekrandan kaldırılır, sitenizde hiçbir şey silinmez.)'
-      : 'Müşteri hesabı sitenizin veritabanından TAMAMEN silinecek.\n' +
+      : 'Bayinin B2B kaydı (firma, vergi, adres, iskonto, plasiyer ataması) ve\n' +
+        'WordPress kullanıcı hesabı sitenizden TAMAMEN silinecek.\n' +
         'Geçmiş siparişleri etkilemez, ancak hesaba bir daha giriş yapılamaz.\n' +
         'Bu işlem GERİ ALINAMAZ.'),
     'EVET, KALICI SİL',
@@ -3328,14 +3470,24 @@ async function uyeSil(id, buton) {
         if (yer !== -1) DEMO_UYELER.splice(yer, 1);
       }
     } else {
-      const cevap = await woo('customers/' + id, {
+      /* Önce b2b-core ucu (meta + hesap birlikte, yönetici korumalı); uç yoksa
+         WooCommerce çekirdeği (eski eklenti ile geriye uyum). */
+      let cevap = await b2b('dealers/' + id, {
         metod: 'DELETE',
         sorgu: { force: true },
         sureAsimi: 45000
       });
 
+      if (typeof ucBulunamadiMi === 'function' && ucBulunamadiMi(cevap)) {
+        cevap = await woo('customers/' + id, {
+          metod: 'DELETE',
+          sorgu: { force: true },
+          sureAsimi: 45000
+        });
+      }
+
       if (!cevap || !cevap.ok) {
-        bildir('Müşteri silinemedi:\n' + ekHataMetni(cevap), 'hata');
+        bildir('Bayi silinemedi:\n' + ekHataMetni(cevap), 'hata');
         return;
       }
     }
@@ -3520,7 +3672,10 @@ function ekOlaylariBagla() {
 
   if (duzenleDosyaSec) {
     duzenleDosyaSec.addEventListener('change', function (o) {
-      if (o.target.files && o.target.files.length) duzenleGorselleriYukle(o.target.files);
+      const d = ekDurum();
+      const hedef = d ? d.duzenleHedefYuva : null;
+      if (d) d.duzenleHedefYuva = null;
+      if (o.target.files && o.target.files.length) duzenleGorselleriYukle(o.target.files, hedef);
       o.target.value = '';   // Aynı dosya tekrar seçilebilsin
     });
   }
@@ -3529,7 +3684,15 @@ function ekOlaylariBagla() {
   if (duzenleGorselKutu) {
     duzenleGorselKutu.addEventListener('click', function (o) {
       const silBtn = ekEnYakin(o.target, '[data-duzenle-gorsel-sil]');
-      if (silBtn) duzenleGorselKaldir(silBtn.dataset.duzenleGorselSil);
+      if (silBtn) { duzenleGorselKaldir(silBtn.dataset.duzenleGorselSil); return; }
+
+      /* Yuvaya tıklama (Faz 11): dosya seçici o yuva için açılır. */
+      const yuvaBtn = ekEnYakin(o.target, '[data-duzenle-gorsel-yuva]');
+      if (yuvaBtn) {
+        const d = ekDurum();
+        if (d) d.duzenleHedefYuva = Number(yuvaBtn.dataset.duzenleGorselYuva);
+        if (duzenleDosyaSec) duzenleDosyaSec.click();
+      }
     });
   }
 
@@ -3667,6 +3830,8 @@ window.urunDuzenleAc = urunDuzenleAc;
 window.urunDuzenleKapat = urunDuzenleKapat;
 window.urunDuzenleKaydet = urunDuzenleKaydet;
 window.duzenleGorselleriYukle = duzenleGorselleriYukle;
+window.duzenleYuvalariniKur = duzenleYuvalariniKur;
+window.duzenleYuvaGorselleri = duzenleYuvaGorselleri;
 window.duzenleGorselKaldir = duzenleGorselKaldir;
 window.duzenleGorselKutusuCiz = duzenleGorselKutusuCiz;
 window.duzenleKategorileriYukle = duzenleKategorileriYukle;
@@ -3693,6 +3858,7 @@ window.iptalSebebiSor = iptalSebebiSor;
 window.iptalModaliKapat = iptalModaliKapat;
 window.siparisIptalEt = siparisIptalEt;
 window.siparisSil = siparisSil;
+window.siparisCopeTasi = siparisCopeTasi;
 window.uyeSil = uyeSil;
 
 

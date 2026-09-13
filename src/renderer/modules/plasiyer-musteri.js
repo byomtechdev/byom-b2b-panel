@@ -149,6 +149,50 @@
     }
   }
 
+  /**
+   * ÇEVRİMDIŞI müşteriyi cihazdan siler (Faz 11). Kural ana süreçte
+   * (musteri:kuyruktan-sil): yalnızca geçici + eşitlenmemiş kayıt; bekleyen
+   * sipariş/not varsa RET — sebep kullanıcıya söylenir. Seçili müşteri buysa
+   * sepet bırakılır ki satış ekranı sahipsiz bir müşteriyle kalmasın.
+   */
+  async function yerelMusteriSil(m) {
+    if (!m || !M().geciciMi(m.id)) return false;
+
+    var eminMi = ('function' === typeof window.onayla)
+      ? await window.onayla('Müşteriyi Cihazdan Sil',
+          kacis(m.unvan || '') + '\n\nBu kayıt henüz sunucuya gitmedi; yalnızca bu cihazdan silinecek.',
+          'EVET, SİL', true)
+      : ('function' === typeof window.confirm ? window.confirm('"' + (m.unvan || '') + '" cihazdan silinsin mi?') : true);
+
+    if (!eminMi) return false;
+
+    var cevap;
+
+    try {
+      cevap = await ipcRenderer.invoke('musteri:kuyruktan-sil', { id: m.id });
+    } catch (e) {
+      cevap = { ok: false, hata: (e && e.message) || 'Ağ hatası.' };
+    }
+
+    if (!cevap || !cevap.ok) {
+      bildir((cevap && cevap.hata) || 'Müşteri silinemedi.', 'uyari');
+      return false;
+    }
+
+    durumM.yereller = durumM.yereller.filter(function (x) { return String(x.id) !== String(m.id); });
+
+    if (durumM.secili && String(durumM.secili.id) === String(m.id)) musteriyiBirak();
+    if (durumM.profil && String(durumM.profil.id) === String(m.id)) durumM.profil = null;
+
+    portfoyuCiz();
+    seridiCiz();
+    kuyrukSeridiniCiz();
+
+    bildir('Çevrimdışı müşteri cihazdan silindi: ' + (m.unvan || ''), 'basari');
+
+    return true;
+  }
+
   /* ------------------------------------------------------------------ *
    *  MÜŞTERİ LİSTESİ
    * ------------------------------------------------------------------ */
@@ -1167,6 +1211,11 @@
           '<button type="button" class="mk-siparis px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600" data-id="' + kacis(String(m.id)) + '">🛍️ Sipariş Yaz</button>' +
           '<button type="button" class="mk-not px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '" title="İsteğe bağlı — patrona not bırakın">📝 Ziyaret Notu</button>' +
           '<button type="button" class="mk-profil px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '">Profil</button>' +
+          /* Yalnızca henüz sunucuya gitmemiş kayıt silinebilir (Faz 11). Metinde
+             "ÇEVRİMDIŞI" geçmez — eşitleme testi rozetin kalktığını o sözcükle ölçer. */
+          (m.gecici
+            ? '<button type="button" class="mk-sil px-3 py-2 rounded-lg border-2 border-red-300 text-red-700 dark:border-red-500/40 dark:text-red-300 font-bold text-sm hover:bg-red-50 dark:hover:bg-red-500/10" data-id="' + kacis(String(m.id)) + '" title="Henüz sunucuya gitmemiş bu kaydı cihazdan siler.">🗑️ Sil</button>'
+            : '') +
         '</div>' +
       '</div>';
     }).join('');
@@ -1305,6 +1354,7 @@
 
       if (hedef.classList.contains('mk-siparis')) return siparisYazmayaGec(m);
       if (hedef.classList.contains('mk-not')) return ziyaretNotuAc(m);
+      if (hedef.classList.contains('mk-sil')) return yerelMusteriSil(m);
 
       /* Profil düğmesi ya da kartın kendisi → profil */
       durumM.profil = m;
@@ -1406,6 +1456,7 @@
     profiliCiz: profiliCiz,
     kuyrukSeridiniCiz: kuyrukSeridiniCiz,
     anindaEsitle: anindaEsitle,
+    yerelMusteriSil: yerelMusteriSil,
     yerelMukerrerBul: yerelMukerrerBul,
     durum: durumM,
     YEREL_ANAHTAR: YEREL_ANAHTAR
