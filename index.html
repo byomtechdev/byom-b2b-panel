@@ -186,7 +186,7 @@
 
     --kose:         6px;
     --kose-kucuk:   4px;
-    --logo-width:   220px;   /* Ayarlar → Logo Genişliği (Faz 11) */
+    --logo-width:   220px;   /* Vitrin Editörü › Marka Görselleri → Masaüstü logo genişliği (Faz 11 · Eksen 2) */
   }
 
   html.dark {
@@ -2099,6 +2099,14 @@
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-liste"></use></svg>
         <span class="align-middle">Performansım</span>
       </button>
+      <!-- SAHA HARİTAM (saha, Faz 12) — plasiyerin YALNIZCA kendi sorumlu illeri
+           ve kendi bayileri. Veri: plasiyer:harita → GET /plasiyer/harita (jetonla).
+           Çizim: harita-kokpit.js fabrikası → window.SahaHarita (#sahaHaritaKab).
+           Bayi kartından tek tıkla sipariş / ziyaret notu. -->
+      <button data-sekme="sahaharitam" data-rol-izin="plasiyer" data-kabuk="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
+        <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kure"></use></svg>
+        <span class="align-middle">Saha Haritam</span>
+      </button>
 
       <button data-sekme="urunler" data-rol-izin="admin" data-kabuk="admin" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg>
@@ -2817,6 +2825,30 @@
             </p>
           </div>
         </div>
+              <!-- Masaüstü logo genişliği (Faz 11 · Eksen 2; ürün sahibi: API sekmesinde ayar kartı
+                   istenmiyor). YALNIZCA bu uygulamanın sol üst logosunu ölçekler: ayarlar.json →
+                   masaustuLogoGenislik (100–320 px), renderer.js logoGenisligiUygula() → --logo-width.
+                   Siteye/temaya GİTMEZ: theme-config branding yüküne ve "SİTEYE GÖNDER"e girmez
+                   (renderer-vitrin.js; yonetici-arayuz.dom.test.js kaynak kilidi). Kaydırırken
+                   yalnızca CSS değişkeni yazılır; diske ancak [Kaydet] ile gider (ayar:yaz). -->
+              <div id="veLogoGenislikKutu" class="mt-4 pt-4 border-t-2 border-slate-200 dark:border-slate-700">
+                <div class="text-base font-extrabold mb-1"><svg class="ik" aria-hidden="true"><use href="#ik-ekran"></use></svg> Masaüstü logo genişliği</div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="text-sm font-bold text-slate-500">100px</span>
+                  <input id="veLogoGenislik" type="range" min="100" max="320" step="10" value="220"
+                         class="flex-1 accent-marka-600" aria-label="Masaüstü logo genişliği (piksel)" />
+                  <span class="text-sm font-bold text-slate-500">320px</span>
+                  <span id="veLogoGenislikDeger" class="w-16 text-right text-lg font-black tabular-nums">220px</span>
+                  <button id="veLogoGenislikKaydet" type="button"
+                          class="h-11 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                                 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                                 text-base font-extrabold transition">Kaydet</button>
+                </div>
+                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  Yalnızca bu bilgisayardaki uygulamanın sol üst logosunu boyutlandırır; web sitenizin
+                  temasına ve site logosuna <b>hiç dokunmaz</b>, "SİTEYE GÖNDER" ile de gitmez.
+                </p>
+              </div>
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <button id="veMarkaGonderBtn" type="button"
                         class="h-11 px-4 rounded-xl bg-marka-700 hover:bg-marka-800 text-white text-base font-extrabold transition">
@@ -3118,25 +3150,6 @@
               <div id="zoomBilgi" class="mt-3 text-base font-bold text-slate-500 dark:text-slate-400"></div>
             </div>
 
-            <!-- Logo genişliği (Faz 11, Orhan Bey talebi): 120–300 px, ayarlar.json →
-                 logoGenislik; sol üst logoya --logo-width olarak ANINDA uygulanır.
-                 Kaydırırken yalnızca CSS değişkeni yazılır, diske 'change'te gider
-                 (her karede ayarlar.json yazmamak için). -->
-            <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
-              <div class="text-xl font-black mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg> Logo Genişliği</div>
-              <p class="mb-4 text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-                Sol üstteki firma logosunun genişliğini ayarlar (yükseklik üst çubuğa sığacak
-                şekilde sabittir). Değer bu bilgisayarda saklanır ve hemen uygulanır.
-              </p>
-              <div class="flex items-center gap-4">
-                <span class="text-sm font-bold text-slate-500">120px</span>
-                <input id="logoGenislikAralik" type="range" min="120" max="300" step="10" value="220"
-                       class="flex-1 accent-marka-600" aria-label="Logo genişliği (piksel)" />
-                <span class="text-sm font-bold text-slate-500">300px</span>
-                <span id="logoGenislikDeger" class="w-20 text-right text-lg font-black tabular-nums">220px</span>
-              </div>
-            </div>
-
             <!-- Firma & API bilgileri -->
             <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700 shadow-sm flex flex-col gap-5">
 
@@ -3151,7 +3164,8 @@
               <!-- Firma Logosu / Favicon alanları buradan KALDIRILDI:
  marka görselleri Vitrin Editörü › "Marka Görselleri" panelinde
  (bkz. #veMarkaPanel / #markaLogoKutusu). Bu sekme yalnızca API
- anahtarları ve çekirdek ayarlar için. -->
+ anahtarları ve çekirdek ayarlar için. Masaüstü logo genişliği
+ kaydırıcısı da oradadır (#veLogoGenislik, Faz 11 · Eksen 2). -->
 
               <div>
                 <label for="girdiUrl" class="block text-lg font-extrabold mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-kure"></use></svg> WooCommerce Site Adresi</label>
@@ -3491,6 +3505,19 @@
            ============================================================ -->
       <!-- PERFORMANSIM (Faz 11) — Burada yalnızca KAPLAR durur; kartlar
            plasiyer-performansim.js tarafından çizilir. -->
+      <!-- SAHA HARİTAM (Faz 12) — Burada yalnızca KAP durur; harita, lejant ve
+           bayi kartları window.SahaHarita (harita-kokpit.js) tarafından çizilir. -->
+      <section id="sekme-sahaharitam" class="sekme-govde" data-kabuk="plasiyer">
+        <div class="flex items-center gap-4 mb-5 flex-wrap">
+          <h1 class="text-3xl font-black">
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kure"></use></svg> 🗺️ Saha Haritam
+          </h1>
+          <span class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            Sorumlu illerim ve bayilerim · ile tıklayın, karttan sipariş açın
+          </span>
+        </div>
+        <div id="sahaHaritaKab"></div>
+      </section>
       <section id="sekme-performansim" class="sekme-govde" data-kabuk="plasiyer">
         <div class="flex items-center gap-4 mb-5 flex-wrap">
           <h1 class="text-3xl font-black">
@@ -4849,6 +4876,7 @@
      ONLARDAN ÖNCE yüklenir. Müşteri modülü de vitrinin sepetini paylaştığı
      (PlasiyerVitrin.sepetAl) için vitrinden SONRA gelir. -->
 <script src="src/renderer/plasiyer-siparis-motor.js"></script>
+<script src="src/renderer/siparis-fisi.js"></script>
 <script src="src/renderer/modules/plasiyer-vitrin.js"></script>
 <script src="src/renderer/modules/plasiyer-musteri.js"></script>
 <!-- Faz 10 — saha "Kendi Siparişlerim" şablonu. Müşteri modülünün kuyruk

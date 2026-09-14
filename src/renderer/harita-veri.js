@@ -276,6 +276,10 @@
       o.siparis += Number(veri.siparis) || 0;
       o.ciro += Number(veri.ciro) || 0;
 
+      /* Sorumlu plasiyer (Faz 12): aynı ilin iki yazımı geldiğinde ilk dolu
+         değer kalır — bir ilin TEK sorumlusu vardır (sunucu çakışmayı reddeder). */
+      if (!o.plasiyer && Number(veri.plasiyer) > 0) o.plasiyer = Number(veri.plasiyer);
+
       var n = veri.not || {};
 
       ['toplam', 'beklemede', 'gorundu', 'cozuldu', 'cozulmemis'].forEach(function (k) {
@@ -309,6 +313,7 @@
         siparis: o.siparis,
         ciro: Math.round(o.ciro * 100) / 100,
         not: o.not,
+        plasiyer: Number(o.plasiyer) || 0,
         /* Haritada kırmızı ünlem gösterilecek mi? */
         uyari: o.not.cozulmemis > 0
       };

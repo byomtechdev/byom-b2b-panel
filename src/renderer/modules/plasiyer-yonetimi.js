@@ -30,7 +30,21 @@
 (function () {
 
   /** Son çekilen liste — yeniden çizimde tekrar istek atmamak için. */
-  var kayit = { plasiyerler: [], genelCiro: 0, genelSiparis: 0, paraBirimi: '', bayiler: [] };
+  var kayit = { plasiyerler: [], genelCiro: 0, genelSiparis: 0, paraBirimi: '', bayiler: [],
+    /* Tablo sıralaması (Faz 12): başlığa tıklanır, yerel — ağa çıkmaz. */
+    sirala: { alan: 'ciro', yon: -1 } };
+
+  /** Sıralanmış kopya; ad Türkçe harf duyarlı, sayılar sayısal. */
+  function siraliPlasiyerler() {
+    var alan = kayit.sirala.alan;
+    var yon = kayit.sirala.yon;
+
+    return kayit.plasiyerler.slice().sort(function (a, b) {
+      if ('ad' === alan) return String(a.ad || '').localeCompare(String(b.ad || ''), 'tr') * yon;
+
+      return ((Number(a[alan]) || 0) - (Number(b[alan]) || 0)) * yon;
+    });
+  }
 
   var bagli = false;   // çift bağlanma koruması (bkz. kök CLAUDE.md §6)
 
@@ -57,6 +71,48 @@
 
     return sayi.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
            (kayit.paraBirimi ? ' ' + kayit.paraBirimi : '');
+  }
+
+  /**
+   * PLASİYER RENK PALETİ (Faz 12) — tek kaynak harita-kokpit.js (PHP
+   * B2B_Plasiyer::PALET ikizi). Kokpit yüklenmemişse (test harness) küçük
+   * bir yedek liste; ikisi de aynı anahtarları taşır.
+   */
+  function palet() {
+    if (window.HaritaKokpit && window.HaritaKokpit.PALET) return window.HaritaKokpit.PALET;
+
+    return { mor: '#7c3aed', safir: '#2563eb', zumrut: '#059669', amber: '#d97706', gul: '#e11d48',
+             turkuaz: '#0891b2', indigo: '#4f46e5', kiremit: '#c2410c', zeytin: '#4d7c0f', fuchsia: '#c026d3' };
+  }
+
+  function paletAdi(anahtar) {
+    var A = (window.HaritaKokpit && window.HaritaKokpit.PALET_ADLARI) || {};
+    return A[anahtar] || anahtar || '';
+  }
+
+  function renkHex(anahtar) {
+    return palet()[String(anahtar || '')] || '';
+  }
+
+  /** 81 il — HaritaVeri kütüğünden (plaka sırasıyla). */
+  function iller() {
+    var V = window.HaritaVeri;
+    return (V && Array.isArray(V.ILLER)) ? V.ILLER.slice().sort(function (a, b) { return a.plaka - b.plaka; }) : [];
+  }
+
+  /** Başka bir plasiyere atanmış iller: plaka → plasiyer adı (formda uyarı). */
+  function ilSahipleri(haricId) {
+    var sahip = {};
+
+    kayit.plasiyerler.forEach(function (p) {
+      if (Number(p.id) === Number(haricId)) return;
+
+      (Array.isArray(p.iller) ? p.iller : []).forEach(function (plaka) {
+        sahip[Number(plaka)] = p.ad || ('#' + p.id);
+      });
+    });
+
+    return sahip;
   }
 
   /* ------------------------------------------------------------------ *
@@ -280,7 +336,7 @@
       return Math.max(m, Number(p.ciro) || 0);
     }, 0);
 
-    var satirlar = kayit.plasiyerler.map(function (p) {
+    var satirlar = siraliPlasiyerler().map(function (p) {
       var ciro = Number(p.ciro) || 0;
       var oran = enYuksek > 0 ? (ciro / enYuksek) : 0;
       var pay = kayit.genelCiro > 0 ? Math.round((ciro / kayit.genelCiro) * 100) : 0;
@@ -288,13 +344,22 @@
       return '' +
         '<tr class="border-t-2 border-slate-100 dark:border-slate-700">' +
           '<td class="py-4 pr-4">' +
-            '<div class="font-extrabold text-lg">' + kacis(p.ad || '-') + '</div>' +
+            '<div class="font-extrabold text-lg flex items-center gap-2">' +
+              (renkHex(p.renk)
+                ? '<span class="plasiyer-renk inline-block w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-slate-800 shrink-0" style="background:' + kacis(renkHex(p.renk)) + '" title="' + kacis(paletAdi(p.renk)) + '"></span>'
+                : '<span class="plasiyer-renk inline-block w-3.5 h-3.5 rounded-full border-2 border-dashed border-slate-300 shrink-0" title="Renk atanmamış"></span>') +
+              '<span>' + kacis(p.ad || '-') + '</span>' +
+            '</div>' +
             '<div class="text-sm text-slate-500 dark:text-slate-400">' + kacis(p.kullanici || '') + '</div>' +
           '</td>' +
           '<td class="py-4 pr-4">' +
             (p.bolge
               ? '<span class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold text-sm">' + kacis(p.bolge) + '</span>'
               : '<span class="text-slate-400 text-sm">atanmamış</span>') +
+            /* Sorumlu il sayısı (Faz 12): harita bu illeri plasiyerin rengine boyar. */
+            (Array.isArray(p.iller) && p.iller.length
+              ? '<div class="plasiyer-iller mt-1 text-xs font-bold text-slate-500 dark:text-slate-400" title="' + kacis(p.iller.map(function (pl) { var v = window.HaritaVeri && window.HaritaVeri.ilBul(Number(pl)); return v ? v.ad : pl; }).join(', ')) + '">🗺️ ' + p.iller.length + ' sorumlu il</div>'
+              : '<div class="plasiyer-iller mt-1 text-xs font-bold text-amber-600 dark:text-amber-400">il atanmamış</div>') +
           '</td>' +
           '<td class="py-4 pr-4 text-center font-bold">' + (Number(p.bayi) || 0) + '</td>' +
           '<td class="py-4 pr-4 text-center font-bold">' + (Number(p.siparis) || 0) + '</td>' +
@@ -321,17 +386,28 @@
         '</tr>';
     }).join('');
 
+    /* Sıralanabilir başlık (Faz 12): tıklanınca aynı alan yön değiştirir. */
+    function baslik(alan, etiket, sinif) {
+      var aktif = kayit.sirala.alan === alan;
+      var ok = aktif ? (kayit.sirala.yon < 0 ? ' ↓' : ' ↑') : '';
+
+      return '<th class="pb-3 pr-4 ' + sinif + '">' +
+        '<button type="button" class="plasiyer-sirala uppercase tracking-wide font-bold hover:text-slate-800 dark:hover:text-slate-100 ' + (aktif ? 'text-slate-800 dark:text-slate-100' : '') +
+          '" data-alan="' + alan + '" aria-sort="' + (aktif ? (kayit.sirala.yon < 0 ? 'descending' : 'ascending') : 'none') + '" title="Sırala">' +
+          etiket + ok + '</button></th>';
+    }
+
     kap.innerHTML =
       '<div class="overflow-x-auto">' +
         '<table class="w-full text-left">' +
           '<thead class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400">' +
             '<tr>' +
-              '<th class="pb-3 pr-4">Pazarlamacı</th>' +
+              baslik('ad', 'Pazarlamacı', '') +
               '<th class="pb-3 pr-4">Bölge</th>' +
-              '<th class="pb-3 pr-4 text-center">Bayi</th>' +
-              '<th class="pb-3 pr-4 text-center">Sipariş</th>' +
-              '<th class="pb-3 pr-4 text-center">Tavan</th>' +
-              '<th class="pb-3 pr-4">Ciro</th>' +
+              baslik('bayi', 'Bayi', 'text-center') +
+              baslik('siparis', 'Sipariş', 'text-center') +
+              baslik('maxIskonto', 'Tavan', 'text-center') +
+              baslik('ciro', 'Ciro', '') +
               '<th class="pb-3 text-right">İşlem</th>' +
             '</tr>' +
           '</thead>' +
@@ -384,6 +460,44 @@
           .map(function (b) { return '<option value="' + b + '"></option>'; }).join('') +
       '</datalist>' +
 
+      /* RENK (Faz 12): harita bu plasiyerin sorumlu illerini bu renge boyar. */
+      '<div class="block mt-4 text-sm font-bold text-slate-600 dark:text-slate-300">Harita rengi</div>' +
+      '<div id="pfRenkPaleti" class="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Harita rengi">' +
+        Object.keys(palet()).map(function (anahtar) {
+          var secili = mevcut && String(mevcut.renk || '') === anahtar;
+          return '<button type="button" class="pf-renk w-9 h-9 rounded-full ring-2 transition ' + (secili ? 'ring-slate-900 dark:ring-white scale-110' : 'ring-transparent hover:scale-105') +
+                 '" data-renk="' + anahtar + '" role="radio" aria-checked="' + (secili ? 'true' : 'false') + '" title="' + kacis(paletAdi(anahtar)) + '" style="background:' + palet()[anahtar] + '"></button>';
+        }).join('') +
+      '</div>' +
+      '<input type="hidden" id="pfRenk" value="' + kacis((mevcut && mevcut.renk) || '') + '" />' +
+
+      /* SORUMLU İLLER (Faz 12): çoklu seçim — bölge kısayolu + arama. Başka
+         plasiyerdeki il işaretlenemez (sunucu da çakışmayı reddeder). */
+      '<div class="block mt-4 text-sm font-bold text-slate-600 dark:text-slate-300">Sorumlu iller <span id="pfIlSayac" class="font-normal opacity-70">— 0 il seçili</span></div>' +
+      '<div class="mt-2 flex items-center gap-2 flex-wrap">' +
+        '<input id="pfIlAra" type="search" placeholder="İl ara…" class="flex-1 min-w-40 px-3 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold text-sm" />' +
+        ['Marmara', 'Ege', 'Akdeniz', 'İç Anadolu', 'Karadeniz', 'Doğu Anadolu', 'Güneydoğu Anadolu'].map(function (b) {
+          return '<button type="button" class="pf-bolge-sec px-2.5 py-1.5 rounded-lg border-2 border-slate-200 dark:border-slate-600 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700" data-bolge="' + b + '" title="' + b + ' bölgesinin (uygun) illerini seç">' + b + '</button>';
+        }).join('') +
+        '<button type="button" id="pfIlTemizle" class="px-2.5 py-1.5 rounded-lg border-2 border-slate-200 dark:border-slate-600 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700">Temizle</button>' +
+      '</div>' +
+      '<div id="pfIlListe" class="mt-2 max-h-48 overflow-y-auto rounded-xl border-2 border-slate-200 dark:border-slate-600 p-2 grid grid-cols-2 sm:grid-cols-3 gap-1">' +
+        (function () {
+          var secili = {};
+          ((mevcut && Array.isArray(mevcut.iller)) ? mevcut.iller : []).forEach(function (pl) { secili[Number(pl)] = true; });
+          var sahip = ilSahipleri(mevcut ? mevcut.id : 0);
+
+          return iller().map(function (il) {
+            var baskasinin = sahip[il.plaka];
+            return '<label class="pf-il flex items-center gap-2 px-2 py-1 rounded-lg text-sm font-semibold ' + (baskasinin ? 'opacity-50' : 'hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer') + '" data-ad="' + kacis(il.ad) + '" data-bolge="' + kacis(il.bolge) + '" title="' + (baskasinin ? kacis(baskasinin) + ' sorumlu' : kacis(il.bolge)) + '">' +
+              '<input type="checkbox" class="pf-il-kutu w-4 h-4 accent-marka-600" value="' + il.plaka + '"' + (secili[il.plaka] ? ' checked' : '') + (baskasinin ? ' disabled' : '') + ' />' +
+              '<span>' + kacis(il.ad) + ' <span class="opacity-60">(' + il.plaka + ')</span></span>' +
+              (baskasinin ? '<span class="ml-auto text-[10px] font-bold text-amber-600 truncate">' + kacis(baskasinin) + '</span>' : '') +
+            '</label>';
+          }).join('');
+        })() +
+      '</div>' +
+
       '<label class="block mt-4 text-sm font-bold text-slate-600 dark:text-slate-300" for="pfTavan">İskonto tavanı (%) <span class="font-normal opacity-70">— sahada verebileceği en yüksek bayi iskontosu</span></label>' +
       '<input id="pfTavan" type="number" min="0" max="100" step="0.5" class="mt-2 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold" value="' + kacis(String((mevcut && null !== mevcut.maxIskonto && undefined !== mevcut.maxIskonto) ? mevcut.maxIskonto : '')) + '" placeholder="0" />' +
       '<p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Boş bırakılırsa mağazanın genel tavanı geçerlidir. Tanımsız tavan SINIRSIZ değil SIFIRDIR; son söz sunucudadır.</p>' +
@@ -412,6 +526,68 @@
       if (temiz !== pin.value) pin.value = temiz;
     });
 
+    /* Renk paleti: tek seçim, tekrar tıklayınca kaldırılır. */
+    var paletKap = el('pfRenkPaleti');
+    if (paletKap) {
+      paletKap.addEventListener('click', function (olay) {
+        var d = olay.target.closest('.pf-renk');
+        if (!d) return;
+
+        var gizli = el('pfRenk');
+        var yeniRenk = gizli.value === d.dataset.renk ? '' : d.dataset.renk;
+        gizli.value = yeniRenk;
+
+        paletKap.querySelectorAll('.pf-renk').forEach(function (b) {
+          var secili = b.dataset.renk === yeniRenk;
+          b.setAttribute('aria-checked', secili ? 'true' : 'false');
+          b.className = 'pf-renk w-9 h-9 rounded-full ring-2 transition ' + (secili ? 'ring-slate-900 dark:ring-white scale-110' : 'ring-transparent hover:scale-105');
+        });
+      });
+    }
+
+    /* İl seçici: sayaç, arama, bölge kısayolu, temizle. */
+    var ilListe = el('pfIlListe');
+
+    function ilSayaciniYaz() {
+      var n = ilListe ? ilListe.querySelectorAll('.pf-il-kutu:checked').length : 0;
+      var sayac = el('pfIlSayac');
+      if (sayac) sayac.textContent = '— ' + n + ' il seçili';
+    }
+
+    if (ilListe) {
+      ilListe.addEventListener('change', ilSayaciniYaz);
+
+      var ara = el('pfIlAra');
+      if (ara) {
+        ara.addEventListener('input', function () {
+          var q = String(ara.value || '').toLocaleLowerCase('tr-TR');
+          ilListe.querySelectorAll('.pf-il').forEach(function (satir) {
+            satir.hidden = !!q && String(satir.dataset.ad || '').toLocaleLowerCase('tr-TR').indexOf(q) === -1;
+          });
+        });
+      }
+
+      form.querySelectorAll('.pf-bolge-sec').forEach(function (b) {
+        b.addEventListener('click', function () {
+          ilListe.querySelectorAll('.pf-il').forEach(function (satir) {
+            var kutu = satir.querySelector('.pf-il-kutu');
+            if (satir.dataset.bolge === b.dataset.bolge && kutu && !kutu.disabled) kutu.checked = true;
+          });
+          ilSayaciniYaz();
+        });
+      });
+
+      var temizle = el('pfIlTemizle');
+      if (temizle) {
+        temizle.addEventListener('click', function () {
+          ilListe.querySelectorAll('.pf-il-kutu').forEach(function (kutu) { if (!kutu.disabled) kutu.checked = false; });
+          ilSayaciniYaz();
+        });
+      }
+
+      ilSayaciniYaz();
+    }
+
     el('pfAd').focus();
   }
 
@@ -423,10 +599,29 @@
     var tavanAlan = el('pfTavan');
     var tavanMetin = String((tavanAlan && tavanAlan.value) || '').trim();
 
+    var ilKutulari = Array.prototype.slice.call((el('pfIlListe') || document.createElement('div')).querySelectorAll('.pf-il-kutu:checked'));
+
+    function ilListesiCizildi() {
+      var kap = el('pfIlListe');
+
+      return !!(kap && kap.querySelector('.pf-il-kutu'));
+    }
+
     var govde = {
       plasiyer_id: mevcut ? Number(mevcut.id) : 0,
       ad: String(el('pfAd').value || '').trim(),
       bolge: String(el('pfBolge').value || '').trim(),
+      /* Faz 12: harita rengi + sorumlu iller (plaka listesi). */
+      renk: String((el('pfRenk') || {}).value || ''),
+      /*
+       * `null` = DOKUNMA, `[]` = tümünü kaldır (sunucu sözleşmesi). İl listesi
+       * hiç çizilemediyse (HaritaVeri yüklenmemiş) boş dizi göndermek, PIN
+       * değiştirmek için açılan bir formun mevcut il atamasını SESSİZCE
+       * silmesi demekti.
+       */
+      iller: ilListesiCizildi()
+        ? ilKutulari.map(function (k) { return Number(k.value); }).filter(function (n) { return n >= 1 && n <= 81; })
+        : null,
       /* '' = tavanı kaldır (globale dön); sayı = kişiye özel tavan. */
       maxIskonto: tavanMetin,
       pin: String((pinAlan && pinAlan.value) || '')
@@ -666,6 +861,16 @@
 
     if (kap) {
       kap.addEventListener('click', function (olay) {
+        var sirala = olay.target.closest('.plasiyer-sirala');
+
+        if (sirala) {
+          var alan = String(sirala.dataset.alan || 'ciro');
+
+          kayit.sirala = { alan: alan, yon: kayit.sirala.alan === alan ? -kayit.sirala.yon : ('ad' === alan ? 1 : -1) };
+          tabloyuCiz();
+          return;
+        }
+
         var duzenle = olay.target.closest('.plasiyer-duzenle');
 
         if (duzenle) {
@@ -735,6 +940,8 @@
 
   window.PlasiyerYonetimi = {
     bayiKunyesi: bayiKunyesi,
+    palet: palet,
+    ilSahipleri: ilSahipleri,
     listeyiGetir: listeyiGetir,
     tabloyuCiz: tabloyuCiz,
     formuAc: formuAc,

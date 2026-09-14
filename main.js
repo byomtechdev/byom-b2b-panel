@@ -252,10 +252,13 @@ function varsayilanAyarlar() {
     // Urun sekmesindeki liste gorunumu: 'tablo' (Excel tipi izgara) veya
     // 'kart' (surukle-birak siralamanin calistigi eski duzen).
     urunGorunumu: 'tablo',
-    /* Sol üst logo genişliği (px). Ayarlar → "Logo Genişliği" kaydırıcısı;
-       renderer --logo-width CSS değişkenine yazar (Faz 11, Orhan Bey talebi).
-       220 = eski sabit max-width, mevcut kurulumlar aynı görünür. */
-    logoGenislik: 220,
+    /* Sol üst logo genişliği (px) — YALNIZCA bu masaüstü uygulaması. Kaydırıcı
+       Vitrin Editörü › Marka Görselleri panelinde (100–320, Faz 11 · Eksen 2);
+       renderer --logo-width CSS değişkenine yazar. Siteye/temaya GİTMEZ
+       (theme-config/branding yüküne girmez). 220 = eski sabit max-width,
+       mevcut kurulumlar aynı görünür. Eski anahtar 'logoGenislik' →
+       ayarlariOku() içindeki göçle devralınır. */
+    masaustuLogoGenislik: 220,
     // Canlı sipariş kontrolü: sipariş sekmesi açıkken kaç saniyede bir tazelensin.
     otoYenile: true,
     otoYenileSaniye: 60,
@@ -274,8 +277,16 @@ function varsayilanAyarlar() {
 
 function ayarlariOku() {
   try {
-    const ham = fs.readFileSync(ayarYolu(), 'utf8');
-    return Object.assign(varsayilanAyarlar(), JSON.parse(ham));
+    const ham = JSON.parse(fs.readFileSync(ayarYolu(), 'utf8'));
+    /* Anahtar göçü (Faz 11 · Eksen 2): 'logoGenislik' → 'masaustuLogoGenislik'.
+       Yeni anahtar dosyada yoksa eskisi devralınır; dosyaya burada DOKUNULMAZ —
+       ilk ayar:yaz zaten tam nesneyi (yeni anahtarla) yazar. Tek okuma noktası
+       burası olduğu için arayüz (ayar:oku) ve içerideki her okuyucu aynı değeri
+       görür; renderer eski anahtarı bilmez. */
+    if (ham && typeof ham === 'object' && ham.masaustuLogoGenislik === undefined && ham.logoGenislik !== undefined) {
+      ham.masaustuLogoGenislik = ham.logoGenislik;
+    }
+    return Object.assign(varsayilanAyarlar(), ham);
   } catch (e) {
     return varsayilanAyarlar();
   }
@@ -1297,6 +1308,40 @@ ipcMain.handle('plasiyer:performans', async function () {
     if (cevap && 401 === cevap.durum) plasiyerOturumu = null;
 
     return { ok: false, durum: cevap ? cevap.durum : 0, hata: (cevap && cevap.hata) || 'Performans verisi alınamadı.' };
+  }
+
+  return { ok: true, veri: cevap.veri };
+});
+
+/**
+ * SAHA HARİTAM (Faz 12) — plasiyerin KENDİ sorumlu illeri + KENDİ bayileri.
+ * Kimlik + jeton ana süreç belleğinden; gün/tarih penceresi arayüzden.
+ * Boş tarih apiIstek süzgecinde düşer (istek tarih taşımaz).
+ */
+ipcMain.handle('plasiyer:harita', async function (olay, veri) {
+  veri = veri || {};
+
+  if (!plasiyerOturumuGecerliMi()) {
+    plasiyerOturumu = null;
+    return { ok: false, durum: 401, hata: 'Oturum süresi doldu. Tekrar PIN ile giriş yapın.' };
+  }
+
+  const cevap = await apiIstek({
+    alan: 'b2b',
+    yol: '/plasiyer/harita',
+    metod: 'GET',
+    sorgu: {
+      plasiyerId: plasiyerOturumu.id,     // arayüzden DEĞİL, oturumdan
+      token: plasiyerOturumu.token,
+      gun: Number(veri.gun || 0) || 0,
+      tarih: String(veri.tarih || '')
+    }
+  });
+
+  if (!cevap || !cevap.ok || !cevap.veri) {
+    if (cevap && 401 === cevap.durum) plasiyerOturumu = null;
+
+    return { ok: false, durum: cevap ? cevap.durum : 0, hata: (cevap && cevap.hata) || 'Saha haritası alınamadı.' };
   }
 
   return { ok: true, veri: cevap.veri };

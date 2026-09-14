@@ -1532,6 +1532,15 @@ function b2bSiparisNormalle(s) {
     tutar: Number(s.total || 0),
     araToplam: Number(s.subtotal || 0),
     kdv: Number(s.total_tax || 0),
+    /* --- ÜCRET SATIRLARI (eklenti 2.18.1) ---
+       Plasiyer iskontosu ve ödeme yöntemi iskontosu satır fiyatına değil
+       negatif ücret satırına yazılır. Sipariş fişi "Ara toplam − iskonto =
+       NET" dökümünü bu satırlardan kurar; taşınmazsa aradaki fark fişte
+       açıklamasız kalır. Depo fişi bu alanı okumaz, davranışı değişmez. */
+    ucretler: (s.fee_lines || []).map(function (u) {
+      return { ad: String((u && u.name) || ''), tutar: Number((u && u.total) || 0) || 0 };
+    }),
+    odemeIskontoOrani: Number(s.odeme_iskonto || 0) || 0,
     kargoTutar: Number(s.shipping_total || 0),
     /* --- KDV / REVİZYON KÜNYESİ (depo fişi hiyerarşik özeti) ---
        kdvToplam    : satır KDV tutarlarının toplamı (eklenti hesaplar)
@@ -1560,16 +1569,24 @@ function b2bSiparisNormalle(s) {
     /*
      * SİPARİŞE DAMGALANMIŞ BAYİ İSKONTO ORANI.
      *
-     * Kaynak sırası: pricing.order_rate → sipariş meta'sı → (fiş kendisi
-     * tutarlardan türetir). Kodda SABİT bir yüzde YOKTUR; oran her siparişin
-     * kendi kaydından okunur. Meta iki adla da aranır: kanonik anahtar
-     * "_b2b_discount_rate", şartnamede anılan ad "_byom_dealer_discount_rate".
+     * Kaynak sırası: pricing.order_rate → sipariş meta'sı → plasiyer iskonto
+     * damgası → (fiş kendisi tutarlardan türetir). Kodda SABİT bir yüzde
+     * YOKTUR; oran her siparişin kendi kaydından okunur. Meta iki adla da
+     * aranır: kanonik anahtar "_b2b_discount_rate", şartnamede anılan ad
+     * "_byom_dealer_discount_rate".
+     *
+     * `plasiyer_iskonto` EN SONA eklendi (2.18.1): saha siparişinde bayi
+     * iskontosu checkout kancalarından geçmediği için ilk üç kaynak boştur ve
+     * yönetici fişi iskontoyu hiç göstermiyordu. Alan bir süre AYRI bir
+     * anahtar olarak yazılıyordu; aynı nesnede iki kez tanımlı olduğu için
+     * sessizce eziliyordu — tek anahtar, tek sıra.
      */
     bayiIskontoOrani: Number(
       (s.pricing && s.pricing.order_rate) ||
       b2bMeta._byom_dealer_discount_rate ||
       b2bMeta._b2b_discount_rate ||
       b2bMeta.b2b_discount_rate ||
+      s.plasiyer_iskonto ||
       0
     ),
     tarih: s.date_created || '',
@@ -1620,6 +1637,10 @@ function b2bSiparisNormalle(s) {
         ad: k.name || '',
         kod: k.sku || '-',
         adet: adet,
+        /* Koli künyesi: sipariş fişi "2 koli × 24 = 48" satırını bundan
+           basar; taşınmadığında yönetici fişinde koli sütunu boş kalıyordu. */
+        koliIci: Number(k.box_quantity || 0) || 0,
+        koli: Number(k.boxes || 0) || 0,
         birim: birim,
         tutar: toplam,
         araToplam: araToplam,
@@ -2232,10 +2253,17 @@ function logoAdresi(kaynak, damga) {
   return s + (s.indexOf('?') === -1 ? '?' : '&') + 'b2bv=' + (damga || durum.logoDamgasi || '1');
 }
 
-/** Ayarlardaki logo genişliğini (120–300 px) --logo-width'e yazar (Faz 11). */
+/**
+ * Masaüstü logo genişliğini (100–320 px) --logo-width'e yazar (Faz 11 · Eksen 2).
+ * Kaynak: ayarlar.json → masaustuLogoGenislik. Kaydırıcı Vitrin Editörü › Marka
+ * Görselleri panelindedir (renderer-vitrin.js), API sekmesinde DEĞİL. Ortak
+ * uygulayıcı budur: kırpma kuralı yalnızca burada yaşar. YALNIZCA bu
+ * uygulamanın sol üst logosu — temaya/siteye gitmez. Eski 'logoGenislik'
+ * anahtarı main.js → ayarlariOku() göçüyle devralınır (burada okunmaz).
+ */
 function logoGenisligiUygula(deger) {
-  const ham = Number(deger !== undefined ? deger : (durum.ayarlar && durum.ayarlar.logoGenislik));
-  const px = Math.min(300, Math.max(120, isNaN(ham) || !ham ? 220 : ham));
+  const ham = Number(deger !== undefined ? deger : (durum.ayarlar && durum.ayarlar.masaustuLogoGenislik));
+  const px = Math.min(320, Math.max(100, isNaN(ham) || !ham ? 220 : ham));
 
   document.documentElement.style.setProperty('--logo-width', px + 'px');
 
@@ -3029,13 +3057,61 @@ function whatsAppFisiAdresi(s) {
   return 'https://wa.me/' + tel + '?text=' + encodeURIComponent(whatsAppFisiMetni(s));
 }
 
+/** Fiş motoru bağlamı (Faz 12): firma adı + logo + kâğıt. */
+function siparisFisiBaglami() {
+  return {
+    firmaAdi: String(durum.ayarlar.firmaAdi || (durum.lisans && durum.lisans.firmaAdi) || ''),
+    logo: String(markaLogosu() || ''),
+    plasiyerAd: '',
+    plasiyerId: 0,
+    kagit: 'a4'
+  };
+}
+
+/**
+ * [📄 SİPARİŞ FİŞİ] (Faz 12) — kurumsal, müşteriye dönük fiş (depo fişi DEĞİL):
+ * logo, künye, kalemler (koli×adet), iskontolar, net. Motor: src/renderer/siparis-fisi.js.
+ */
+async function siparisFisiAc(id, kagit) {
+  const s = siparisBul(id);
+
+  if (!s) {
+    bildir('Sipariş bulunamadı. Listeyi yenileyip tekrar deneyin.', 'uyari');
+    return;
+  }
+
+  if (!window.SiparisFisi) {
+    bildir('Fiş motoru yüklenemedi (siparis-fisi.js).', 'hata');
+    return;
+  }
+
+  const baglam = siparisFisiBaglami();
+  baglam.kagit = 'termal' === kagit ? 'termal' : 'a4';
+  baglam.plasiyerAd = String(s.plasiyerAd || '');
+  baglam.plasiyerId = Number(s.plasiyerId) || 0;
+
+  const fis = window.SiparisFisi.normalle(s, baglam);
+  const cevap = await ipcRenderer.invoke('fis:onizleme', {
+    html: window.SiparisFisi.html(fis, { kagit: baglam.kagit }),
+    baslik: 'Sipariş Fişi #' + fis.numara
+  });
+
+  if (!cevap || !cevap.ok) {
+    bildir((cevap && cevap.hata) || 'Fiş penceresi açılamadı.', 'hata');
+  }
+}
+
 /** Kart düğmesi: varsayılan tarayıcıda WhatsApp Web'i açar (main.js setWindowOpenHandler → shell.openExternal). */
 function whatsAppFisiAc(id) {
   const s = (durum.siparisler || []).filter(function (x) { return String(x.id) === String(id); })[0];
 
   if (!s) return;
 
-  const adres = whatsAppFisiAdresi(s);
+  /* Faz 12: fiş motoru yüklüyse zengin şablon (kalın başlıklar, koli/adet
+     dökümü, bayi iskontosu, net); yoksa yerel sade şablon. */
+  const adres = window.SiparisFisi
+    ? window.SiparisFisi.waAdresi(window.SiparisFisi.normalle(s, siparisFisiBaglami()))
+    : whatsAppFisiAdresi(s);
 
   if (!adres) {
     bildir('Bu siparişte telefon numarası yok; WhatsApp fişi gönderilemez.', 'uyari');
@@ -3266,6 +3342,16 @@ function siparisleriCiz() {
                     'class="h-14 px-5 rounded-2xl bg-red-700 hover:bg-red-800 active:scale-95 ' +
                            'text-white text-lg font-extrabold shadow-md transition">' +
               ikon('cop') + ' SİPARİŞİ KALICI SİL</button>'
+          : '') +
+
+        /* Kurumsal sipariş fişi (Faz 12): müşteriye dönük A4 çıktı — depo fişinden ayrı. */
+        (yoneticiEylemleri
+          ? '<button data-eylem="siparis-fisi" data-id="' + s.id + '" ' +
+                    'title="Kurumsal sipariş fişi (logo, künye, kalemler, iskontolar, net) — yazdır / PDF" ' +
+                    'class="h-14 px-5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 ' +
+                           'bg-white dark:bg-slate-800 text-lg font-extrabold transition ' +
+                           'hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95">' +
+              ikon('yazici') + ' 📄 SİPARİŞ FİŞİ</button>'
           : '') +
 
         /* WhatsApp fişi (Faz 11): yalnızca yönetici + saha siparişi + telefon varsa. */
@@ -7078,13 +7164,6 @@ function ayarFormunuDoldur() {
   $('#girdiDurumEpostasi').checked = durum.ayarlar.durumEpostasi !== false;
   $('#otoYenileKutu').checked = !!durum.ayarlar.otoYenile;
 
-  const logoAralik = $('#logoGenislikAralik');
-  if (logoAralik) {
-    const px = logoGenisligiUygula();
-    logoAralik.value = String(px);
-    const deger = $('#logoGenislikDeger');
-    if (deger) deger.textContent = px + 'px';
-  }
   modToggleTazele();
   apiKilidiniUygula();
   logoOnizlemeGuncelle();
@@ -7335,7 +7414,7 @@ async function ayarlariKaydet(sessizMi) {
     tema: durum.ayarlar.tema,
     otoYenile: !!$('#otoYenileKutu').checked,
     otoYenileSaniye: durum.ayarlar.otoYenileSaniye || 60,
-    logoGenislik: Number(durum.ayarlar.logoGenislik) || 220,
+    masaustuLogoGenislik: Number(durum.ayarlar.masaustuLogoGenislik) || 220,
     onayEpostasi: !!$('#girdiOnayEpostasi').checked,
     durumEpostasi: !!$('#girdiDurumEpostasi').checked,
     b2bAlan: $('#girdiB2bAlan').value.trim() || 'b2b_durum',
@@ -7685,20 +7764,8 @@ function olaylariBagla() {
       : 'Otomatik yenileme kapatıldı.', 'bilgi');
   });
 
-  /* --- Logo genişliği kaydırıcısı (Faz 11): input → anında CSS, change → disk --- */
-  const logoAralik = $('#logoGenislikAralik');
-  if (logoAralik) {
-    logoAralik.addEventListener('input', function () {
-      const px = logoGenisligiUygula(logoAralik.value);
-      const deger = $('#logoGenislikDeger');
-      if (deger) deger.textContent = px + 'px';
-    });
-    logoAralik.addEventListener('change', async function () {
-      const px = logoGenisligiUygula(logoAralik.value);
-      durum.ayarlar.logoGenislik = px;
-      await ipcRenderer.invoke('ayar:yaz', { logoGenislik: px });
-    });
-  }
+  /* Masaüstü logo genişliği kaydırıcısı Vitrin Editörü › Marka Görselleri'ne taşındı
+     (renderer-vitrin.js → logoGenislikOlaylariBagla, Faz 11 · Eksen 2); burada bağ yok. */
 
   /* --- Sipariş listesi eylemleri --- */
   $('#siparisListesi').addEventListener('click', function (o) {
@@ -7721,6 +7788,12 @@ function olaylariBagla() {
     const iptalBtn = o.target.closest('[data-eylem="siparis-iptal"]');
     if (iptalBtn && typeof siparisIptalEt === 'function') {
       siparisIptalEt(iptalBtn.dataset.id, iptalBtn);
+      return;
+    }
+
+    const sfBtn = o.target.closest('[data-eylem="siparis-fisi"]');
+    if (sfBtn) {
+      siparisFisiAc(sfBtn.dataset.id, sfBtn.dataset.kagit);
       return;
     }
 

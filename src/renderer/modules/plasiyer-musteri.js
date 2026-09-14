@@ -842,7 +842,19 @@
      * bugünün fiyatını verir. Siparişteki fiyat geçmişe aittir; onu kopyalamak
      * zam görmüş ürünü zararına satmak olurdu.
      */
-    var sonuc = M().sonSiparisiKopyala(siparis, yerelUrunBul, sepet());
+    /* Katalog ekranda süzülü ya da hiç yüklenmemiş olabilir (Faz 12-B):
+       kimlikler yerel indeksten çözülür, ağa çıkılmaz. */
+    var harita = {};
+
+    if (V() && 'function' === typeof V().urunleriCoz) {
+      harita = await V().urunleriCoz((siparis.line_items || siparis.kalemler || []).map(function (k) {
+        return Number((k && (k.product_id || k.id)) || 0);
+      }));
+    }
+
+    var sonuc = M().sonSiparisiKopyala(siparis, function (pid) {
+      return harita[pid] || yerelUrunBul(pid);
+    }, sepet());
 
     durumM.sonSiparis = siparis;
 
@@ -1210,6 +1222,12 @@
         '<div class="mt-1 flex gap-2 flex-wrap">' +
           '<button type="button" class="mk-siparis px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600" data-id="' + kacis(String(m.id)) + '">🛍️ Sipariş Yaz</button>' +
           '<button type="button" class="mk-not px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '" title="İsteğe bağlı — patrona not bırakın">📝 Ziyaret Notu</button>' +
+          /* HIZLI TEKRAR SİPARİŞ (Faz 12): müşterinin son siparişi BUGÜNÜN fiyatıyla
+             sepete dolar ve satış ekranı açılır. Çevrimdışı müşterinin sunucuda
+             geçmişi olamaz — düğme gösterilmez. */
+          (m.gecici
+            ? ''
+            : '<button type="button" class="mk-tekrar px-3 py-2 rounded-lg border-2 border-emerald-300 text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-300 font-bold text-sm hover:bg-emerald-50 dark:hover:bg-emerald-500/10" data-id="' + kacis(String(m.id)) + '" title="Son siparişi bugünün fiyatıyla sepete doldur">🔁 Tekrar Sipariş</button>') +
           '<button type="button" class="mk-profil px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '">Profil</button>' +
           /* Yalnızca henüz sunucuya gitmemiş kayıt silinebilir (Faz 11). Metinde
              "ÇEVRİMDIŞI" geçmez — eşitleme testi rozetin kalktığını o sözcükle ölçer. */
@@ -1317,6 +1335,15 @@
   }
 
   /** Müşteriyi seçip Katalog & Satış'a geçer. */
+  /** Tek tık tekrar sipariş (Faz 12): müşteriyi seç → son siparişi kopyala → satışa geç. */
+  async function tekrarSiparisGec(m) {
+    musteriSec(m, { sessiz: true });
+
+    await sonSiparisiKopyala();
+
+    if ('function' === typeof window.sekmeAc) window.sekmeAc('satis');
+  }
+
   function siparisYazmayaGec(m) {
     musteriSec(m, { sessiz: true });
 
@@ -1355,6 +1382,7 @@
       if (hedef.classList.contains('mk-siparis')) return siparisYazmayaGec(m);
       if (hedef.classList.contains('mk-not')) return ziyaretNotuAc(m);
       if (hedef.classList.contains('mk-sil')) return yerelMusteriSil(m);
+      if (hedef.classList.contains('mk-tekrar')) return tekrarSiparisGec(m);
 
       /* Profil düğmesi ya da kartın kendisi → profil */
       durumM.profil = m;
@@ -1449,6 +1477,8 @@
     sonSiparisiKopyala: sonSiparisiKopyala,
     tamamlamaAc: tamamlamaAc,
     musteriSec: musteriSec,
+    /* Tekrar sipariş portföydeki GERÇEK kaydı arar (ödeme iskontoları orada). */
+    musteriBul: musteriBul,
     musteriyiBirak: musteriyiBirak,
     musterileriGetir: musterileriGetir,
     portfoyuAc: portfoyuAc,
@@ -1457,6 +1487,10 @@
     kuyrukSeridiniCiz: kuyrukSeridiniCiz,
     anindaEsitle: anindaEsitle,
     yerelMusteriSil: yerelMusteriSil,
+    /* Saha haritası bayi kartı kısayolları (Faz 12): aynı akış, ikinci kopya yok. */
+    siparisYazmayaGec: siparisYazmayaGec,
+    ziyaretNotuAc: ziyaretNotuAc,
+    tekrarSiparisGec: tekrarSiparisGec,
     yerelMukerrerBul: yerelMukerrerBul,
     durum: durumM,
     YEREL_ANAHTAR: YEREL_ANAHTAR

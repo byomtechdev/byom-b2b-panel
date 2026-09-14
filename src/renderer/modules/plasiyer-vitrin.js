@@ -802,6 +802,42 @@
    *  MEVCUT AKIŞA BAĞLANMA
    * ------------------------------------------------------------------ */
 
+  /**
+   * Verilen ürün kimliklerini YEREL KATALOGDAN çözer (Faz 12-B).
+   *
+   * `urunBul` yalnızca ekranda duran `durumV.urunler` dizisine bakar; o dizi
+   * Katalog & Satış sekmesi hiç açılmadıysa BOŞTUR, açıldıysa da o anki
+   * arama/kategori süzgeciyle ve 500 kayıtla sınırlıdır. "Tekrar Sipariş"
+   * bu diziden çözdüğü için katalog yüklenmeden basıldığında bütün kalemler
+   * "katalogda bulunamadı" oluyor ve sepete SIFIR kalem giriyordu.
+   *
+   * `katalog:urun` ekrandan bağımsız, AĞA ÇIKMAYAN yerel indeksi okur.
+   *
+   * @param {Array<number>} idler Ürün kimlikleri.
+   * @returns {Promise<Object>} kimlik -> ürün eşlemesi.
+   */
+  async function urunleriCoz(idler) {
+    var harita = {};
+
+    for (var i = 0; i < (idler || []).length; i++) {
+      var id = Number(idler[i]) || 0;
+
+      if (!id || harita[id]) continue;
+
+      var u = urunBul(id);
+
+      if (u) { harita[id] = u; continue; }
+
+      var cevap = null;
+
+      try { cevap = await ipcRenderer.invoke('katalog:urun', { id: id }); } catch (e) { cevap = null; }
+
+      if (cevap && cevap.urun) harita[id] = cevap.urun;
+    }
+
+    return harita;
+  }
+
   async function sekmeyiAc() {
     olaylariBagla();
 
@@ -844,6 +880,7 @@
     sepeteEkle: sepeteEkle,
     hizliAdet: hizliAdet,
     urunBul: urunBul,
+    urunleriCoz: urunleriCoz,
     tavanAl: tavanAl,
     durum: durumV,
     VITRIN: VITRIN,

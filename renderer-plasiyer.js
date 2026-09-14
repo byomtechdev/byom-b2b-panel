@@ -50,7 +50,10 @@
    * değiştirmek değil. `satis` sekmesi aynı veriyi salt-okunur gösterir ve
    * sipariş yazar.
    */
-  var PLASIYER_SEKMELERI = ['satis', 'siparislerim', 'musterilerim', 'performansim'];
+  /* Belge amaçlı liste; TEK DOĞRULUK KAYNAĞI index.html'deki `data-rol-izin`
+     öznitelikleridir (Faz 7, §4.11.1). Yeni saha sekmesi eklenirken burası da
+     tazelenir — eskimiş bir kopya sonraki geliştiriciyi yanıltır. */
+  var PLASIYER_SEKMELERI = ['satis', 'siparislerim', 'musterilerim', 'performansim', 'sahaharitam'];
 
   /** Kısıtlama uygulanan roller. Bunların dışı (oturum yok) kısıtlanmaz. */
   var ROLLER = ['admin', 'plasiyer'];
@@ -351,6 +354,15 @@
          son sözü sunucu söyler (B2B_Plasiyer::iskonto_gecerli_mi). */
       maxIskonto: Number(bilgi.maxIskonto || 0) || 0
     };
+
+    /*
+     * Modüller oturumun kurulduğunu ÖĞRENSİN (Faz 12-B). Yönetici-özel
+     * istekler (harita not rozeti) açılışta rol bilinmeden atılıyordu;
+     * saha terminalinde de ağa çıkıyor ve tüm şirketin notlarını indiriyordu.
+     */
+    try {
+      window.dispatchEvent(new CustomEvent('byom:oturum', { detail: durum.oturum }));
+    } catch (e) { /* CustomEvent yoksa sessiz geç */ }
 
     return durum.oturum;
   }

@@ -87,9 +87,10 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/plasiyer-sync-motor.js`** | **DOM'suz eşitleme motoru** (Faz 3): outbox dağıtıcı, kimlik köprüsü, hata toleransı. Ana süreç de `require` eder (→ §4.7) | — |
 | **`src/renderer/harita-veri.js`** | **DOM'suz 81 il kütüğü + ziyaret notu mantığı** (Faz 3): plaka/ad/bölge/konum, durum geçişleri, filtreler, yoğunluk. **Gerçek sınır yolları YOK** — gerekçe dosya başlığında (→ §4.8) | — |
 | **`src/renderer/harita-yollar.js`** | **81 ilin GERÇEK sınır yolları** (Faz 10, üretilmiş dosya, 58 KB): Natural Earth 1:10m Admin-1 (kamu malı), ISO 3166-2 = plaka, `YOLLAR/MERKEZLER/SINIRLAR/ADLAR`, 1000×420 tuval. **Elle düzenlenmez**; `scratchpad/geo-donustur.js` yeniden üretir. Kokpit açılışta `yollariBesle()` ile `HaritaVeri`ye besler (→ §4.14) | — |
-| **`src/renderer/modules/harita-kokpit.js`** | **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. `sekmeAc`'ı SARAR. **Faz 10:** `yollariBesle()` — yollar yüklüyse `<path>`, zoom sınır kutusuna, komşular soluk gerçek şekil | — |
+| **`src/renderer/modules/harita-kokpit.js`** | **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. **Faz 10:** `yollariBesle()` — gerçek `<path>` sınırlar. **Faz 12: FABRİKA** `olustur({kip, kapId, onek})` → `window.HaritaKokpit` (yönetici, renk hâkimiyeti + lejant + zengin kartlar) ve `window.SahaHarita` (plasiyer, `plasiyer:harita`, kendi illeri/bayileri, kart kısayolları). `sekmeAc` sarmalı yalnızca saha örneği için (→ §4.16) | — |
 | **`src/renderer/modules/plasiyer-ziyaret.js`** | **Saha ziyaret notu** (Faz 3): plasiyerin not girişi (İSTEĞE BAĞLI) + patron yanıtlarının düştüğü bildirim zili. `PlasiyerMusteri.seridiCiz`'i SARAR | — |
 | **`src/renderer/modules/plasiyer-siparislerim.js`** | **Kendi Siparişlerim — bağımsız saha şablonu** (Faz 10): `plasiyer:get-orders` ile **sunucudan daraltılmış** liste (`GET /plasiyer/siparislerim`), kartta TEK eylem `[📄 Sipariş / Fiş Detayı]`, kuyruk şeridi (`PlasiyerMusteri.kuyrukSeridiniCiz`). Yönetici sipariş isteği **hiç atılmaz**. `sekmeAc`'ı SARAR (→ §4.14) | — |
+| **`src/renderer/siparis-fisi.js`** | **Kurumsal sipariş fişi motoru** (Faz 12, DOM'suz, çift modlu): `normalle` (yönetici / plasiyer / ham `prepare_order`), `html` (A4 / 80 mm termal, inline CSS), `whatsappMetni` (kalın başlıklar, koli×adet, iskontolar, net, ≤ 1800 kr), `waTelefon`, `waAdresi`, `paraYaz`. İki kabuk aynı fişi basar (→ §4.16.4) | `node --test` altında koşar |
 | **`src/renderer/modules/plasiyer-performansim.js`** | **Performansım** (Faz 11): saha 4. sekmesi — TEK IPC `plasiyer:performans` ile gün/7 gün/30 gün sipariş + net ciro kartları, bayi katkı çubukları (`scaleX`), il dağılımı; yönetici uçlarına gidilmez; `sekmeAc`'ı SARAR (→ §4.15) | — |
 | **`src/renderer/modules/plasiyer-otosync.js`** | **Otomatik eşitleme tetikleyicisi** (Faz 4): `online` olayı + 60 sn hafif yoklama + `visibilitychange`. Kuyruk boşsa **ağa çıkmaz**, hata sessizdir (→ §4.7) | — |
 | `lisans/lisans.html` + `lisans/lisans.js` | Lisans/aktivasyon penceresi — ana pencereden bağımsız | — |
@@ -134,6 +135,7 @@ renderer-plasiyer.js        ← kapı + rol kısıtlaması (durum, $, bildir, se
 modules/plasiyer-yonetimi.js   ← sekmeAc'ı SARAR      (4226)
 ─── Plasiyer Faz 2 ────────────────────────────────────────────
 src/renderer/plasiyer-siparis-motor.js  ← DOM'suz; vitrinden ÖNCE  (4233)
+src/renderer/siparis-fisi.js            ← Faz 12: DOM'suz fiş motoru; modüllerden ÖNCE
 modules/plasiyer-vitrin.js  ← sekmeAc'ı SARAR         (4234)
 modules/plasiyer-musteri.js ← vitrinin sepetini okur → ondan SONRA (4235)
 modules/plasiyer-siparislerim.js ← Faz 10: musteri'nin kuyruk şeridini çağırır → ondan SONRA
@@ -184,7 +186,7 @@ listeye **elle** eklemen gerekir.
 | `uygulama:` | `main.js` | `uygulama:bilgi` (gerçek paket sürümü) |
 | `byom:` | `src/main/byom.js` | `byom:hwid`, `byom:durum`, `byom:aktive`, `byom:yeniden-dogrula`, `byom:lisans-sil`, `byom:hwid-yenile`, `byom:api-url:oku/yaz`, `byom:baglanti-testi`, `byom:uygulamayi-ac`, `byom:cikis`, `byom:panoya-kopyala`, `byom:dis-baglanti`, `byom:destek:liste/detay/olustur/yanit/secenekler` |
 | `byom:telemetri` | `src/main/byom-telemetri.js` | **Tek yönlü** (`ipcMain.on` + `ipcRenderer.send`) — cevap beklenmez |
-| `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout`, **`plasiyer:get-orders`** (Faz 10: `GET /plasiyer/siparislerim`, jeton bellekten — kendi siparişleri **sunucuda** daraltılır), **`plasiyer:performans`** (Faz 11: `GET /plasiyer/performans`, kimlik + jeton oturumdan) |
+| `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout`, **`plasiyer:get-orders`** (Faz 10: `GET /plasiyer/siparislerim`, jeton bellekten — kendi siparişleri **sunucuda** daraltılır), **`plasiyer:performans`** (Faz 11: `GET /plasiyer/performans`, kimlik + jeton oturumdan), **`plasiyer:harita`** (Faz 12: `GET /plasiyer/harita` — kendi sorumlu illeri + kendi bayileri; `gun`/`tarih` arayüzden) |
 | `katalog:` | `main.js` § 3.7 | `katalog:guncelle` (sunucudan eşitle + görsel kuyruğu), `katalog:ara` (**AĞA ÇIKMAZ**, yerel indeks), `katalog:kategoriler`, `katalog:urun`, `katalog:barkod`, `katalog:durum` |
 | `gorsel:` | `main.js` § 3.7 | `gorsel:onbellege-al` (indirmeyi tetikle), `gorsel:yol` (yerel `file://` ya da uzak adres — **base64 DÖNMEZ**) |
 | `sync:` | `main.js` § 3.8 | `sync:esitle` (kuyruğu boşalt — **sıra: müşteri → köprü → sipariş → not**), `sync:durum` (bekleyen/hatalı sayıları) |
@@ -1147,10 +1149,16 @@ düşürmez; `normalle` eksik alanları sıfırlar. `sekmeAc` sarmalı `bagli` b
   bırakırdı. Seçili müşteriyse sepet bırakılır.
 
 ### 4.15.6 Logo genişliği ve üç görsel yuvası (Orhan Bey)
-- Ayarlar → "Logo Genişliği" kaydırıcı 120–300 px (`#logoGenislikAralik`);
-  `ayarlar.json → logoGenislik` (varsayılan 220 = eski sabit `max-width`),
-  `logoGenisligiUygula()` → `--logo-width` (`#firmaLogo max-width: var(--logo-width)`).
-  `input` anında CSS, `change` diske (`ayar:yaz`, `suz()` kara listesinden geçer).
+- **Masaüstü logo genişliği (Eksen 2):** kaydırıcı Vitrin Editörü › "Marka Görselleri"
+  panelinde, `#markaLogoKutusu`nun hemen altında (`#veLogoGenislik` 100–320 px, adım 10;
+  `#veLogoGenislikDeger`; `[Kaydet]` = `#veLogoGenislikKaydet`; kap `#veLogoGenislikKutu`).
+  API sekmesinde ayar kartı **yok** (ürün sahibi reddi). `ayarlar.json → masaustuLogoGenislik`
+  (varsayılan 220; eski `logoGenislik` main.js → `ayarlariOku()` göçüyle devralınır, dosyaya
+  dokunulmaz). Ortak uygulayıcı `renderer.js → logoGenisligiUygula()` → `--logo-width`
+  (`#firmaLogo max-width`); `renderer-vitrin.js → logoGenislikOlaylariBagla`: `input` yalnızca
+  CSS (IPC yok), `[Kaydet]` → `ayar:yaz`; sekmeden kaydetmeden ayrılınca (`sekmeAc` sarmalı) ve
+  yeniden açılışta kaydedilmiş değer geri gelir. **Siteye/temaya gitmez:** theme-config
+  branding ve storefront-layout yüklerine girmez (kaynak testi kilitler).
   `firmaLogosunuUygula()` her çağrıda genişliği de uygular.
 - Ürün düzenleme: `durum.duzenleYuvalari = [ana, görsel2, görsel3]`
   (`{id, onizleme, url, mevcut?}` | null). `urunDuzenleAc` → `duzenleYuvalariniKur(urun)`
@@ -1172,6 +1180,74 @@ düşürmez; `normalle` eksik alanları sıfırlar. `sekmeAc` sarmalı `bagli` b
 
 ---
 
+## 4.16 Faz 12 — İki rol iki harita, logo ölçeği, kurumsal fiş, saha kısayolları
+
+**Görev:** "Baş Ürün Mimarı — 1 istedik 10 katını ver" (`../BYOM-REGISTRY.md §5.35`).
+Eklenti 2.18.1 ile birlikte (inceleme turu düzeltmeleri: `BYOM-REGISTRY.md §5.35-G`).
+
+### 4.16.1 Harita kokpiti FABRİKA oldu — `HaritaKokpit.olustur(ayar)`
+`harita-kokpit.js` artık iki örnek üretir; durum modül seviyesinde DEĞİL, örneğe aittir:
+
+| Örnek | Kap | Veri | Kim |
+|---|---|---|---|
+| `window.HaritaKokpit` (`kip:'admin'`, önek `harita`) | `#haritaKab` (Pazarlamacılar alt sekmesi) | `b2b('/admin/harita')` + `/admin/ziyaret` | yönetici |
+| `window.SahaHarita` (`kip:'plasiyer'`, önek `sahaHarita`) | `#sahaHaritaKab` (`#sekme-sahaharitam`, 5. saha sekmesi) | `ipcRenderer.invoke('plasiyer:harita')`; notlar `PlasiyerZiyaret.durum.notlar` belleğinden | plasiyer |
+
+- Kimlikler öneklidir (`haritaSvg`/`sahaHaritaSvg`, `haritaTarih`/`sahaHaritaTarih`…); olay
+  bağlama `kap.querySelectorAll` ile kapla sınırlı → iki örnek birbirinin düğmesini görmez.
+- **Yönetici**: il, sorumlu plasiyerin rengine boyanır (`dolgu` → `hexRgba(renkHex, 0.38 + yoğunluk·0.52)`);
+  lejant `[● Ahmet (Mor) · 4 il]` → `durumH.vurgu` (yeniden çizim, ağa çıkmaz); geniş ve dolu ilde
+  `"İzmir (35)"` + `"3 bayi · 12,4K"` (`kisaPara`); ipucu "Sorumlu: …".
+- **Saha**: `ilEtkin(il)` = sorumlu il ya da bayisi olan il; diğerleri `harita-il-pasif`
+  (tabindex yok, tıklama/ipucu yok, soluk gri); kartta `[🛍️ Bu Bayiye Sipariş Aç]`
+  (`PlasiyerMusteri.siparisYazmayaGec`) / `[📝 Ziyaret Notu Bırak]` (`ziyaretNotuAc`) —
+  ikisi de artık `PlasiyerMusteri`'den DIŞA VERİLİR (ikinci kopya yok).
+- Zengin bayi kartı iki kabukta ortak (`bayiKarti`): risk rozeti (`acikBakiye` varsa),
+  `[📞 Ara]` (pano + `tel:` via `byom:dis-baglanti`), `[📲 WhatsApp]` (`wa.me`), ziyaret
+  rozeti (`ziyaretDurumu` sunucudan; yoksa son nottan 30 gün). **Her alan varlık kontrollü.**
+- `sekmeAc` sarmalı YALNIZCA saha örneği için (`sahaharitam`), tek ve `bagliS` bayraklı;
+  yönetici haritası yine `plasiyer-yonetimi.js → altSekmeAc` ile açılır (çift istek tuzağı, §4.10).
+- `akisaBaglan` 2,5 sn rozet turu **yönetici oturumunda** çalışır (plasiyerde `/admin/ziyaret` yetkisiz).
+
+### 4.16.2 Pazarlamacı formu — renk + sorumlu iller
+`plasiyer-yonetimi.js → formuAc`: `#pfRenkPaleti .pf-renk[data-renk]` (radiogroup, tekrar tık =
+kaldır, gizli `#pfRenk`), `#pfIlListe .pf-il-kutu[value=plaka]` (81 il `HaritaVeri.ILLER`'den),
+`#pfIlAra` arama, `.pf-bolge-sec` bölge kısayolu (yalnızca kilitsiz iller), `#pfIlTemizle`,
+`#pfIlSayac`. Başka plasiyerdeki il **disabled** + sahibi yazılı (`ilSahipleri`); sunucu da
+çakışmayı reddeder (`b2b_plasiyer_il_cakisma`). Kayıt yükü `renk` + `iller`. Palet tek kaynak:
+`HaritaKokpit.PALET` (PHP `B2B_Plasiyer::PALET` ikizi — test karşılaştırır).
+
+### 4.16.3 Logo ölçeği — Vitrin Editörü (Eksen 2)
+→ §4.15.6 güncellendi: kaydırıcı `#veMarkaPanel` içinde (`#veLogoGenislik` 100–320, `[Kaydet]`),
+anahtar `masaustuLogoGenislik`, yalnızca masaüstü `--logo-width`; tema PUT yüküne girmez.
+
+### 4.16.4 Kurumsal fiş + WhatsApp — `src/renderer/siparis-fisi.js` (Eksen 3)
+DOM'suz, çift modlu motor: `normalle(kaynak, baglam)` (yönetici normalizasyonu / plasiyer
+normalizasyonu / ham `prepare_order`), `html(fis, {kagit:'a4'|'termal'})`, `whatsappMetni(fis)`
+(kalın başlıklar, koli×adet, iskontolar, NET; ≤ 1800 karakter), `waTelefon`, `waAdresi`, `paraYaz`.
+- Plasiyer: Kendi Siparişlerim detayında `.sk-fis[data-kagit]` / `.sk-wa` / `.sk-tekrar`
+  (kartın dışında yine TEK birincil düğme). Fiş `fis:onizleme` IPC ile ayrı pencerede.
+- Yönetici: kartta `[📄 SİPARİŞ FİŞİ]` (`data-eylem="siparis-fisi"`, depo fişinden ayrı);
+  `whatsAppFisiAc` motor varsa zengin şablon, yoksa Faz 11 sade şablon (test sade yolu kilitler).
+
+### 4.16.5 Proaktif dokunuşlar (Eksen 4)
+- **Tekrar sipariş**: Müşterilerim `.mk-tekrar` (`tekrarSiparisGec`: seç → `sonSiparisiKopyala`
+  → satış); Kendi Siparişlerim `.sk-tekrar` (`PlasiyerSiparisMotor.sonSiparisiKopyala` +
+  `PlasiyerVitrin.urunBul` — **bugünün fiyatı**, geçmiş fiyat asla).
+- **Akıllı süzgeç** Kendi Siparişlerim: `#siparislerimAra` + `.siparislerim-cip[data-suzgec]`
+  (`DURUM_CIPLERI`), `suz()` yerel; imleç konumu yeniden çizimde korunur.
+- Boş durumlar: saha haritası, lejant, il bayi paneli, süzgeç sonucu.
+
+### Bozmaman gereken sözler (Faz 12)
+- Yönetici kokpiti yüzeyi (`durum/ilSec/geriDon/veriyiGetir/tarihSec/bayiKarti/yollariBesle/sekmeyiAc/rozetiTazele`) ve kimlikleri (`haritaSvg`, `haritaTarih`…) DEĞİŞMEZ.
+- Saha haritası yalnızca `plasiyer:harita` ile beslenir; `/admin/*` uçları plasiyer kabuğunda çağrılmaz.
+- Lejant/ölçüt/vurgu yeniden çizimi ağa çıkmaz.
+- Palet anahtarları panel ↔ PHP birebir.
+- Kendi Siparişlerim kartının dışında tek birincil düğme; depo eylemleri sahada yoktur.
+- `masaustuLogoGenislik` tema yüküne girmez.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1179,10 +1255,10 @@ düşürmez; `normalle` eksik alanları sıfırlar. `sekmeAc` sarmalı `bagli` b
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**587 test**: panel 264 + kök 323).
+İkisini birden `../scripts/check-all.js` koşar (**633 test**: panel 295 + kök 338).
 
 ```bash
-# Bu submodule'un kendi birim testleri (264 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (295 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
@@ -1194,6 +1270,7 @@ node --test test/harita-notlar.test.js      # 46 — 81 il kutugu, TR il kodlari
                                             #      harita-yollar.js (81 gercek sinir, Natural Earth)
 node --test test/cihaz-kilidi.test.js       # 52 — Master PIN hash/kilit, cihaz tahsisi, PIN SIFIRLAMA, KAYNAK denetimi
 node --test test/rest-adres.test.js         # 13 — restYoluKur, tabanAdresiTemizle, sorgu korunmasi
+node --test test/siparis-fisi.test.js       # 20 — kurumsal fis motoru: normalle (3 kaynak), A4/termal HTML, WhatsApp metni
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
 
@@ -1224,7 +1301,8 @@ node --test scripts/tests/yonetici-pin.dom.test.js    # 17 — PIN değiştirme 
 node --test scripts/tests/harita-kokpit.dom.test.js   # 15 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran
 node --test scripts/tests/saha-denetim.dom.test.js    # 15 — Faz 10: hızlı adet, Kendi Siparişlerim, anında eşitleme, bayi künyesi
 node --test scripts/tests/saha-analitik.dom.test.js   # 11 — Faz 11: Performansım, kalem dökümü üç şekil, harita tarih + bayi kartı, çevrimdışı müşteri silme
-node --test scripts/tests/yonetici-arayuz.dom.test.js # 12 — Faz 11: sipariş sekmesi iki seviye, WhatsApp fişi, logo genişliği, üç görsel yuvası
+node --test scripts/tests/yonetici-arayuz.dom.test.js # 14 — Faz 11: sipariş sekmesi iki seviye, WhatsApp fişi, masaüstü logo genişliği (Vitrin Editörü, siteye gitmez, anahtar göçü), üç görsel yuvası
+node --test scripts/tests/saha-harita.dom.test.js     # 17 — Faz 12: iki rol iki harita, renk/il formu, saha kısayolları, fiş + WhatsApp + tekrar sipariş
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
 node --test scripts/tests/registry-parity.test.js     # 3 registry kopyası eşit mi
@@ -1235,7 +1313,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (587 test)
+# Bitirirken: üç katmanın tamamı (633 test)
 node scripts/check-all.js
 ```
 
@@ -1313,7 +1391,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 160 php / 89 js / 587 test
+cd .. && node scripts/check-all.js     # 0 hata / 160 php / 92 js / 633 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

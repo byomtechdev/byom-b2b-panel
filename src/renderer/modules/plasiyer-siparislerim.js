@@ -63,6 +63,25 @@
   }
 
   /** Sunucu yanıtındaki siparişi kart nesnesine indirger (sözleşme: prepare_order). */
+  /** "TR35" → "İzmir". Çözülemeyen değer olduğu gibi kalır. */
+  function ilAdi(ham) {
+    var s = String(ham || '').trim();
+
+    if (!s) return '';
+
+    var V = window.HaritaVeri;
+
+    if (V && 'function' === typeof V.ilBul) {
+      var il = null;
+
+      try { il = V.ilBul(s); } catch (e) { il = null; }
+
+      if (il && il.ad) return String(il.ad);
+    }
+
+    return s;
+  }
+
   function normalle(s) {
     var fatura = s.billing || {};
     var bayi = s.dealer || {};
@@ -75,7 +94,28 @@
       durumEtiketi: String(s.status_label || s.status || ''),
       tutar: Number(s.total || 0),
       musteri: String(bayi.company_name || fatura.company || [fatura.first_name, fatura.last_name].filter(Boolean).join(' ') || 'Müşteri'),
-      odeme: String(s.payment_method_title || s.odeme_tipi || ''),
+      musteriId: Number(bayi.id || s.customer_id || 0) || 0,
+      telefon: String(bayi.phone || fatura.phone || ''),
+      yetkili: String(bayi.contact_name || [fatura.first_name, fatura.last_name].filter(Boolean).join(' ') || ''),
+      /* WooCommerce ili "TR35" gibi bir KOD olarak saklar; fişte ve
+         WhatsApp metninde koda değil ADA ihtiyaç var. */
+      il: ilAdi(bayi.il || bayi.city || fatura.state || fatura.city || ''),
+      vergiNo: String(bayi.tax_number || ''),
+      plasiyerAd: String(s.plasiyer_ad || ''),
+      toplam: Number(s.total || 0),
+      araToplam: Number(s.subtotal || 0) || 0,
+      odemeIskonto: Number(s.odeme_iskonto || (s.pricing && s.pricing.odeme_iskonto) || 0) || 0,
+      odeme: String(s.payment_method_title || s.payment_title || s.odeme_tipi || ''),
+      /*
+       * ÜCRET SATIRLARI (eklenti 2.18.1): plasiyer iskontosu ve ödeme
+       * yöntemi iskontosu satır fiyatına değil NEGATİF ÜCRET SATIRINA
+       * yazılır (Registry §0 madde 1). Fiş motoru tutarı buradan okur;
+       * alan gelmezse "Ara toplam" ile "NET" arasındaki fark fişte
+       * açıklamasız kalıyordu.
+       */
+      ucretler: (Array.isArray(s.fee_lines) ? s.fee_lines : []).map(function (u) {
+        return { ad: String((u && u.name) || ''), tutar: Number((u && u.total) || 0) || 0 };
+      }),
       iskonto: Number(s.plasiyer_iskonto || 0) || 0,
       /* ÜÇ ŞEKİL (Faz 11 — Görsel 6 "0 çeşit / 0 adet"): sunucu 2.17.0
          `kalemler` verir; eski eklenti `line_items` (ince yük) ya da
@@ -117,6 +157,163 @@
   /* ------------------------------------------------------------------ *
    *  ÇİZİM
    * ------------------------------------------------------------------ */
+
+  /* ------------------------------------------------------------------ *
+   *  ÇIKTI KANALLARI (Faz 12): fiş / yazdır, WhatsApp, tekrar sipariş
+   * ------------------------------------------------------------------ */
+
+  function F() {
+    return window.SiparisFisi || null;
+  }
+
+  /** Oturumdaki plasiyer künyesi + firma logosu (fiş başlığı). */
+  function fisBaglami() {
+    var o = oturum() || {};
+    var a = (window.durum && window.durum.ayarlar) || {};
+
+    return {
+      firmaAdi: String(a.firmaAdi || (window.durum && window.durum.lisans && window.durum.lisans.firmaAdi) || ''),
+      logo: String(a.yerelLogo || a.siteLogosu || ''),
+      plasiyerAd: String(o.ad || ''),
+      plasiyerId: Number(o.id) || 0,
+      kagit: 'a4'
+    };
+  }
+
+  function siparisBul(id) {
+    return durumS.siparisler.find(function (x) { return String(x.id) === String(id); }) || null;
+  }
+
+  /** [📄 Fiş / Yazdır] — kurumsal sipariş fişi ayrı pencerede (fis:onizleme). */
+  async function fisAc(id, kagit) {
+    var sip = siparisBul(id);
+
+    if (!sip) return;
+
+    if (!F()) { bildir('Fiş motoru yüklenemedi (siparis-fisi.js).', 'hata'); return; }
+
+    var baglam = fisBaglami();
+    baglam.kagit = 'termal' === kagit ? 'termal' : 'a4';
+
+    var fis = F().normalle(sip, baglam);
+    var cevap;
+
+    try {
+      cevap = await ipcRenderer.invoke('fis:onizleme', { html: F().html(fis, { kagit: baglam.kagit }), baslik: 'Sipariş Fişi #' + fis.numara });
+    } catch (e) {
+      cevap = { ok: false, hata: (e && e.message) || 'Fiş penceresi açılamadı.' };
+    }
+
+    if (!cevap || !cevap.ok) bildir((cevap && cevap.hata) || 'Fiş penceresi açılamadı.', 'hata');
+  }
+
+  /** [📲 WhatsApp] — müşterinin telefonu normalize edilir, formatlı özet wa.me ile açılır. */
+  function whatsappAc(id) {
+    var sip = siparisBul(id);
+
+    if (!sip || !F()) return;
+
+    var fis = F().normalle(sip, fisBaglami());
+    var adres = F().waAdresi(fis);
+
+    if (!adres) { bildir('Bu siparişte müşteri telefonu yok; WhatsApp fişi gönderilemez.', 'uyari'); return; }
+
+    window.open(adres);
+  }
+
+  /**
+   * [🔁 Tekrar Sipariş] — bu siparişin kalemleri BUGÜNÜN fiyatıyla sepete
+   * doldurulur (motor: sonSiparisiKopyala; geçmiş fiyat asla kopyalanmaz),
+   * müşteri seçilir ve Katalog & Satış açılır.
+   */
+  async function tekrarSiparis(id) {
+    var sip = siparisBul(id);
+    var M = window.PlasiyerSiparisMotor;
+    var Vt = window.PlasiyerVitrin;
+    var Mu = window.PlasiyerMusteri;
+
+    if (!sip || !M || !Vt) return;
+
+    var sepet = Vt.sepetAl ? Vt.sepetAl() : null;
+
+    if (!sepet) return;
+
+    /*
+     * Müşteri PORTFÖYDEN alınır (Faz 12-B). Sipariş yükünden kurulan sentetik
+     * nesnede `odemeIskontolari` ve `acikBakiye` yoktur; sepet ödeme yöntemi
+     * iskontosunu 0 sayıyor, sunucu ise siparişi yazarken matristen okuyup
+     * uyguluyordu — plasiyer ekranda gördüğünden farklı bir fiyat kaydediyordu.
+     */
+    if (Mu && sip.musteriId && 'function' === typeof Mu.musteriSec) {
+      var kayit = ('function' === typeof Mu.musteriBul && Mu.musteriBul(sip.musteriId)) ||
+        { id: sip.musteriId, unvan: sip.musteri, iskonto: sip.iskonto, telefon: sip.telefon || '' };
+
+      Mu.musteriSec(kayit, { sessiz: true });
+    }
+
+    /* Katalog ekranda süzülü ya da hiç yüklenmemiş olabilir; kimlikler yerel
+       indeksten çözülür (ağa çıkmaz). */
+    var idler = sip.kalemler.map(function (k) { return k.urunId; });
+    var harita = ('function' === typeof Vt.urunleriCoz) ? await Vt.urunleriCoz(idler) : {};
+
+    var sonuc = M.sonSiparisiKopyala({ kalemler: sip.kalemler.map(function (k) { return { product_id: k.urunId, quantity: k.adet, name: k.ad }; }) },
+      function (pid) { return harita[pid] || (Vt.urunBul ? Vt.urunBul(pid) : null); }, sepet);
+
+    if (Vt.sepetiCiz) Vt.sepetiCiz();
+
+    var mesaj = sonuc.eklenen + ' kalem bugünün fiyatıyla sepete eklendi.';
+
+    if (sonuc.atlanan && sonuc.atlanan.length) {
+      mesaj += ' ' + sonuc.atlanan.length + ' kalem katalogda bulunamadı: ' + sonuc.atlanan.map(function (a) { return a.ad; }).join(', ');
+    }
+
+    bildir(mesaj, sonuc.atlanan && sonuc.atlanan.length ? 'uyari' : 'ok');
+
+    if ('function' === typeof window.sekmeAc) window.sekmeAc('satis');
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  AKILLI SÜZGEÇ (Faz 12): arama + durum çipleri — yerel, ağa çıkmaz
+   * ------------------------------------------------------------------ */
+
+  var DURUM_CIPLERI = [
+    { kod: '', ad: 'Tümü' },
+    { kod: 'acik', ad: 'Açık', durumlar: ['pending', 'on-hold', 'processing', 'order-ready', 'b2b-received', 'b2b-preparing', 'b2b-ready'] },
+    { kod: 'yolda', ad: 'Yolda', durumlar: ['shipped', 'b2b-shipped'] },
+    { kod: 'tamam', ad: 'Tamamlandı', durumlar: ['completed', 'delivered'] },
+    { kod: 'iptal', ad: 'İptal / İade', durumlar: ['cancelled', 'refunded', 'failed'] }
+  ];
+
+  function suz(liste) {
+    var q = String(durumS.arama || '').toLocaleLowerCase('tr-TR').trim();
+    var cip = DURUM_CIPLERI.find(function (c) { return c.kod === durumS.suzgec; });
+
+    return liste.filter(function (x) {
+      if (cip && cip.durumlar && cip.durumlar.indexOf(String(x.durum).replace(/^wc-/, '')) === -1) return false;
+
+      if (!q) return true;
+
+      var metin = [x.numara, x.musteri, x.odeme, x.durumEtiketi].concat(x.kalemler.map(function (k) { return k.ad; })).join(' ').toLocaleLowerCase('tr-TR');
+
+      return metin.indexOf(q) !== -1;
+    });
+  }
+
+  function suzgecBari(toplam, gorunen) {
+    return '<div class="siparislerim-suzgec flex items-center gap-2 flex-wrap mb-4">' +
+      '<input type="search" id="siparislerimAra" value="' + kacis(durumS.arama || '') + '" placeholder="Sipariş no, müşteri, ürün…" ' +
+             'class="flex-1 min-w-48 h-11 px-4 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold" aria-label="Siparişlerde ara" />' +
+      '<div class="flex rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-600" role="group" aria-label="Durum">' +
+        DURUM_CIPLERI.map(function (c) {
+          var aktif = c.kod === durumS.suzgec;
+          return '<button type="button" class="siparislerim-cip px-3 py-2 text-sm font-bold transition ' +
+            (aktif ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900' : 'hover:bg-slate-100 dark:hover:bg-slate-700') +
+            '" data-suzgec="' + c.kod + '" aria-pressed="' + (aktif ? 'true' : 'false') + '">' + c.ad + '</button>';
+        }).join('') +
+      '</div>' +
+      (gorunen !== toplam ? '<span class="text-sm font-bold text-slate-500">' + gorunen + ' / ' + toplam + '</span>' : '') +
+    '</div>';
+  }
 
   function kartHtml(s) {
     var acik = !!durumS.acik[s.id];
@@ -165,6 +362,15 @@
               '</tbody></table>'
             : '<div class="text-sm text-slate-500">Kalem dökümü yok.</div>') +
           (s.notlar ? '<div class="mt-3 text-sm rounded-xl border-2 border-dashed border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-3"><b>Not:</b> ' + kacis(s.notlar) + '</div>' : '') +
+          /* ÇIKTI KANALLARI (Faz 12) — detay açılınca: kurumsal fiş, WhatsApp özeti,
+             tekrar sipariş. Kartın dışında TEK birincil düğme durur (saha ekranı
+             sade kalır); depo eylemleri (revize/iptal/durum) burada da YOKTUR. */
+          '<div class="siparis-kanallar mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex gap-2 flex-wrap">' +
+            '<button type="button" class="sk-fis px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + s.id + '" data-kagit="a4">📄 Profesyonel Fiş / Yazdır</button>' +
+            '<button type="button" class="sk-fis px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + s.id + '" data-kagit="termal" title="80 mm termal yazıcı">🧾 Termal</button>' +
+            '<button type="button" class="sk-wa px-3 py-2 rounded-lg bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700" data-id="' + s.id + '">📲 WhatsApp Sipariş Fişi</button>' +
+            '<button type="button" class="sk-tekrar px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600" data-id="' + s.id + '" title="Kalemleri bugünün fiyatıyla sepete doldur">🔁 Tekrar Sipariş</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
   }
@@ -206,7 +412,35 @@
       return;
     }
 
-    kap.innerHTML = durumS.siparisler.map(kartHtml).join('');
+    var gorunen = suz(durumS.siparisler);
+
+    kap.innerHTML = suzgecBari(durumS.siparisler.length, gorunen.length) +
+      (gorunen.length
+        ? gorunen.map(kartHtml).join('')
+        : '<div class="py-10 text-center bg-white dark:bg-slate-800 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600">' +
+            '<div class="text-3xl mb-2" aria-hidden="true">🔍</div>' +
+            '<div class="font-bold">Bu arama / süzgeçle eşleşen sipariş yok</div>' +
+            '<p class="mt-1 text-sm text-slate-500">Arama kutusunu temizleyin ya da "Tümü"nü seçin.</p>' +
+          '</div>');
+
+    var ara = el('siparislerimAra');
+
+    if (ara) {
+      ara.addEventListener('input', function () {
+        durumS.arama = ara.value;
+        var imlec = ara.selectionStart;
+        ciz();
+        var yeni = el('siparislerimAra');
+        if (yeni) { yeni.focus(); try { yeni.setSelectionRange(imlec, imlec); } catch (e) { /* sayı alanı */ } }
+      });
+    }
+
+    kap.querySelectorAll('.siparislerim-cip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        durumS.suzgec = String(b.dataset.suzgec || '');
+        ciz();
+      });
+    });
   }
 
   /* ------------------------------------------------------------------ *
@@ -286,6 +520,21 @@
     var yenileDugme = el('siparislerimYenile');
     if (yenileDugme) yenileDugme.addEventListener('click', sekmeyiAc);
 
+    /* Çıktı kanalları (Faz 12) — tek delegasyon. */
+    var liste = el('siparislerimListe');
+    if (liste) {
+      liste.addEventListener('click', function (olay) {
+        var fis = olay.target.closest('.sk-fis');
+        if (fis) { fisAc(fis.dataset.id, fis.dataset.kagit); return; }
+
+        var wa = olay.target.closest('.sk-wa');
+        if (wa) { whatsappAc(wa.dataset.id); return; }
+
+        var tekrar = olay.target.closest('.sk-tekrar');
+        if (tekrar) { tekrarSiparis(tekrar.dataset.id); }
+      });
+    }
+
     /* `sekmeAc` SARILIR (renderer.js'e dokunmadan). */
     if ('function' === typeof window.sekmeAc) {
       var ozgun = window.sekmeAc;
@@ -306,11 +555,19 @@
     kur();
   }
 
+  durumS.arama = '';
+  durumS.suzgec = '';
+
   window.PlasiyerSiparislerim = {
     yenile: yenile,
     sekmeyiAc: sekmeyiAc,
     ciz: ciz,
     normalle: normalle,
+    suz: suz,
+    fisAc: fisAc,
+    whatsappAc: whatsappAc,
+    tekrarSiparis: tekrarSiparis,
+    DURUM_CIPLERI: DURUM_CIPLERI,
     durum: durumS
   };
 })();

@@ -13,6 +13,9 @@
  *              sunucuya gidilmez (BYOM-REGISTRY.md §3.2).
  *   YAYINLA    Tek PUT (byom/v1/storefront-layout). Çevrimdışıysa kuyruk
  *              (Offline-Outbox, src/renderer/vitrin-motor.js).
+ *   MARKA      Logo/favicon (renderer.js yardımcıları) + masaüstü logo genişliği
+ *              kaydırıcısı. İkincisi YALNIZCA bu uygulamanın ayarıdır (ayar:yaz);
+ *              siteye/temaya hiç gitmez (bkz. bölüm "masaüstü logo genişliği").
  *
  *  Güvenlik: nodeIntegration açık olduğu için sunucudan gelen HER dize
  *  kacis() ile basılır; layout/registry verisi hiçbir zaman ham innerHTML
@@ -189,7 +192,9 @@
     fiyatGorunurluk: '',
     fiyatMesgul: false,
     /* Önizleme çerçevesine eklenen önbellek damgası (eklentiden gelir). */
-    cacheBust: ''
+    cacheBust: '',
+    /* Masaüstü logo genişliği kaydırıcısı kaydedilmeden oynatıldı mı (sekme değişiminde geri alınır). */
+    logoGenislikKirli: false
   };
 
   var UI = {};
@@ -2179,6 +2184,78 @@
     if (typeof faviconOnizlemeGuncelle === 'function') { try { faviconOnizlemeGuncelle(); } catch (e) { /* ayarlar henüz yok */ } }
   }
 
+  /* ---------- masaüstü logo genişliği (Faz 11 · Eksen 2) ----------
+   * Sol üst logonun genişliği YALNIZCA bu uygulamanın ayarıdır
+   * (ayarlar.json → masaustuLogoGenislik, 100–320 px). Kaydırıcı "Marka
+   * Görselleri" panelinde durur ama SİTEYE GİTMEZ: theme-config/branding
+   * yüküne (showcaseKaydet) ve storefront-layout PUT'una asla girmez —
+   * yonetici-arayuz.dom.test.js bunu kaynak üzerinden kilitler.
+   *   input  → logoGenisligiUygula(px): yalnızca --logo-width (IPC yok, disk yok)
+   *   Kaydet → ayar:yaz { masaustuLogoGenislik }  (tek IPC, tek disk yazımı)
+   *   sekme değişimi / yeniden açılış → kaydedilmemiş değer geri alınır
+   * Kırpma kuralı tek yerde (renderer.js → logoGenisligiUygula); burada yalnızca
+   * gösterim var. O fonksiyon yoksa (jsdom) ham değer gösterilir, CSS yazılmaz. */
+
+  var LOGO_GENISLIK_VARSAYILAN = 220;
+
+  function logoGenislikUygulaYerel(deger) {
+    if (typeof logoGenisligiUygula === 'function') return logoGenisligiUygula(deger);
+    var d = durumNesnesi();
+    var ham = Number(deger !== undefined ? deger : (d && d.ayarlar && d.ayarlar.masaustuLogoGenislik));
+    return ham > 0 ? ham : LOGO_GENISLIK_VARSAYILAN;
+  }
+
+  /** Kaydırıcı + px etiketini çizer; ayarlara ve CSS'e dokunmaz. */
+  function logoGenislikCiz(px) {
+    var aralik = secDeg('#veLogoGenislik');
+    var deger = secDeg('#veLogoGenislikDeger');
+    if (aralik) aralik.value = String(px);
+    if (deger) deger.textContent = px + 'px';
+  }
+
+  /** Kaydedilmiş değeri (durum.ayarlar) hem CSS'e hem kaydırıcıya yazar. */
+  function logoGenislikKur() {
+    VE.logoGenislikKirli = false;
+    logoGenislikCiz(logoGenislikUygulaYerel());
+  }
+
+  /** Kaydedilmeden bırakılan kaydırıcı: sekmeden ayrılınca kaydedilmiş değere dön. */
+  function logoGenislikGeriAl() {
+    if (!VE.logoGenislikKirli) return;
+    logoGenislikKur();
+  }
+
+  function logoGenislikOlaylariBagla() {
+    var aralik = secDeg('#veLogoGenislik');
+    var kaydet = secDeg('#veLogoGenislikKaydet');
+    if (!aralik || !kaydet) return;
+
+    aralik.addEventListener('input', function () {
+      /* Canlı önizleme: yalnızca CSS değişkeni. Her karede ayarlar.json yazılmaz. */
+      VE.logoGenislikKirli = true;
+      logoGenislikCiz(logoGenislikUygulaYerel(aralik.value));
+    });
+
+    kaydet.addEventListener('click', function () {
+      var px = logoGenislikUygulaYerel(aralik.value);
+      if (!electron || !electron.ipcRenderer) { uyar('Ayar köprüsü yok; kaydedilemedi.', 'hata'); return; }
+      var geri = typeof butonuMesgulEt === 'function' ? butonuMesgulEt(kaydet, 'KAYDEDİLİYOR…') : function () {};
+      electron.ipcRenderer.invoke('ayar:yaz', { masaustuLogoGenislik: px }).then(function (ayarlar) {
+        var d = durumNesnesi();
+        /* ayar:yaz tam (maskeli) ayar nesnesini döner — renderer.js'teki kalıp. */
+        if (d && ayarlar && typeof ayarlar === 'object' && ayarlar.masaustuLogoGenislik !== undefined) d.ayarlar = ayarlar;
+        else if (d && d.ayarlar) d.ayarlar.masaustuLogoGenislik = px;
+        VE.logoGenislikKirli = false;
+        logoGenislikCiz(px);
+        uyar('Masaüstü logo genişliği kaydedildi.', 'basari');
+      }, function (e) {
+        uyar('Masaüstü logo genişliği kaydedilemedi:\n' + ((e && e.message) || e), 'hata');
+      }).then(geri, geri);
+    });
+
+    logoGenislikKur();
+  }
+
   /* ---------- önizlemeden gelen "ayarı aç" isteği ---------- */
 
   function duzenlemeIstegi(id) {
@@ -2329,6 +2406,7 @@
     window.addEventListener('message', onizlemeMesaji);
     olcekDinleyiciBagla();
     markaOlaylariBagla();
+    logoGenislikOlaylariBagla();
 
     var fiyatBtn = secDeg('#veFiyatAnahtar');
     if (fiyatBtn) fiyatBtn.addEventListener('click', fiyatGorunurluguDegistir);
@@ -2344,6 +2422,8 @@
       if (!VE.state && !VE.yukleniyor) yukle(false);
       /* Sekme yeniden acildiginda konteyner genisligi degismis olabilir. */
       requestAnimationFrame(onizlemeOlcekle);
+      /* Kaydedilmemiş logo genişliği geri alınır; ayar başka yerden değiştiyse tazelenir. */
+      logoGenislikKur();
       return;
     }
     VE.acildi = true;
@@ -2367,6 +2447,7 @@
     window.sekmeAc = function (ad) {
       var sonuc = eskiSekmeAc.apply(this, arguments);
       if (ad === 'vitrin-editor') vitrinEditorAc();
+      else logoGenislikGeriAl(); /* editörden ayrılırken kaydedilmemiş logo genişliği geri alınır */
       return sonuc;
     };
   }
