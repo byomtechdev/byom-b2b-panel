@@ -1183,7 +1183,7 @@ düşürmez; `normalle` eksik alanları sıfırlar. `sekmeAc` sarmalı `bagli` b
 ## 4.16 Faz 12 — İki rol iki harita, logo ölçeği, kurumsal fiş, saha kısayolları
 
 **Görev:** "Baş Ürün Mimarı — 1 istedik 10 katını ver" (`../BYOM-REGISTRY.md §5.35`).
-Eklenti 2.18.1 ile birlikte (inceleme turu düzeltmeleri: `BYOM-REGISTRY.md §5.35-G`).
+Eklenti 2.18.2 ile birlikte (inceleme turu düzeltmeleri: `BYOM-REGISTRY.md §5.35-G`; canlı `maxIskonto` hatası: `§5.35-H`).
 
 ### 4.16.1 Harita kokpiti FABRİKA oldu — `HaritaKokpit.olustur(ayar)`
 `harita-kokpit.js` artık iki örnek üretir; durum modül seviyesinde DEĞİL, örneğe aittir:
@@ -1255,7 +1255,7 @@ normalizasyonu / ham `prepare_order`), `html(fis, {kagit:'a4'|'termal'})`, `what
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**633 test**: panel 295 + kök 338).
+İkisini birden `../scripts/check-all.js` koşar (**635 test**: panel 295 + kök 340).
 
 ```bash
 # Bu submodule'un kendi birim testleri (295 test) — Electron GEREKMEZ
@@ -1302,7 +1302,7 @@ node --test scripts/tests/harita-kokpit.dom.test.js   # 15 — 81 il çizimi, KU
 node --test scripts/tests/saha-denetim.dom.test.js    # 15 — Faz 10: hızlı adet, Kendi Siparişlerim, anında eşitleme, bayi künyesi
 node --test scripts/tests/saha-analitik.dom.test.js   # 11 — Faz 11: Performansım, kalem dökümü üç şekil, harita tarih + bayi kartı, çevrimdışı müşteri silme
 node --test scripts/tests/yonetici-arayuz.dom.test.js # 14 — Faz 11: sipariş sekmesi iki seviye, WhatsApp fişi, masaüstü logo genişliği (Vitrin Editörü, siteye gitmez, anahtar göçü), üç görsel yuvası
-node --test scripts/tests/saha-harita.dom.test.js     # 17 — Faz 12: iki rol iki harita, renk/il formu, saha kısayolları, fiş + WhatsApp + tekrar sipariş
+node --test scripts/tests/saha-harita.dom.test.js     # 19 — Faz 12: iki rol iki harita, renk/il formu, saha kısayolları, fiş + WhatsApp + tekrar sipariş
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
 node --test scripts/tests/registry-parity.test.js     # 3 registry kopyası eşit mi
@@ -1313,7 +1313,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (633 test)
+# Bitirirken: üç katmanın tamamı (635 test)
 node scripts/check-all.js
 ```
 
@@ -1391,7 +1391,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 160 php / 92 js / 633 test
+cd .. && node scripts/check-all.js     # 0 hata / 160 php / 92 js / 635 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

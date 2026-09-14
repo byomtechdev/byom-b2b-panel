@@ -599,6 +599,24 @@
     var tavanAlan = el('pfTavan');
     var tavanMetin = String((tavanAlan && tavanAlan.value) || '').trim();
 
+    /*
+     * Boş tavan "kaldır" demektir ve meşru bir eylemdir — ama SESSİZ olmamalı.
+     * Alan bir <input type="number">: geçersiz bir tuş (harf) değeri boşaltır,
+     * kullanıcı yalnızca PIN değiştirmek isterken mevcut tavanı silebilir.
+     * Yalnızca gerçekten tavanı OLAN bir kayıtta sorulur; yeni kayıtta ya da
+     * zaten tavansız kayıtta tek fazladan tık bile istemeyiz.
+     */
+    if ('' === tavanMetin && mevcut && Number(mevcut.maxIskonto) > 0) {
+      var tavanOnay = await onayla(
+        'İskonto Tavanını Kaldır',
+        String(mevcut.ad || 'Bu pazarlamacı') + ' için kişiye özel iskonto tavanı (%' +
+        (Number(mevcut.maxIskonto) || 0) + ') kaldırılacak; bundan sonra global tavan geçerli olur.',
+        'KALDIR'
+      );
+
+      if (!tavanOnay) return;
+    }
+
     var ilKutulari = Array.prototype.slice.call((el('pfIlListe') || document.createElement('div')).querySelectorAll('.pf-il-kutu:checked'));
 
     function ilListesiCizildi() {
@@ -634,7 +652,17 @@
         return yaz(hata, 'İskonto tavanı 0-100 arasında olmalıdır.');
       }
 
-      govde.maxIskonto = tavanSayi;
+      /*
+       * METIN olarak gonderilir, sayi olarak DEGIL.
+       *
+       * Panel ve eklenti ayri yayinlanir: sahadaki kurulumlarin bir kismi
+       * hala eski semayi (`type: string`) calistiriyor ve sayi gonderen bir
+       * istek orada "Parametreler gecersiz: maxIskonto" ile reddedilir.
+       * Sayisal metin HER IKI semadan da gecer (2.18.2 sunucu tarafi zaten
+       * ikisini birden kabul ediyor). Deger yukarida dogrulandi ve
+       * normallestirildi — "7,5" burada "7.5" olur.
+       */
+      govde.maxIskonto = String(tavanSayi);
     }
 
     if (!mevcut) {
