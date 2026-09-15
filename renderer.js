@@ -610,8 +610,11 @@ const durum = {
      Varsayılan 'pending': panel açıldığında ilk görülmesi gereken şey karar
      bekleyen kurumsal başvurulardır. */
   uyeSuzgec: 'pending',
-  /* Üye alt sekmesi (Faz 10): 'bayi' (B2B başvuruları) | 'perakende' (web müşterileri). */
+  /* Üye alt sekmesi (Faz 10 · üçüncüsü Faz 12.1): 'bayi' (B2B başvuruları) |
+     'perakende' (web müşterileri) | 'saha' (pazarlamacının sahada açtıkları). */
   uyeAlt: 'bayi',
+  /* Pazarlamacı kimlik→ad tablosu; saha sekmesi TEK istekle doldurur (null = hiç sorulmadı). */
+  plasiyerAdlari: null,
   urunDurumSuzgec: '',
   bekleyenUyeSayisi: 0,
 
@@ -2017,6 +2020,16 @@ function bayiNormalle(b) {
     telefon: b.phone || '',
     eposta: b.email || '',
     adres: [b.address, b.district, b.city].filter(Boolean).join(', '),
+    /* --- SAHA KÜNYESİ (Faz 12.1) ---
+       Bayi yükü 2.19.0'dan beri `musteri_kaynagi` (saha damgası
+       `byom_plasiyer_masaustu`) ve `assigned_plasiyer_id` taşır. Pazarlamacı
+       ADI yükte olmayabilir; o durumda `plasiyerAdlariniCoz()` tek istekle
+       (önbellekli) tamamlar — bayi başına ikinci bir istek atmamak için. */
+    il: b.city || '',
+    ilce: b.district || '',
+    kaynak: b.musteri_kaynagi || '',
+    plasiyerId: Number(b.assigned_plasiyer_id || 0) || 0,
+    plasiyerAd: b.plasiyer_ad || b.plasiyerAd || b.assigned_plasiyer_ad || '',
     tarih: b.applied_at || b.registered || '',
     onayTarihi: b.approved_at || '',
     redSebebi: b.reject_reason || '',
@@ -2254,19 +2267,33 @@ function logoAdresi(kaynak, damga) {
 }
 
 /**
- * Masaüstü logo genişliğini (100–320 px) --logo-width'e yazar (Faz 11 · Eksen 2).
+ * Masaüstü logo ölçeğini (100–320 px) --logo-width + --logo-height'e yazar
+ * (Faz 11 · Eksen 2; yükseklik Faz 12.1).
  * Kaynak: ayarlar.json → masaustuLogoGenislik. Kaydırıcı Vitrin Editörü › Marka
  * Görselleri panelindedir (renderer-vitrin.js), API sekmesinde DEĞİL. Ortak
  * uygulayıcı budur: kırpma kuralı yalnızca burada yaşar. YALNIZCA bu
  * uygulamanın sol üst logosu — temaya/siteye gitmez. Eski 'logoGenislik'
  * anahtarı main.js → ayarlariOku() göçüyle devralınır (burada okunmaz).
+ *
+ * NEDEN İKİ DEĞİŞKEN: `--logo-width` yalnızca `max-width`tir. Kare ya da 3:1
+ * bir logoda gerçek boyutu `#firmaLogo { max-height: 40px }` belirliyor, yani
+ * 220 → 320 hareketi MATEMATİKSEL OLARAK ETKİSİZ kalıyordu (ancak 5,5:1'den
+ * geniş logolarda görünüyordu) — ürün sahibi bunu "kaydırıcı çalışmıyor" diye
+ * bildirdi. Yükseklik, ilk tasarımın oranı korunacak biçimde (220px ↔ 40px)
+ * türetilir: 100 → 18px, 220 → 40px, 320 → 58px.
  */
 function logoGenisligiUygula(deger) {
+  /* Oran fonksiyonun İÇİNDE: bu gövde testlerde kaynaktan kesilip tek başına
+     koşturuluyor (yonetici-arayuz.dom.test.js), dışarıdaki bir sabit gelmezdi. */
+  const ORAN = 40 / 220;   // referans yükseklik / referans genişlik
+
   const ham = Number(deger !== undefined ? deger : (durum.ayarlar && durum.ayarlar.masaustuLogoGenislik));
   const px = Math.min(320, Math.max(100, isNaN(ham) || !ham ? 220 : ham));
 
   document.documentElement.style.setProperty('--logo-width', px + 'px');
+  document.documentElement.style.setProperty('--logo-height', Math.round(px * ORAN) + 'px');
 
+  /* Dönüş değeri GENİŞLİKTİR (ayarlar.json'a yazılan tek sayı) — değiştirme. */
   return px;
 }
 
@@ -5072,13 +5099,18 @@ function yeniUrunuVurgula(id) {
  *  BÖLÜM 9 — B2B ÜYE ONAYLARI VE BAYİ KARTI
  * ========================================================================*/
 
+/** Üye sekmesinin alt görünümleri — tek doğruluk kaynağı (işaretlemedeki data-alt ile aynı). */
+const UYE_ALT_SEKMELER = ['bayi', 'perakende', 'saha'];
+
 /**
- * Üye alt sekmesi (Faz 10): [🏢 B2B Bayilik Başvuruları] | [👤 Web Perakende Müşterileri].
- * Durum `aria-selected` ile taşınır; bayi süzgeçleri perakendede gizlenir
- * (orada pending/approved anlamsız).
+ * Üye alt sekmesi (Faz 10; Faz 12.1'de üçüncüsü eklendi):
+ *   [🏢 B2B Bayilik Başvuruları] | [👤 Web Perakende Müşterileri] | [🚚 Saha / Pazarlamacı Müşterileri]
+ * Durum `aria-selected` ile taşınır; bayi süzgeçleri YALNIZCA "bayi"de görünür
+ * (perakendede ve sahada pending/approved ayrımı anlamsız, üstelik saha listesi
+ * sunucuda `status=all` ile çekilir).
  */
 function uyeAltSekmeAc(ad) {
-  durum.uyeAlt = ('perakende' === ad) ? 'perakende' : 'bayi';
+  durum.uyeAlt = UYE_ALT_SEKMELER.indexOf(ad) === -1 ? 'bayi' : ad;
 
   $$('.uye-alt').forEach(function (d) {
     d.setAttribute('aria-selected', d.dataset.alt === durum.uyeAlt ? 'true' : 'false');
@@ -5086,6 +5118,159 @@ function uyeAltSekmeAc(ad) {
 
   uyeSuzgecleriCiz();
   uyeleriYukle();
+}
+
+/**
+ * SAHA / PAZARLAMACI MÜŞTERİLERİ (Faz 12.1).
+ *
+ * Pazarlamacıların sahada açtığı hesaplar sunucuda
+ * `_b2b_musteri_kaynagi = byom_plasiyer_masaustu` ile damgalanır; liste
+ * `GET /dealers?kaynak=saha` ile SUNUCUDA daraltılır (panelde süzmek, 100'lük
+ * sayfalama yüzünden eksik liste üretirdi). `status=all`: sahada açılan hesap
+ * onaylı da olabilir bekleyen de; ikisi de bu sekmeye aittir.
+ */
+async function sahaMusterileriYukle(arama) {
+  const kap = $('#uyeListesi');
+
+  if (durum.ayarlar.demoModu) {
+    durum.uyeler = [];
+    durum.uyelerToplam = 0;
+    uyeleriCiz();
+    return;
+  }
+
+  if (!durum.b2bVar) {
+    durum.uyeler = [];
+    durum.uyelerToplam = 0;
+    kap.innerHTML = '<div class="xl:col-span-2">' +
+      bosHtml(ikon('priz'), 'Saha müşterileri alınamadı',
+              'Bu liste için sitenizde "B2B Core" eklentisi kurulu ve etkin olmalıdır.') + '</div>';
+    return;
+  }
+
+  const cevap = await tumSayfalariGetir('b2b', 'dealers', {
+    status: 'all',
+    kaynak: 'saha',
+    search: arama
+  }, {
+    sureAsimi: 30000,
+    ilerleme: function (alinan, toplam) {
+      kap.innerHTML = '<div class="xl:col-span-2">' +
+        yukleniyorHtml('Saha müşterileri getiriliyor…  ' + alinan + (toplam > alinan ? ' / ' + toplam : '')) + '</div>';
+    }
+  });
+
+  if (!cevap.ok) {
+    durum.uyeler = [];
+    durum.uyelerToplam = 0;
+    kap.innerHTML = '<div class="xl:col-span-2">' +
+      bosHtml(ikon('priz'), 'Saha müşterileri alınamadı', cevap.hata) + '</div>';
+    return;
+  }
+
+  durum.uyeler = (cevap.veri || []).map(bayiNormalle);
+  durum.uyelerToplam = Number(cevap.toplam) || durum.uyeler.length;
+
+  await plasiyerAdlariniCoz(durum.uyeler);
+  uyeleriCiz();
+}
+
+/**
+ * Eksik pazarlamacı adlarını TEK istekle tamamlar (oturum boyunca önbellekli).
+ *
+ * Bayi yükü `assigned_plasiyer_id` verir ama adı vermeyebilir; kartta "#7"
+ * yazmak Faz 10'da düzeltilen hatanın (bayi atama modalında "#8 #7") aynısı
+ * olurdu. Ad çözülemezse kart "#id" yerine "Atanmamış/—" demez, kimliği
+ * gösterir: bilgi kaybetmemek için.
+ */
+async function plasiyerAdlariniCoz(liste) {
+  const eksik = (liste || []).filter(function (u) { return u.plasiyerId > 0 && !u.plasiyerAd; });
+  if (eksik.length === 0) return;
+
+  if (!durum.plasiyerAdlari) {
+    const cevap = await b2b('/admin/plasiyerler');
+    const dizi = (cevap && cevap.ok && cevap.veri && cevap.veri.plasiyerler) || [];
+
+    /* Uç yoksa/yetki yoksa boş tablo yazılır: her çizimde yeniden denenmesin. */
+    durum.plasiyerAdlari = {};
+    dizi.forEach(function (p) {
+      durum.plasiyerAdlari[String(p.id)] = p.ad || p.kullanici || '';
+    });
+  }
+
+  eksik.forEach(function (u) {
+    u.plasiyerAd = durum.plasiyerAdlari[String(u.plasiyerId)] || '';
+  });
+}
+
+/** Kayıt sahada mı açıldı? (kaynak damgası ya da pazarlamacı ataması) */
+function sahaMusterisiMi(u) {
+  return /plasiyer/i.test(String((u && u.kaynak) || '')) || Number(u && u.plasiyerId) > 0;
+}
+
+/**
+ * Saha künyesi satırı: "İl · Sorumlu Pazarlamacı".
+ * Patronun bu sekmedeki iki sorusu: müşteri nerede, kim getirdi.
+ */
+function sahaKunyesiHtml(u) {
+  if (!sahaMusterisiMi(u)) return '';
+
+  const yer = [u.il, u.ilce].filter(Boolean).join(' / ') || '—';
+  const kim = u.plasiyerAd
+    ? u.plasiyerAd
+    : (Number(u.plasiyerId) > 0 ? '#' + Number(u.plasiyerId) : 'Atanmamış');
+
+  return '<div class="sm:col-span-2 flex flex-wrap items-center gap-2 text-base">' +
+           '<span class="px-2 py-1 rounded-lg font-bold bg-slate-100 text-slate-700 ' +
+                 'dark:bg-slate-700 dark:text-slate-200">' +
+             ikon('bayrak', 'ik-sm') + ' İl: ' + kacis(yer) + '</span>' +
+           '<span class="px-2 py-1 rounded-lg font-bold bg-marka-100 text-marka-800 ' +
+                 'dark:bg-marka-900/40 dark:text-marka-200">' +
+             ikon('kisi', 'ik-sm') + ' Sorumlu Pazarlamacı: ' + kacis(kim) + '</span>' +
+         '</div>';
+}
+
+/**
+ * Kartın iletişim satırı: e-posta varsa e-posta, yoksa WhatsApp düğmesi.
+ *
+ * Sahada e-posta çoğu zaman toplanamıyor; sunucu artık uydurma adres üretmek
+ * yerine `.invalid` alan adı kullanıyor ve o adrese e-posta GÖNDERMİYOR. Böyle
+ * bir adresi ekranda "e-posta" diye göstermek yöneticiyi yanıltır — yerine
+ * gerçekten işe yarayan kanal basılır. Telefon da yoksa HİÇBİR satır basılmaz:
+ * boş bir "—" satırı yer kaplamaktan başka iş yapmıyordu.
+ */
+function uyeIletisimHtml(u) {
+  const eposta = String((u && u.eposta) || '').trim();
+  const gercekEposta = eposta && !/\.invalid$/i.test(eposta);
+
+  if (gercekEposta) {
+    return '<div class="sm:col-span-2 truncate">' +
+             '<span class="font-bold text-slate-500 dark:text-slate-400">E-posta:</span> ' +
+             kacis(eposta) + '</div>';
+  }
+
+  if (!waTelefon(u && u.telefon)) return '';
+
+  return '<div class="sm:col-span-2">' +
+           '<button type="button" data-eylem="uye-wa" data-id="' + kacis(u.id) + '" ' +
+                   'title="E-posta adresi yok; müşteriye WhatsApp üzerinden ulaşın." ' +
+                   'class="bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-xl ' +
+                          'text-white text-xs font-semibold transition active:scale-95">' +
+             ikon('telefon', 'ik-sm') + ' 📲 WhatsApp</button>' +
+         '</div>';
+}
+
+/** WhatsApp Web'i varsayılan tarayıcıda açar (main.js setWindowOpenHandler → shell.openExternal). */
+function uyeWhatsAppAc(id) {
+  const u = (durum.uyeler || []).filter(function (x) { return String(x.id) === String(id); })[0];
+  const tel = waTelefon(u && u.telefon);
+
+  if (!tel) {
+    bildir('Bu kayıtta WhatsApp için geçerli bir telefon numarası yok.', 'uyari');
+    return;
+  }
+
+  window.open('https://wa.me/' + tel);
 }
 
 /**
@@ -5156,8 +5341,11 @@ function uyeSuzgecleriCiz() {
 
   if (!kap) return;   // saha kabuğunda üye sekmesi belgede yok (Faz 9)
 
-  /* Perakende alt sekmesinde bayi süzgeçleri anlamsız — gizlenir. */
-  kap.hidden = ('perakende' === durum.uyeAlt);
+  /* Bayi süzgeçleri YALNIZCA "bayi" alt sekmesinde anlamlı: perakende listesi
+     wc/v3 `role=customer`, saha listesi `status=all` ile gelir; ikisinde de
+     pending/approved ayrımı yok. Görünür ama işlemeyen düğme kullanıcıya
+     yalan söyler (Faz 6 ilkesi). */
+  kap.hidden = ('bayi' !== durum.uyeAlt);
 
   kap.innerHTML = UYE_SUZGECLERI.map(function (f) {
     const aktif = f.kod === durum.uyeSuzgec;
@@ -5241,6 +5429,12 @@ async function uyeleriYukle() {
   /* ---------- WEB PERAKENDE (Faz 10) ---------- */
   if ('perakende' === durum.uyeAlt) {
     await perakendeMusterileriYukle(arama);
+    return;
+  }
+
+  /* ---------- SAHA / PAZARLAMACI MÜŞTERİLERİ (Faz 12.1) ---------- */
+  if ('saha' === durum.uyeAlt) {
+    await sahaMusterileriYukle(arama);
     return;
   }
 
@@ -5446,7 +5640,11 @@ function uyeleriCiz() {
             '", beklenen değer: "' + durum.ayarlar.b2bBekliyor + '")')
       : ('perakende' === durum.uyeAlt
           ? 'Web sitesinden kayıt olan perakende (customer rolü) müşteri yok.'
-          : '"' + suzgecAdi + '" süzgecine uyan bayi bulunamadı.');
+          : ('saha' === durum.uyeAlt
+              ? 'Pazarlamacıların sahada kaydettiği müşteri görünmüyor.\n\n' +
+                'Saha müşterileri, pazarlamacının panelinden eklenip eşitlendiğinde\n' +
+                'burada il ve sorumlu pazarlamacı bilgisiyle listelenir.'
+              : '"' + suzgecAdi + '" süzgecine uyan bayi bulunamadı.'));
 
     kap.innerHTML = '<div class="xl:col-span-2">' +
       bosHtml(durum.uyeSuzgec === 'pending' ? ikon('parlak') : ikon('ara'),
@@ -5537,8 +5735,10 @@ function uyeleriCiz() {
       '<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-lg">' +
         '<div><span class="font-bold text-slate-500 dark:text-slate-400">Vergi No:</span> ' + kacis(u.vergiNo || '—') + '</div>' +
         '<div><span class="font-bold text-slate-500 dark:text-slate-400">Telefon:</span> ' + kacis(u.telefon || '—') + '</div>' +
-        '<div class="sm:col-span-2 truncate"><span class="font-bold text-slate-500 dark:text-slate-400">E-posta:</span> ' +
-          kacis(u.eposta || '—') + '</div>' +
+        /* E-posta yoksa (sahada sık) yerine WhatsApp düğmesi; ikisi de yoksa satır basılmaz. */
+        uyeIletisimHtml(u) +
+        /* Saha kaydıysa: İl · Sorumlu Pazarlamacı */
+        sahaKunyesiHtml(u) +
         '<div class="sm:col-span-2"><span class="font-bold text-slate-500 dark:text-slate-400">' +
           (u.durum === 'approved' ? 'Onay:' : 'Başvuru:') + '</span> ' +
           kacis(tarihYaz(u.durum === 'approved' && u.onayTarihi ? u.onayTarihi : u.tarih, true)) + '</div>' +
@@ -7184,6 +7384,13 @@ function markaGorseliDegisti() {
   durum.logoDamgasi++;
   logoOnizlemeGuncelle();
   firmaLogosunuUygula();
+
+  /* Vitrin Editörü açıkken logo boyut şeridi de aynı anda tazelenir; kullanıcı
+     logoyu yükleyip hemen kaydırıcıya geçtiğinde şerit boş kalmasın.
+     Editör yüklü değilse (test/erken açılış) sessizce atlanır. */
+  if (typeof window !== 'undefined' && typeof window.veLogoSeridiTazele === 'function') {
+    try { window.veLogoSeridiTazele(); } catch (e) { /* önizleme kritik değil */ }
+  }
 }
 
 function logoOnizlemeGuncelle() {
@@ -7224,8 +7431,15 @@ async function yerelLogoYukle(dosya) {
     const veriAdresi = await dosyayiVeriAdresineCevir(dosya);
     durum.ayarlar = await ipcRenderer.invoke('ayar:yaz', { yerelLogo: veriAdresi });
     markaGorseliDegisti();
+    /* Öncelik YERELDEDİR (bkz. markaLogosu): yüklenen dosya site logosunun
+       ÖNÜNE geçer. Eski mesaj tam tersini söylüyordu ("sitenizin logosu
+       öncelikli") — kullanıcıya yüklediği logonun kullanılmayacağını
+       düşündürüyordu; canlıda bildirilen kafa karışıklığının kaynağıydı. */
     bildir('Yerel logo kaydedildi.' +
-           (durum.ayarlar.siteLogosu ? '\n(Sitenizin logosu bulunduğu için üst çubukta öncelikli gösterilir.)' : ''),
+           (durum.ayarlar.siteLogosu
+             ? '\n(Üst çubukta artık sitenizin logosu yerine BU logo gösterilir.)'
+             : '') +
+           '\nBoyutunu Vitrin Editörü › Marka Görselleri altındaki kaydırıcıdan ayarlayabilirsiniz.',
            'basari');
   } catch (e) {
     bildir('Logo yüklenemedi:\n' + String((e && e.message) || e), 'hata');
@@ -7996,6 +8210,10 @@ function olaylariBagla() {
 
     const detay = o.target.closest('[data-eylem="bayi-detay"]');
     if (detay) { bayiDetayiAc(detay.dataset.id); return; }
+
+    /* E-postasız müşteri (sahada sık): kartta e-posta yerine WhatsApp düğmesi. */
+    const wa = o.target.closest('[data-eylem="uye-wa"]');
+    if (wa) { uyeWhatsAppAc(wa.dataset.id); return; }
 
     /* --- Bayiye özel iskonto --- */
     const iskontoAnahtar = o.target.closest('[data-eylem="iskonto-anahtar"]');

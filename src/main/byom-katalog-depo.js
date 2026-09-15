@@ -222,6 +222,18 @@ function normalizeKayit(ham) {
     price: Number(ham.price) || 0,
     stock_quantity: ham.stock_quantity === null || ham.stock_quantity === undefined ? null : Number(ham.stock_quantity),
     koli_ici_adet: Math.floor(koli),
+    /*
+     * "Sadece koli olarak satilir" bayragi SUNUCUDAN gelir (`_byom_only_box`).
+     * Eskiden normalizeKayit bu alani dusuruyordu; vitrin rozeti "Koli: 24 adet"
+     * diyebiliyor ama "tekil alinamaz" kuralini soyleyemiyordu.
+     */
+    yalniz_koli: !!(ham.yalniz_koli !== undefined ? ham.yalniz_koli : byom.yalnizKoli),
+    /*
+     * KDV orani ekranda GOSTERILMEZ; fis motoru (siparis-fisi.js) kullanir.
+     * Sunucu vermiyorsa 0 kalir — yanlis bir oran uydurmaktansa sifir, cunku
+     * fis motoru 0'i "KDV satiri yazma" diye okur.
+     */
+    kdv_orani: Number(ham.kdv_orani ?? (ham.byom && ham.byom.kdvOrani)) || 0,
     categories: kategoriler,
     image_url: String(gorselAdres || ''),
     local_image_path: String(ham.local_image_path || ''),
@@ -274,16 +286,28 @@ function siralamaKarsilastir(a, b) {
 }
 
 /**
- * Katalogda arar.
+ * Katalogda arar — KIRPILMAMIŞ toplamı da söyler.
+ *
+ * NEDEN AYRI BİR FONKSİYON: `ara()` dizi döndürür ve çağıranları (testler
+ * dahil) o sözleşmeye bağlıdır. Kırpılan sonuçta "kaç tane vardı?" bilgisi
+ * kayboluyordu; ekranda solda 500, sağda 1111 yazıyor ve kullanıcı sistemin
+ * kataloğu yarım çektiğini sanıyordu. Üstelik filtresiz gezinmede alfabetik
+ * 501. üründen sonrası ERİŞİLEMEZ kalıyordu: arayüzün "daha göster" düğmesi
+ * kendi sınırını büyütse de elindeki dizi 500'de bitiyordu.
+ *
+ * Çözüm sayfalamadır: `ofset` ile sonraki dilim istenir, `toplam` ile
+ * kaç kalem olduğu söylenir. Kırpma hâlâ SÜZGEÇTEN SONRA yapılır (arama ve
+ * SKU ile her ürün bulunmaya devam eder).
  *
  * @param {string} sorgu    SKU, barkod ya da ad parçası.
- * @param {object} secenek  { kategori, adet, yalnizSpot }
- * @returns {object[]} kayıtlar
+ * @param {object} secenek  { kategori, adet, ofset, yalnizSpot }
+ * @returns {object} { urunler, toplam, ofset }
  */
-function ara(sorgu, secenek) {
+function araSayfali(sorgu, secenek) {
   secenek = secenek || {};
 
   const adet = Math.min(EN_COK_SONUC, Math.max(1, Number(secenek.adet) || EN_COK_SONUC));
+  const ofset = Math.max(0, Math.floor(Number(secenek.ofset) || 0));
   const q = normalize(sorgu);
 
   let konumlar = null;   // null = tüm katalog
@@ -339,7 +363,28 @@ function ara(sorgu, secenek) {
 
   sonuc.sort(siralamaKarsilastir);
 
-  return sonuc.slice(0, adet);
+  /* Toplam KIRPMADAN ÖNCE ölçülür — arayüzün "1111 kalemde 37 sonuç"
+     diyebilmesi bu sayıya bağlı. */
+  return {
+    urunler: sonuc.slice(ofset, ofset + adet),
+    toplam: sonuc.length,
+    ofset: ofset
+  };
+}
+
+/**
+ * Katalogda arar (GERİYE UYUMLU ince sarmal).
+ *
+ * Dizi döndürür; `araSayfali` ile aynı süzgeç ve sıralamayı kullanır, yani
+ * iki yol asla ayrışamaz. Toplam bilgisine ihtiyacı olan çağıran doğrudan
+ * `araSayfali`'yı kullanır.
+ *
+ * @param {string} sorgu    SKU, barkod ya da ad parçası.
+ * @param {object} secenek  { kategori, adet, ofset, yalnizSpot }
+ * @returns {object[]} kayıtlar
+ */
+function ara(sorgu, secenek) {
+  return araSayfali(sorgu, secenek).urunler;
 }
 
 /** Kimliğe göre tek ürün. */
@@ -491,6 +536,7 @@ function sifirla() {
 module.exports = {
   kur,
   ara,
+  araSayfali,
   urunGetir,
   barkodBul,
   kategoriler,

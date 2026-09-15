@@ -11,6 +11,9 @@
  *   5. Eşitleme: sayfalama, BOŞ YANITIN depoyu silmemesi, yerel görsel
  *      yollarının korunması
  *   6. SPOT ürünlerin sıralamada en tepeye sabitlenmesi
+ *   7. SAYFALAMA (Faz 13): `araSayfali` kırpılmamış toplamı söyler, `ofset`
+ *      ile sonraki dilim gelir; `ara()` geriye uyumlu dizi döndürmeye devam
+ *      eder; `yalniz_koli` / `kdv_orani` taşınır; `SEMA` artmaz
  *
  *  Electron GEREKMEZ: depo `kur({ dizin })` ile taze bir geçici dizine
  *  bağlanır, gerçek disk davranışı ölçülür.
@@ -457,4 +460,206 @@ test('kur: dizin verilmediğinde (Electron yok) çökmez', (t) => {
 
   /* Electron çözülemez; dosya yolu boş kalır, depo bellekte çalışır. */
   assert.doesNotThrow(function () { Depo.kur({}); });
+});
+
+/* =========================================================================
+ * 9. SAYFALAMA — "500 kalem" yanılgısının kökü (Faz 13)
+ *
+ * Ürün sahibi ekranda solda "500 kalem", sağ üstte "1111 ürün" görüp sistemin
+ * kataloğu yarım çektiğini sandı. Eşitleme 1111'in TAMAMINI yazıyordu; 500
+ * yalnızca ARAMA SONUCU kırpmasıydı. Asıl zarar metin değildi: filtresiz
+ * gezinmede alfabetik 501. üründen sonrası ERİŞİLEMEZDİ.
+ * ====================================================================== */
+
+/** 1111 ürünlük katalog kurar (sayfalama sınırlarını aşan gerçek boyut). */
+async function kalabalikKatalog() {
+  tazeDepo();
+
+  const liste = [];
+
+  /* Ad alfabetik sıralamaya girer; dolgulu numara sıranın tahmin edilebilir
+     kalmasını sağlar (aksi hâlde "Urun 10" < "Urun 2" olur ve iki sayfanın
+     kesişmediğini ölçmek zorlaşır). */
+  for (let i = 1; i <= 1111; i++) {
+    liste.push(urun(i, 'Urun ' + String(i).padStart(4, '0')));
+  }
+
+  await Depo.kataloguGuncelle(getirici(liste));
+
+  return liste;
+}
+
+test('araSayfali: 1111 üründe toplam 1111 döner, sayfa 500\'dür', async (t) => {
+  await kalabalikKatalog();
+
+  assert.equal(Depo.durum().urun, 1111, 'esitleme TAMAMINI yazdi');
+
+  const sayfa1 = Depo.araSayfali('');
+
+  assert.equal(sayfa1.toplam, 1111, 'KIRPILMAMIS toplam soylenir');
+  assert.equal(sayfa1.urunler.length, 500, 'tek sayfa EN_COK_SONUC kadar');
+  assert.equal(sayfa1.ofset, 0);
+  assert.equal(Depo.EN_COK_SONUC, 500, 'sayfa boyu sabiti');
+});
+
+test('araSayfali: ofset ikinci sayfayı verir ve hiçbir ürün iki sayfada birden çıkmaz', async (t) => {
+  await kalabalikKatalog();
+
+  const sayfa1 = Depo.araSayfali('');
+  const sayfa2 = Depo.araSayfali('', { ofset: 500 });
+  const sayfa3 = Depo.araSayfali('', { ofset: 1000 });
+
+  assert.equal(sayfa2.urunler.length, 500);
+  assert.equal(sayfa2.ofset, 500);
+  assert.equal(sayfa2.toplam, 1111, 'toplam her sayfada ayni');
+  assert.equal(sayfa3.urunler.length, 111, 'son sayfa kalani verir');
+
+  const k1 = new Set(sayfa1.urunler.map((u) => u.id));
+  const k2 = new Set(sayfa2.urunler.map((u) => u.id));
+
+  sayfa2.urunler.forEach((u) => assert.equal(k1.has(u.id), false, 'urun ' + u.id + ' iki sayfada birden'));
+  sayfa3.urunler.forEach((u) => {
+    assert.equal(k1.has(u.id), false, 'urun ' + u.id + ' 1. ve 3. sayfada');
+    assert.equal(k2.has(u.id), false, 'urun ' + u.id + ' 2. ve 3. sayfada');
+  });
+
+  /* Üç sayfa birlikte kataloğun TAMAMINI kapsar: 501. ürün artık erişilebilir. */
+  const hepsi = new Set(
+    sayfa1.urunler.concat(sayfa2.urunler, sayfa3.urunler).map((u) => u.id)
+  );
+
+  assert.equal(hepsi.size, 1111, 'sayfalarin birlesimi tum katalog');
+
+  /* Ofset sonuç kümesinin dışındaysa boş dilim döner, toplam yine dogrudur. */
+  const bos = Depo.araSayfali('', { ofset: 5000 });
+
+  assert.equal(bos.urunler.length, 0);
+  assert.equal(bos.toplam, 1111);
+});
+
+test('araSayfali: kırpma SÜZGEÇTEN SONRA yapılır — sorgu ve kategori toplamı daraltır', async (t) => {
+  tazeDepo();
+
+  const liste = [];
+
+  for (let i = 1; i <= 700; i++) {
+    liste.push(urun(i, (i % 2 === 0 ? 'Silikon ' : 'Vida ') + String(i).padStart(4, '0')));
+  }
+
+  await Depo.kataloguGuncelle(getirici(liste));
+
+  const s = Depo.araSayfali('silikon');
+
+  assert.equal(s.toplam, 350, 'toplam SUZGEC sonucudur, katalog boyu degil');
+  assert.equal(s.urunler.length, 350, '500 altinda kaldigi icin kirpilmadi');
+
+  /* Kırpılan sorguda da toplam gerçeği söyler. */
+  const v = Depo.araSayfali('vida');
+
+  assert.equal(v.toplam, 350);
+
+  /* SKU tam eşleşmesi kırpmadan etkilenmez (kirpma en sonda). */
+  assert.equal(Depo.araSayfali('SKU-699').urunler.length, 1, 'SKU ile her urun bulunur');
+});
+
+test('ara: hâlâ DİZİ döner ve araSayfali ile aynı dilimi verir (geriye uyum)', async (t) => {
+  await kalabalikKatalog();
+
+  const dizi = Depo.ara('');
+
+  assert.ok(Array.isArray(dizi), 'ara() dizi dondurur - mevcut cagiranlar kirilmaz');
+  assert.equal(dizi.length, 500);
+  assert.equal(typeof dizi.slice, 'function');
+  assert.equal(dizi.toplam, undefined, 'dizi uzerine alan iliştirilmedi');
+
+  assert.deepEqual(
+    dizi.map((u) => u.id),
+    Depo.araSayfali('').urunler.map((u) => u.id),
+    'iki yol ayni suzgec ve siralamayi kullanir'
+  );
+
+  /* Eski seçenekler aynen çalışır. */
+  assert.equal(Depo.ara('', { adet: 10 }).length, 10);
+  assert.equal(Depo.ara('', { adet: 10, ofset: 1105 }).length, 6, 'ofset dizi yolunda da gecerli');
+});
+
+/* =========================================================================
+ * 10. YENİ ALANLAR — yalniz_koli ve kdv_orani (SEMA ARTMADAN)
+ * ====================================================================== */
+
+test('normalizeKayit: yalniz_koli sunucudan taşınır, alan yoksa false olur', (t) => {
+  assert.equal(Depo.normalizeKayit({ byom: { yalnizKoli: true } }).yalniz_koli, true, 'REST eki');
+  assert.equal(Depo.normalizeKayit({ yalniz_koli: true }).yalniz_koli, true, 'diskten okunan kayit');
+  assert.equal(Depo.normalizeKayit({ byom: { yalnizKoli: false } }).yalniz_koli, false);
+
+  /* ALAN YOKSA false: eski katalog dosyalari sema artmadigi icin okunmaya
+     devam eder ve "sadece koli" rozeti yanlislikla yanmaz. */
+  assert.equal(Depo.normalizeKayit({}).yalniz_koli, false, 'alan yoksa false');
+  assert.equal(Depo.normalizeKayit({ byom: {} }).yalniz_koli, false);
+});
+
+test('normalizeKayit: kdv_orani taşınır, alan yoksa 0 olur (ekranda gösterilmez, fiş kullanır)', (t) => {
+  assert.equal(Depo.normalizeKayit({ byom: { kdvOrani: 20 } }).kdv_orani, 20, 'REST eki');
+  assert.equal(Depo.normalizeKayit({ kdv_orani: 10 }).kdv_orani, 10, 'diskten okunan kayit');
+  assert.equal(Depo.normalizeKayit({ byom: { kdvOrani: '18' } }).kdv_orani, 18, 'metin sayiya cevrilir');
+
+  [undefined, null, '', 'abc', NaN, false].forEach((k) => {
+    assert.equal(Depo.normalizeKayit({ kdv_orani: k }).kdv_orani, 0, 'deger: ' + String(k));
+  });
+
+  assert.equal(Depo.normalizeKayit({}).kdv_orani, 0, 'alan yoksa 0');
+});
+
+test('SEMA ARTMADI: eski katalog dosyası geçerli kalır, eksik alanlar varsayılana düşer', (t) => {
+  /*
+   * SEMA'yi artirmak sahadaki katalog dosyalarini yok saydirir ve internetsiz
+   * plasiyeri "once esitle" duvarina carpar. Yeni alanlar eksikken guvenle
+   * varsayilana dustugu icin surum artirmaya GEREK YOK.
+   */
+  assert.equal(Depo.SEMA, 1, 'sema sabiti degismedi');
+
+  const dizin = fs.mkdtempSync(path.join(os.tmpdir(), 'byom-kat-'));
+
+  /* Faz 12 biçiminde, yeni alanları HİÇ taşımayan bir dosya. */
+  fs.writeFileSync(
+    path.join(dizin, Depo.DOSYA),
+    JSON.stringify({
+      sema: 1,
+      sonGuncelleme: '2026-09-01T00:00:00.000Z',
+      urunler: [
+        { id: 1, name: 'Eski Silikon', sku: 'SKU-1', price: 10, koli_ici_adet: 24, categories: ['Kimyasallar'], image_url: '', local_image_path: '/yerel/1.jpg', is_spot: false }
+      ]
+    }),
+    'utf8'
+  );
+
+  Depo.sifirla();
+  Depo.kur({ dizin: dizin });
+
+  assert.equal(Depo.durum().urun, 1, 'ESKI DOSYA OKUNDU - sahadaki katalog yok sayilmadi');
+
+  const u = Depo.urunGetir(1);
+
+  assert.equal(u.name, 'Eski Silikon');
+  assert.equal(u.koli_ici_adet, 24, 'eski alanlar korundu');
+  assert.equal(u.local_image_path, '/yerel/1.jpg', 'indirilmis gorsel korundu');
+  assert.equal(u.yalniz_koli, false, 'yeni alan varsayilana dustu');
+  assert.equal(u.kdv_orani, 0, 'yeni alan varsayilana dustu');
+});
+
+test('disk: yeni alanlar yazılıp geri okunur', async (t) => {
+  const dizin = tazeDepo();
+
+  await Depo.kataloguGuncelle(getirici([
+    urun(1, 'Kolili', { byom: { koliIciAdet: 24, yalnizKoli: true, spot: false, barkod: '1', kdvOrani: 20 } }),
+    urun(2, 'Tekil', { byom: { koliIciAdet: 1, yalnizKoli: false, spot: false, barkod: '2' } })
+  ]));
+
+  Depo.sifirla();
+  Depo.kur({ dizin: dizin });
+
+  assert.equal(Depo.urunGetir(1).yalniz_koli, true, 'diskten geri geldi');
+  assert.equal(Depo.urunGetir(1).kdv_orani, 20);
+  assert.equal(Depo.urunGetir(2).yalniz_koli, false);
+  assert.equal(Depo.urunGetir(2).kdv_orani, 0, 'sunucu vermezse 0');
 });

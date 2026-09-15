@@ -847,6 +847,35 @@
     }
 
     /**
+     * Kartın SORUMLU PLASİYERİ (yalnızca yönetici kartında).
+     *
+     * Sunucu `plasiyerAd` gönderir; göndermezse `assignedPlasiyerId`
+     * haritanın kendi plasiyer sözlüğünden çözülür (aynı istekle geldi, ikinci
+     * bir tur gerekmez). İkisi de yoksa BOŞ döner ve satır HİÇ basılmaz —
+     * "Sorumlu: undefined" yazmaktansa hiç yazmamak (Faz 11 ilkesi).
+     */
+    function kartSorumlusu(b) {
+      if (!ADMIN) return '';
+
+      var ad = String((b && b.plasiyerAd) || '').trim();
+
+      if (ad) return ad;
+
+      var pid = Number(b && b.assignedPlasiyerId) || 0;
+
+      return (pid && durumH.plasiyerRenk[pid]) ? durumH.plasiyerRenk[pid].ad : '';
+    }
+
+    /**
+     * Kayıt sahada mı açıldı? Damga `_b2b_musteri_kaynagi` =
+     * 'byom_plasiyer_masaustu'. Tanımadığımız bir değerde rozet BASILMAZ:
+     * yanlış rozet, rozetsizlikten daha kötüdür.
+     */
+    function sahaKaydiMi(b) {
+      return ADMIN && /plasiyer|saha|masaustu/i.test(String((b && b.kaynak) || ''));
+    }
+
+    /**
      * ZENGİN BAYİ KARTI (Faz 11 + Faz 12): unvan, yetkili, telefon (arama /
      * WhatsApp köprüsü), tanımlı iskonto, açık bakiye risk rozeti, son sipariş
      * tarihi/tutarı, son ziyaret notu etiketi, ziyaret durumu; saha kabuğunda
@@ -876,7 +905,24 @@
         notEtiket = V().etiketAdi(b.sonZiyaretEtiket);
       }
 
-      return '<div class="bayi-kart p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border-2 border-slate-100 dark:border-slate-700" data-bayi="' + kacis(String(b.id || '')) + '">' +
+      var sorumluAd = kartSorumlusu(b);
+      var sahada = sahaKaydiMi(b);
+
+      /*
+       * YÖNETİCİ KARTI TIKLANABİLİR (Faz 13): kart, "B2B Üye Onayları"ndaki
+       * zengin bayi profilini açar. Görsel karşılığı olmadan tıklanabilir yapmak
+       * keşfedilemez bir özellik olurdu; imleç + odak halkası + role/tabindex +
+       * altta "Profili aç" ipucu birlikte verilir.
+       *
+       * SAHA kabuğunda BİLEREK verilmez: orada modal belgede yoktur
+       * (#bayiModalKatman data-kabuk="admin") ve kart zaten kendi düğmelerini
+       * taşır — role="button" bir kabın içine gerçek düğme koymak erişilebilirlik
+       * açısından da yanlış olurdu.
+       */
+      return '<div class="bayi-kart' +
+        (ADMIN ? ' bayi-kart-acilir cursor-pointer hover:border-marka-500 focus:outline-none focus:ring-2 focus:ring-marka-500' : '') +
+        ' p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border-2 border-slate-100 dark:border-slate-700" data-bayi="' + kacis(String(b.id || '')) + '"' +
+        (ADMIN ? ' role="button" tabindex="0" title="Bayi profilini aç — sipariş geçmişi, fiş, iskonto, açık bakiye"' : '') + '>' +
         '<div class="flex items-start gap-2">' +
           '<div class="font-extrabold truncate min-w-0 flex-1">' + kacis(b.unvan || ('#' + b.id)) + '</div>' +
           (!isNaN(iskonto)
@@ -898,6 +944,18 @@
                 : '') +
             '</div>'
           : '') +
+        /* Saha künyesi: "bu bayi kimin" + "nereden geldi". Alan yoksa satır yok. */
+        ((sorumluAd || sahada)
+          ? '<div class="mt-1 flex items-center gap-1.5 flex-wrap text-xs font-bold">' +
+              (sorumluAd
+                ? '<span class="bk-sorumlu text-slate-500 dark:text-slate-400">Sorumlu: ' + kacis(sorumluAd) + '</span>'
+                : '') +
+              (sahada
+                ? '<span class="bk-saha px-2 py-0.5 rounded-md bg-marka-100 text-marka-800 dark:bg-marka-900/40 dark:text-marka-200" ' +
+                  'title="Bu kayıt sahada, pazarlamacı panelinden açıldı">💼 Sahada açıldı</span>'
+                : '') +
+            '</div>'
+          : '') +
         '<div class="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">' +
           (sonTarihYazi
             ? 'Son sipariş: ' + kacis(sonTarihYazi) + ' · ' + kacis(paraYaz(sonTutar))
@@ -914,7 +972,8 @@
             '</div>'
           : '') +
         (ADMIN
-          ? ''
+          ? '<div class="bk-ipucu mt-2 text-xs font-bold text-marka-700 dark:text-marka-300">' +
+              '📄 Profili aç — sipariş geçmişi, fiş, iskonto, açık bakiye</div>'
           : '<div class="mt-2 flex gap-2 flex-wrap">' +
               '<button type="button" class="bk-siparis px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600" data-bayi="' + kacis(String(b.id || '')) + '">🛍️ Bu Bayiye Sipariş Aç</button>' +
               '<button type="button" class="bk-not px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-bayi="' + kacis(String(b.id || '')) + '">📝 Ziyaret Notu Bırak</button>' +
@@ -1254,7 +1313,56 @@
           var adres = gorsel.dataset.adres;
 
           if (adres) ipcRenderer.invoke('byom:dis-baglanti', adres);
+          return;
         }
+
+        /*
+         * BAYİ PROFİLİ (Faz 13) — YALNIZCA YÖNETİCİ.
+         *
+         * İstenen zengin kart (künye, toplam sipariş/ciro, geçmiş sipariş
+         * tablosu, satır başına [🖨 FİŞ], bekleyen sepet) ZATEN VAR:
+         * renderer.js → bayiDetayiAc(). İkinci bir kopya yazmak aynı bilgi için
+         * iki doğruluk kaynağı demek olurdu (bu depoda iki kez canımızı yakmış
+         * hata sınıfı). Betikler klasik <script src> ile yüklendiği için
+         * fonksiyon window üzerindedir ve buradan doğrudan çağrılabilir.
+         *
+         * ADMIN KAPISI ZORUNLU: #bayiModalKatman data-kabuk="admin" taşır, saha
+         * kabuğunda belgeden SÖKÜLÜR — orada çağırmak boş ekran demek olurdu.
+         * .bk-ara / .bk-wa / .bk-siparis / .bk-not YUKARIDA döner: kart içindeki
+         * düğmeler kartın kendi tıklamasını tetiklemez.
+         */
+        if (!ADMIN) return;
+
+        var kartD = olay.target.closest('.bayi-kart');
+
+        if (!kartD || !kartD.dataset.bayi) return;
+
+        /* İleride karta düğme eklenirse kart tıklamasını çalmasın. */
+        if (olay.target.closest('button')) return;
+
+        if ('function' === typeof window.bayiDetayiAc) window.bayiDetayiAc(kartD.dataset.bayi);
+        else bildir('Bayi profili bu ekranda açılamadı.', 'uyari');
+      };
+
+      /*
+       * KLAVYE: kart role="button" + tabindex taşıdığı için Enter/Space ile de
+       * açılmalı — aksi hâlde fare kullanamayan yönetici için özellik yok
+       * demektir. Tuş YALNIZCA kartın kendisindeyken çalışır; içerideki gerçek
+       * düğmelerin (Ara / WhatsApp) kendi Enter'ını çalmaz.
+       */
+      k.onkeydown = function (olay) {
+        if (!ADMIN) return;
+        if ('Enter' !== olay.key && ' ' !== olay.key) return;
+
+        var hedef = olay.target;
+
+        if (!hedef || !hedef.classList || !hedef.classList.contains('bayi-kart')) return;
+        if (!hedef.dataset || !hedef.dataset.bayi) return;
+
+        olay.preventDefault();
+
+        if ('function' === typeof window.bayiDetayiAc) window.bayiDetayiAc(hedef.dataset.bayi);
+        else bildir('Bayi profili bu ekranda açılamadı.', 'uyari');
       };
     }
 

@@ -107,6 +107,16 @@
       odemeIskonto: Number(s.odeme_iskonto || (s.pricing && s.pricing.odeme_iskonto) || 0) || 0,
       odeme: String(s.payment_method_title || s.payment_title || s.odeme_tipi || ''),
       /*
+       * KDV KÜNYESİ (2.18.3) — BELGEDE dökülür, panelde HESAPLANMAZ.
+       * Oran ürün başına sunucudan gelir (`_byom_kdv_rate` → `vat_rate`);
+       * panel kendi oran listesini tutmaz. "KDV istemiyorum" seçilen siparişte
+       * sunucu satırları netleştirir (`_b2b_vat_excluded` / `_b2b_vat_removed`)
+       * ve fiş bunu AÇIKÇA yazar — panel ikinci kez KDV düşmez.
+       */
+      kdvIstenmedi: !!(true === s.vat_excluded || 'yes' === s.vat_excluded),
+      kdvDusulen: Number(s.vat_removed || 0) || 0,
+      kdvToplam: Number(s.vat_total || s.total_tax || 0) || 0,
+      /*
        * ÜCRET SATIRLARI (eklenti 2.18.1): plasiyer iskontosu ve ödeme
        * yöntemi iskontosu satır fiyatına değil NEGATİF ÜCRET SATIRINA
        * yazılır (Registry §0 madde 1). Fiş motoru tutarı buradan okur;
@@ -133,7 +143,11 @@
           koliIci: Number(k.koli_ici_adet || k.box_quantity || 0) || 0,
           koli: Number(k.koli || k.boxes || 0) || 0,
           birim: birim,
-          tutar: tutar
+          tutar: tutar,
+          /* Satır KDV'si SUNUCUDAN gelir (prepare_order / kalem_dokumu iki
+             dilde birden verir); panel oran × tutar çarpmaz. */
+          kdvOrani: Number(k.vat_rate || k.kdvOrani || k.kdv_orani || 0) || 0,
+          kdvTutar: Number(k.vat_amount || k.kdvTutar || k.kdv_tutari || 0) || 0
         };
       }),
       notlar: String(s.customer_note || '')
@@ -355,11 +369,24 @@
                   /* "24 adet" bitişik kalır (test kilidi); koli parantez içinde. */
                   '<td class="py-2 pr-3 text-right font-bold whitespace-nowrap">' + k.adet + ' adet' +
                     (k.koli > 0 && k.koliIci > 1 ? ' <span class="text-xs text-slate-500">(' + k.koli + ' koli × ' + k.koliIci + ')</span>' : '') + '</td>' +
+                  /* KDV sütunu YALNIZCA künye geldiğinde: "%0" yazmak
+                     "KDV'siz aldım" diye YANLIŞ okunur (bkz. siparis-fisi.js). */
+                  '<td class="py-2 pr-3 text-right text-slate-500 whitespace-nowrap">' +
+                    (k.kdvOrani > 0 || k.kdvTutar > 0
+                      ? 'KDV %' + kacis(String(Math.round(k.kdvOrani * 100) / 100).replace('.', ',')) +
+                        (k.kdvTutar > 0 ? ' <span class="text-xs">· ' + kacis(paraYaz(k.kdvTutar)) + '</span>' : '')
+                      : '') + '</td>' +
                   '<td class="py-2 pr-3 text-right text-slate-500 whitespace-nowrap">' + kacis(paraYaz(k.birim)) + '</td>' +
                   '<td class="py-2 text-right font-black whitespace-nowrap">' + kacis(paraYaz(k.tutar)) + '</td>' +
                 '</tr>';
               }).join('') +
-              '</tbody></table>'
+              '</tbody></table>' +
+              /* KDV'siz sipariş kartta da AÇIKÇA söylenir; plasiyer müşteriye
+                 "KDV'siz yazmıştım" diyebilmeli, fişi açmaya gerek kalmasın. */
+              (s.kdvIstenmedi
+                ? '<div class="mt-2 text-sm font-bold text-amber-700 dark:text-amber-400">🚫 KDV uygulanmadı' +
+                  (s.kdvDusulen > 0 ? ' — düşülen KDV: ' + kacis(paraYaz(s.kdvDusulen)) : '') + '</div>'
+                : '')
             : '<div class="text-sm text-slate-500">Kalem dökümü yok.</div>') +
           (s.notlar ? '<div class="mt-3 text-sm rounded-xl border-2 border-dashed border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-3"><b>Not:</b> ' + kacis(s.notlar) + '</div>' : '') +
           /* ÇIKTI KANALLARI (Faz 12) — detay açılınca: kurumsal fiş, WhatsApp özeti,

@@ -29,10 +29,14 @@ const FIS_ANAHTARLARI = [
   'numara', 'tarih', 'tarihYazi', 'durumEtiketi', 'firma', 'plasiyer', 'musteri',
   'kalemler', 'cesit', 'toplamAdet', 'toplamKoli', 'araToplam',
   'bayiIskontoOrani', 'bayiIskontoTutar', 'odemeIskontoOrani', 'odemeIskontoTutar',
+  /* Faz 12-KDV: KDV BELGEDE dökülür. Üç kaynağın (yönetici / saha / ham) da
+     aynı anahtarları döndürmesi kilitli — biri eksik kalırsa o ekranda fişte
+     KDV satırı sessizce kaybolurdu. */
+  'kdvToplam', 'kdvIstenmedi', 'kdvDusulen',
   'net', 'odeme', 'not'
 ].sort();
 
-const KALEM_ANAHTARLARI = ['ad', 'sku', 'adet', 'koli', 'koliIci', 'birim', 'tutar'].sort();
+const KALEM_ANAHTARLARI = ['ad', 'sku', 'adet', 'koli', 'koliIci', 'birim', 'tutar', 'kdvOrani', 'kdvTutar'].sort();
 
 const TARIH = '2026-09-14T10:30:00+03:00';
 
@@ -148,8 +152,8 @@ test('normalle (b) saha: müşteri ünvandır, iskonto → bayi oranı, ödeme a
   assert.equal(f.bayiIskontoOrani, 10);
   assert.equal(f.odeme, 'Vade');
   assert.deepEqual(f.plasiyer, { id: 3, ad: 'Ayşe' }, 'sipariş kimlik taşımıyorsa bağlamdaki plasiyer yazılır');
-  assert.deepEqual(f.kalemler[0], { ad: 'Silikon 280 ml', sku: '', adet: 48, koli: 2, koliIci: 24, birim: 42.75, tutar: 2052 });
-  assert.deepEqual(f.kalemler[1], { ad: 'Çivi', sku: '', adet: 40, koli: 0, koliIci: 0, birim: 2.5, tutar: 100 });
+  assert.deepEqual(f.kalemler[0], { ad: 'Silikon 280 ml', sku: '', adet: 48, koli: 2, koliIci: 24, birim: 42.75, tutar: 2052, kdvOrani: 0, kdvTutar: 0 });
+  assert.deepEqual(f.kalemler[1], { ad: 'Çivi', sku: '', adet: 40, koli: 0, koliIci: 0, birim: 2.5, tutar: 100, kdvOrani: 0, kdvTutar: 0 });
   /* tutar 0 verildi → net hesaplanır: 2152 − 215,20 = 1936,80 (ödeme iskontosu yok) */
   assert.equal(f.araToplam, 2152);
   assert.equal(f.bayiIskontoTutar, 215.2);
@@ -166,8 +170,8 @@ test('normalle (c) ham: number/date_created/dealer/billing/items/fee_lines eşle
   assert.equal(f.durumEtiketi, 'İşleniyor');
   assert.deepEqual(f.musteri, { unvan: 'Acme Hırdavat', yetkili: 'Ali Veli', telefon: '+90 532 415 22 78', il: 'İzmir', vergiNo: '1234567890' });
   assert.deepEqual(f.plasiyer, { id: 7, ad: 'Ahmet' });
-  assert.deepEqual(f.kalemler[0], { ad: 'Silikon 280 ml', sku: 'SLK-280', adet: 48, koli: 2, koliIci: 24, birim: 42.75, tutar: 2052 });
-  assert.deepEqual(f.kalemler[1], { ad: 'Çivi', sku: 'CV-1', adet: 40, koli: 0, koliIci: 1, birim: 2.5, tutar: 100 });
+  assert.deepEqual(f.kalemler[0], { ad: 'Silikon 280 ml', sku: 'SLK-280', adet: 48, koli: 2, koliIci: 24, birim: 42.75, tutar: 2052, kdvOrani: 0, kdvTutar: 0 });
+  assert.deepEqual(f.kalemler[1], { ad: 'Çivi', sku: 'CV-1', adet: 40, koli: 0, koliIci: 1, birim: 2.5, tutar: 100, kdvOrani: 0, kdvTutar: 0 });
   assert.equal(f.araToplam, 2152);
   assert.equal(f.bayiIskontoOrani, 10);
   assert.equal(f.bayiIskontoTutar, 215.2, 'ücret satırından');
@@ -333,8 +337,10 @@ test('html toplam bloğu, künye, kalem tablosu ve alt yazı basılır', () => {
   assert.ok(h.includes('<dt>Ödeme</dt><dd>Nakit</dd>'));
   assert.ok(h.includes('2 çeşit · 88 adet · 2 koli'));
 
-  /* kalem tablosu: Ürün · SKU · Koli×Adet · Birim · Tutar */
-  assert.ok(h.includes('<th>Ürün</th><th>SKU</th><th class="sayi">Koli × Adet</th><th class="sayi">Birim</th><th class="sayi">Tutar</th>'));
+  /* kalem tablosu: Ürün · Kod/Barkod · Koli×Adet · Birim · Tutar
+     (bu siparişte KDV künyesi YOK → KDV sütunları basılmaz) */
+  assert.ok(h.includes('<th>Ürün</th><th>Kod / Barkod</th><th class="sayi">Koli × Adet</th><th class="sayi">Birim</th><th class="sayi">Tutar</th>'));
+  assert.ok(!h.includes('<th>SKU</th>'), 'başlık müşterinin okuduğu dile çevrildi');
   assert.ok(h.includes('<td class="s-adet sayi">2 koli × 24 = 48</td><td class="s-birim sayi">42,75 TL</td><td class="s-tutar sayi">2.052,00 TL</td>'));
   assert.ok(h.includes('<td class="s-ad">Çivi</td><td class="s-sku">—</td><td class="s-adet sayi">40</td>'));
 
@@ -709,4 +715,319 @@ test('ücret satırları: `ucretler` (panel adı) `fee_lines` ile aynı okunur; 
   const kargo = F.normalle(govde([{ ad: 'Kargo Bedeli', tutar: 50 }]), {});
   assert.deepEqual([kargo.bayiIskontoTutar, kargo.odemeIskontoTutar, kargo.net], [0, 0, 1000]);
   assert.ok(!F.html(kargo).includes('Bayi iskontosu'), 'kargo iskonto satırı üretmez');
+});
+
+/* ------------------------------------------------------------------ *
+ *  8. KDV — BELGEDE DÖKÜLÜR, PANELDE HESAPLANMAZ
+ *
+ *  Ürün sahibi: "Müşteri fişi aldığında neyden ne kadar vermiş, kaç KDV'li
+ *  vermiş öğrensin." Oran ürün başına sunucudan gelir (`_byom_kdv_rate` →
+ *  `vat_rate`); panel KENDİ oran listesini TUTMAZ. "KDV istemiyorum" seçilen
+ *  siparişte sunucu satırları netleştirir; fiş bunu AÇIKÇA yazar ve NET'ten
+ *  KDV'yi İKİNCİ KEZ DÜŞMEZ.
+ * ------------------------------------------------------------------ */
+
+/** (a) yönetici normalizasyonu — Türkçe anahtarlar + KDV künyesi. */
+function kdvYoneticiKaynak() {
+  const k = yoneticiKaynak();
+
+  k.bayiIskontoOrani = 0;
+  k.odemeIskonto = 0;
+  k.tutar = 2152;
+  k.kdvToplam = 358.67;
+  k.kalemler = [
+    { ad: 'Silikon 280 ml', kod: 'SLK-280', adet: 48, koliIci: 24, tutar: 2052, kdvOrani: 20, kdvTutar: 342 },
+    { ad: 'Çivi', kod: 'CV-1', adet: 40, tutar: 100, kdvOrani: 20, kdvTutar: 16.67 }
+  ];
+
+  return k;
+}
+
+/** (b) saha normalizasyonu — plasiyer-siparislerim.js → normalle çıktısı. */
+function kdvSahaKaynak() {
+  return {
+    id: 91, numara: '91', tarih: TARIH, durum: 'processing', durumEtiketi: 'İşleniyor', tutar: 2152,
+    musteri: 'Yıldız Nalburiye', odeme: 'nakit', iskonto: 0,
+    kdvIstenmedi: false, kdvDusulen: 0, kdvToplam: 358.67,
+    kalemler: [
+      { urunId: 5, ad: 'Silikon 280 ml', adet: 48, koliIci: 24, koli: 2, birim: 42.75, tutar: 2052, kdvOrani: 20, kdvTutar: 342 },
+      { urunId: 9, ad: 'Çivi', adet: 40, birim: 2.5, tutar: 100, kdvOrani: 20, kdvTutar: 16.67 }
+    ],
+    notlar: ''
+  };
+}
+
+/** (c) ham prepare_order yükü — İngilizce sözleşme adları. */
+function kdvHamKaynak() {
+  return {
+    id: 6448, number: '6448', date_created: TARIH, status: 'processing', status_label: 'İşleniyor',
+    total: 2152, subtotal: 2152, vat_total: 358.67, vat_excluded: false, vat_removed: 0,
+    dealer: { company_name: 'Acme Hırdavat', phone: '0532 415 22 78' },
+    items: [
+      { name: 'Silikon 280 ml', sku: 'SLK-280', quantity: 48, unit_price: 42.75, total: 2052, box_quantity: 24, boxes: 2, vat_rate: 20, vat_amount: 342 },
+      { name: 'Çivi', sku: 'CV-1', quantity: 40, unit_price: 2.5, total: 100, vat_rate: 20, vat_amount: 16.67 }
+    ],
+    payment_method_title: 'Nakit'
+  };
+}
+
+test('KDV: ÜÇ KAYNAK da aynı künyeyi verir (kalemde oran+tutar, kökte toplam) ve A4 fişte KDV SÜTUNLARI basılır', () => {
+  /* NEDEN ÜÇÜ BİRDEN: aynı fiş üç ekrandan üretiliyor. Biri KDV alanını
+     taşımazsa o ekranda fiş sessizce KDV'siz çıkar — "eksik fiş" şikâyeti tam
+     olarak bu sınıftan doğdu (kalem dökümünün `items` altında kalması, Faz 11
+     Görsel 6). Anahtar kümesi FIS_ANAHTARLARI ile zaten kilitli; burada
+     DEĞERİN de taşındığını ölçüyoruz. */
+  [kdvYoneticiKaynak(), kdvSahaKaynak(), kdvHamKaynak()].forEach((kaynak, i) => {
+    const f = F.normalle(kaynak, BAGLAM);
+    const ad = ['yönetici', 'saha', 'ham'][i];
+
+    assert.equal(f.kalemler[0].kdvOrani, 20, ad + ': satır oranı');
+    assert.equal(f.kalemler[0].kdvTutar, 342, ad + ': satır KDV tutarı');
+    assert.equal(f.kalemler[1].kdvOrani, 20, ad);
+    assert.equal(f.kalemler[1].kdvTutar, 16.67, ad);
+    assert.equal(f.kdvToplam, 358.67, ad + ': kök toplam sunucudan');
+    assert.equal(f.kdvIstenmedi, false, ad);
+    assert.equal(f.kdvDusulen, 0, ad);
+    assert.equal(bozukDeger(f), '', ad + ': bozuk deger');
+
+    const h = F.html(f);
+
+    assert.ok(h.includes('<th class="sayi">KDV</th>'), ad + ': KDV oranı sütunu');
+    assert.ok(h.includes('<th class="sayi">KDV Tutarı</th>'), ad + ': KDV tutarı sütunu');
+    assert.ok(h.includes('<td class="s-kdv sayi">%20</td>'), ad + ': satırda oran');
+    assert.ok(h.includes('<td class="s-kdvtutar sayi">342,00 TL</td>'), ad + ': satırda tutar');
+    assert.ok(h.includes('KDV (%20)</td><td class="deger sayi">358,67 TL'), ad + ': toplam KDV satırı');
+    assert.ok(h.indexOf('KDV (%20)') < h.indexOf('NET ÖDENECEK'), ad + ': KDV, NET satırından ÖNCE');
+
+    /* Aynı bilgi WhatsApp'ta TEK SATIR — kalem başına yazmak 1800 karakter
+       bütçesini yer ve sınıra dayanınca ilk düşen şey kalem olurdu. */
+    const wa = F.whatsappMetni(f).split('\n');
+
+    assert.ok(wa.includes('*KDV (%20):* 358,67 TL'), ad + ': WhatsApp KDV satırı');
+    assert.ok(wa.indexOf('*KDV (%20):* 358,67 TL') < wa.indexOf('*NET ÖDENECEK: 2.152,00 TL*'), ad);
+  });
+});
+
+test('KDV: sütun sırası ürün sahibinin istediği gibi — Ürün · Kod/Barkod · KDV · Koli×Adet · Birim · KDV Tutarı · Tutar', () => {
+  /* NEDEN: "Ürün adı / KOD-BARKOD / ÜRÜN KDVSİ / KOLİ × Adet / Birim Fiyat /
+     TOPLAM TUTAR" sırası doğrudan ürün sahibinin cümlesidir. Sütunları
+     alfabetik ya da "para en sağa" diye yeniden dizmek fişi yeniden tartışmaya
+     açar; sıra bir tercih değil, kabul edilmiş bir istektir. */
+  const h = F.html(F.normalle(kdvHamKaynak(), BAGLAM));
+
+  assert.ok(h.includes(
+    '<th>Ürün</th><th>Kod / Barkod</th><th class="sayi">KDV</th>' +
+    '<th class="sayi">Koli × Adet</th><th class="sayi">Birim</th>' +
+    '<th class="sayi">KDV Tutarı</th><th class="sayi">Tutar</th>'
+  ));
+
+  assert.ok(h.includes(
+    '<td class="s-ad">Silikon 280 ml</td><td class="s-sku">SLK-280</td>' +
+    '<td class="s-kdv sayi">%20</td><td class="s-adet sayi">2 koli × 24 = 48</td>' +
+    '<td class="s-birim sayi">42,75 TL</td><td class="s-kdvtutar sayi">342,00 TL</td>' +
+    '<td class="s-tutar sayi">2.052,00 TL</td>'
+  ), 'hücre sırası başlıkla birebir');
+});
+
+test('KDV İSTENMEDİ: açık uyarı bloğu basılır, toplam KDV satırı basılmaz ve NET İKİNCİ KEZ DÜŞMEZ', () => {
+  /* NEDEN: "KDV istemiyorum" seçildiğinde sunucu satır tutarlarını ZATEN
+     netleştirir (B2B_Order_Revision::apply_vat_mode → `_b2b_vat_excluded`).
+     Panelin bir kez daha KDV çıkarması müşteriye iki kez indirim yazmak, yani
+     doğrudan para hatasıdır. Fişin görevi hesaplamak değil, olanı AÇIKÇA
+     söylemek: müşteri "KDV siz aldım, şu kadar düştü" diye okuyabilmeli. */
+  const govde = (ek) => Object.assign({
+    id: 20, number: '20', date_created: TARIH,
+    dealer: { company_name: 'Acme Hırdavat', phone: '0532 415 22 78' },
+    vat_excluded: true, vat_removed: 358.67,
+    items: [
+      { name: 'Silikon 280 ml', sku: 'SLK-280', quantity: 48, unit_price: 35.625, total: 1710, box_quantity: 24, boxes: 2, vat_rate: 20, vat_amount: 342 },
+      { name: 'Çivi', sku: 'CV-1', quantity: 40, unit_price: 2.083, total: 83.33, vat_rate: 20, vat_amount: 16.67 }
+    ]
+  }, ek || {});
+
+  const f = F.normalle(govde({ total: 1793.33 }), BAGLAM);
+
+  assert.equal(f.kdvIstenmedi, true);
+  assert.equal(f.kdvDusulen, 358.67, 'sunucunun vat_removed damgası');
+  assert.equal(f.araToplam, 1793.33);
+  assert.equal(f.net, 1793.33, 'NET = sunucunun tutarı; KDV bir kez daha düşülmez');
+
+  /* Sunucu `total` göndermese bile panelin kendi hesabı KDV düşmez. */
+  const hesapli = F.normalle(govde({}), BAGLAM);
+
+  assert.equal(hesapli.net, hesapli.araToplam, 'panel hesabı da KDV çıkarmaz');
+  assert.equal(hesapli.net, 1793.33);
+
+  const h = F.html(f);
+
+  assert.ok(h.includes('<section class="kdv-notu">'), 'uyarı bloğu var');
+  assert.ok(h.includes('Bu siparişte KDV uygulanmamıştır (düşülen KDV: 358,67 TL)'), 'düşülen tutar yazıyla');
+  assert.ok(h.includes('<tr class="kdv-yok"><td class="etiket">KDV</td><td class="deger sayi">UYGULANMADI</td>'));
+  assert.ok(!h.includes('KDV (%20)</td>'), 'toplam KDV satırı KDV siz siparişte basılmaz');
+  assert.ok(h.includes('<tr class="net"><td class="etiket">NET ÖDENECEK</td><td class="deger sayi">1.793,33 TL'));
+  assert.ok(h.includes('<td class="s-kdv sayi">%20</td>'), 'hangi orandan düşüldüğü satırda görünür');
+
+  const wa = F.whatsappMetni(f).split('\n');
+
+  assert.ok(wa.includes('*KDV UYGULANMADI* (düşülen: 358,67 TL)'));
+  assert.ok(wa.includes('*NET ÖDENECEK: 1.793,33 TL*'));
+
+  /* `vat_removed` damgası yoksa satır KDV lerinin toplamı yazılır — panel
+     yeni bir sayı UYDURMAZ, iki değer de sunucunundur. */
+  const damgasiz = F.normalle(govde({ total: 1793.33, vat_removed: 0 }), BAGLAM);
+
+  assert.equal(damgasiz.kdvDusulen, 358.67);
+  assert.ok(F.html(damgasiz).includes('(düşülen KDV: 358,67 TL)'));
+
+  /* SAHA ŞABLONU (panelin normal nesnesi) aynı künyeyi TÜRKÇE adlarla taşır.
+     İki okuyucu ayrışırsa saha ekranından basılan fiş sessizce KDV'li görünür
+     ve müşteriye YANLIŞ belge gider — ham yükte geçen bir test bunu görmez. */
+  const saha = F.normalle({
+    id: 91, numara: '91', tarih: TARIH, tutar: 1793.33,
+    musteri: 'Yıldız Nalburiye', odeme: 'nakit',
+    kdvIstenmedi: true, kdvDusulen: 358.67, kdvToplam: 400,
+    kalemler: [
+      { ad: 'Silikon 280 ml', adet: 48, koliIci: 24, koli: 2, birim: 35.625, tutar: 1710, kdvOrani: 20, kdvTutar: 342 },
+      { ad: 'Çivi', adet: 40, birim: 2.083, tutar: 83.33, kdvOrani: 20, kdvTutar: 16.67 }
+    ]
+  }, {});
+
+  assert.equal(saha.kdvIstenmedi, true, 'panel nesnesi de KDV künyesini taşır');
+  assert.equal(saha.kdvDusulen, 358.67, 'düşülen KDV panel adıyla okunur');
+  assert.equal(saha.kdvToplam, 400, 'kök alan satır toplamını ezer (panel tarafında da)');
+  assert.ok(F.html(saha).includes('Bu siparişte KDV uygulanmamıştır (düşülen KDV: 358,67 TL)'));
+  assert.ok(F.html(saha).includes('<td class="deger sayi">UYGULANMADI</td>'));
+});
+
+test('KDV termal: 80 mm tek sütundur — KDV kalemin ALTINDA ikinci satır, yan yana sütun YOK', () => {
+  /* NEDEN: 74 mm lik kâğıda yedi sütun sığmaz; sığdırmaya çalışmak ürün adını
+     üç harfe düşürür. Aynı veri, iki yerleşim: A4 tablo, termal liste. Tek
+     çizici iki bayrakla çalışır — ikinci bir kod yolu iki farklı fiş demekti. */
+  const f = F.normalle(kdvHamKaynak(), BAGLAM);
+  const termal = F.html(f, { kagit: 'termal' });
+  const a4 = F.html(f, { kagit: 'a4' });
+
+  assert.ok(termal.includes('<tr class="s-kdv-satir"><td class="s-kdv-bilgi" colspan="5">KDV %20 · 342,00 TL</td></tr>'));
+  assert.ok(termal.includes('KDV %20 · 16,67 TL'));
+  assert.ok(!termal.includes('<th class="sayi">KDV Tutarı</th>'), 'termalde KDV SÜTUNU yok');
+  assert.ok(!termal.includes('<td class="s-kdv sayi">'), 'termalde oran sütunu yok');
+  assert.ok(termal.includes('KDV (%20)</td><td class="deger sayi">358,67 TL'), 'toplam KDV termalde de var');
+
+  assert.ok(a4.includes('<th class="sayi">KDV Tutarı</th>'), 'A4 sütunlu');
+  assert.ok(!a4.includes('s-kdv-satir'), 'A4 te ikinci satır yok');
+
+  /* Kalem tek blok okunsun diye üstteki satırın alt çizgisi kalkar. */
+  assert.ok(termal.includes('<tr class="s-kdvli">'));
+  assert.ok(termal.includes('.kalemler tr.s-kdvli td { border-bottom:0; }'));
+});
+
+test('KDV karışık oran: toplam satırların toplamıdır, etiket "karışık oran" der', () => {
+  /* NEDEN: sepette %20 hırdavat ile %1 gıda birlikte olabilir. Tek bir oran
+     yazmak müşteriye YANLIŞ bilgi verir ("%20 KDV ödedim" sanır); satırı hiç
+     basmamak ise sorulan soruyu cevapsız bırakır. Tutar her hâlde doğrudur. */
+  const f = F.normalle({
+    id: 30, number: '30', date_created: TARIH, total: 1900,
+    dealer: { company_name: 'Karma Bayi' },
+    items: [
+      { name: 'Silikon', sku: 'S1', quantity: 1, unit_price: 1800, total: 1800, vat_rate: 20, vat_amount: 300 },
+      { name: 'Un', sku: 'U1', quantity: 1, unit_price: 100, total: 100, vat_rate: 1, vat_amount: 0.99 }
+    ]
+  }, {});
+
+  assert.equal(f.kdvToplam, 300.99, 'kök alan yok → satırların toplamı');
+  assert.equal(f.kalemler[0].kdvOrani, 20);
+  assert.equal(f.kalemler[1].kdvOrani, 1);
+
+  const h = F.html(f);
+
+  assert.ok(h.includes('KDV (karışık oran)</td><td class="deger sayi">300,99 TL'));
+  assert.ok(!h.includes('KDV (%20)</td>'), 'tek orana indirgenmez');
+  assert.ok(h.includes('<td class="s-kdv sayi">%20</td>'));
+  assert.ok(h.includes('<td class="s-kdv sayi">%1</td>'), 'her satır KENDİ oranını gösterir');
+  assert.ok(F.whatsappMetni(f).includes('*KDV (karışık oran):* 300,99 TL'));
+
+  /* Tek orana dönünce etiket de döner. */
+  const tek = F.normalle({
+    id: 31, number: '31', date_created: TARIH, total: 1900,
+    items: [{ name: 'Silikon', quantity: 1, total: 1800, vat_rate: 20, vat_amount: 300 }]
+  }, {});
+
+  assert.ok(F.html(tek).includes('KDV (%20)</td>'));
+});
+
+test('KDV künyesi HİÇ yokken: fiş çökmez, KDV sütunu ve KDV satırı BASILMAZ', () => {
+  /* NEDEN: eski eklenti sürümü `vat_rate` göndermez ve bütün müşteriler aynı
+     anda güncellemez. Boş bir "KDV %0 · 0,00 TL" sütunu belgeyi
+     kalabalıklaştırır ve "KDV siz mi aldım?" diye YANLIŞ okunur. Bilmiyorsak
+     susarız. */
+  const f = F.normalle(yoneticiKaynak(), BAGLAM);
+
+  assert.equal(f.kdvToplam, 0);
+  assert.equal(f.kdvIstenmedi, false);
+  assert.equal(f.kdvDusulen, 0);
+  f.kalemler.forEach((k) => {
+    assert.equal(k.kdvOrani, 0, 'sayı olmalı — undefined/NaN değil');
+    assert.equal(k.kdvTutar, 0);
+  });
+
+  ['a4', 'termal'].forEach((kagit) => {
+    const h = F.html(f, { kagit });
+    /* Stil bloğu KDV sınıflarını her zaman taşır (tek stil sayfası);
+       ölçülen şey BELGE GÖVDESİ — ekranda görünen kısım. */
+    const govde = h.slice(h.indexOf('<body'));
+
+    assert.ok(!govde.includes('<th class="sayi">KDV</th>'), kagit + ': KDV sütunu yok');
+    assert.ok(!govde.includes('s-kdv'), kagit + ': KDV hücresi/alt satırı yok');
+    assert.ok(!govde.includes('kdv-notu'), kagit + ': uyarı bloğu yok');
+    assert.ok(!/KDV/.test(govde.slice(govde.indexOf('<table class="toplamlar"'))), kagit + ': toplamlarda KDV satırı yok');
+    assert.ok(!/KDV/.test(govde), kagit + ': belgede KDV sözcüğü hiç geçmez');
+    assert.ok(govde.includes('NET ÖDENECEK'), kagit + ': belge yine tam');
+  });
+
+  assert.ok(!/KDV/.test(F.whatsappMetni(f)), 'WhatsApp metninde de KDV geçmez');
+
+  /* Bozuk / eksik kaynaklarda da çökmez. */
+  [F.normalle({}, {}), F.normalle(null), F.normalle({ kalemler: [null, 7, { ad: 'A', adet: 1, tutar: 5 }] }, {})]
+    .forEach((x) => {
+      assert.equal(bozukDeger(x), '', 'bozuk deger: ' + bozukDeger(x));
+      assert.ok(F.html(x).includes('NET ÖDENECEK'));
+    });
+});
+
+test('KDV türetmesi: tutar HİÇ gelmediyse orandan — KDV dahil fiyattan AYRIŞTIRILIR, KDV hariç siparişte ÜSTÜNE eklenir', () => {
+  /* NEDEN: fiyatlar KDV DAHİL girilir (sistemin sözleşmesi). 120 TL lik %20
+     KDV li bir ürünün KDV si 24 değil 20 TL dir — "tutar × oran" yazmak her
+     satırda sessiz bir para hatası olurdu. Sipariş KDV hariç kipine
+     çevrildiyse satır tutarı ZATEN nettir ve KDV üstüne eklenir. Bu dal
+     YALNIZCA sunucu tutarı hiç göndermediğinde çalışır. */
+  const dahil = F.normalle({
+    id: 40, number: '40', date_created: TARIH,
+    items: [{ name: 'A', quantity: 1, total: 120, vat_rate: 20 }]
+  }, {});
+
+  assert.equal(dahil.kalemler[0].kdvTutar, 20, '120 × 20/120 = 20 (içinden ayrıştırma)');
+  assert.equal(dahil.kdvToplam, 20);
+
+  const haric = F.normalle({
+    id: 41, number: '41', date_created: TARIH, vat_excluded: true,
+    items: [{ name: 'A', quantity: 1, total: 100, vat_rate: 20 }]
+  }, {});
+
+  assert.equal(haric.kalemler[0].kdvTutar, 20, '100 × 20/100 = 20 (üstüne ekleme)');
+
+  /* SUNUCU TUTARI HER ZAMAN KAZANIR — türetme onu ezmez (tek kaynak kuralı). */
+  const sunucu = F.normalle({
+    id: 42, number: '42', date_created: TARIH,
+    items: [{ name: 'A', quantity: 1, total: 120, vat_rate: 20, vat_amount: 5 }]
+  }, {});
+
+  assert.equal(sunucu.kalemler[0].kdvTutar, 5, 'sunucunun tutarı yeniden hesaplanmaz');
+
+  /* Kök `vat_total` de satır toplamını ezer. */
+  const kok = F.normalle({
+    id: 43, number: '43', date_created: TARIH, vat_total: 99,
+    items: [{ name: 'A', quantity: 1, total: 120, vat_rate: 20, vat_amount: 20 }]
+  }, {});
+
+  assert.equal(kok.kdvToplam, 99, 'kök alan satır toplamından önce gelir');
 });

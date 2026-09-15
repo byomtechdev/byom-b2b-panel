@@ -1483,17 +1483,28 @@ ipcMain.handle('katalog:guncelle', async function (olay, veri) {
   }
 });
 
-/** Yerel katalogda arar — AĞA ÇIKMAZ. */
+/**
+ * Yerel katalogda arar — AĞA ÇIKMAZ.
+ *
+ * `toplam` KIRPMADAN ÖNCEKİ sayıdır: arayüz "1111 kalem · ilk 500
+ * gösteriliyor" diyebilsin ve `ofset` ile sonraki sayfayı isteyebilsin.
+ * `urunler` alanı aynen korundu — eski çağıranlar kırılmaz.
+ */
 ipcMain.handle('katalog:ara', function (olay, veri) {
   veri = veri || {};
 
+  const sonuc = katalogDepo.araSayfali(String(veri.sorgu || ''), {
+    kategori: veri.kategori ? String(veri.kategori) : '',
+    adet: Number(veri.adet) || 0,
+    ofset: Number(veri.ofset) || 0,
+    yalnizSpot: !!veri.yalnizSpot
+  });
+
   return {
     ok: true,
-    urunler: katalogDepo.ara(String(veri.sorgu || ''), {
-      kategori: veri.kategori ? String(veri.kategori) : '',
-      adet: Number(veri.adet) || 0,
-      yalnizSpot: !!veri.yalnizSpot
-    })
+    urunler: sonuc.urunler,
+    toplam: sonuc.toplam,
+    ofset: sonuc.ofset
   };
 });
 
@@ -1785,6 +1796,85 @@ ipcMain.handle('musteri:kuyruktan-sil', function (olay, veri) {
   ayarlariYaz({ plasiyerYerelMusteriler: kalan });
 
   return { ok: true, bekleyen: kalan.length };
+});
+
+/**
+ * Çevrimdışı müşterinin bilgilerini GÜNCELLER (Faz 13).
+ *
+ * Neden ana süreçte: `plasiyerYerelMusteriler` listesini eşitleme motoru da
+ * aynı anda temizliyor. Arayüz oku-değiştir-yaz yaparsa gönderilmiş bir kaydı
+ * diriltebilir (Faz 9'da `musteri:kuyruga` aynı gerekçeyle buraya taşındı).
+ *
+ * YALNIZCA geçici ve HENÜZ EŞİTLENMEMİŞ kayıt düzenlenebilir: eşitlenmiş kayıt
+ * artık sunucudaki bayidir ve `musteri:guncelle` ucundan güncellenir. Kimlik,
+ * geçicilik ve eşitleme alanları gövdeden ASLA okunmaz — yoksa arayüzden gelen
+ * bir gövde kaydın kimliğini değiştirip köprüyü koparabilirdi.
+ */
+ipcMain.handle('musteri:kuyrukta-guncelle', function (olay, veri) {
+  veri = veri || {};
+
+  const id = String(veri.id || '');
+
+  if (!id) return { ok: false, hata: 'Müşteri kimliği yok.' };
+
+  if (0 !== id.indexOf(syncMotor.GECICI_ONEK)) {
+    return { ok: false, hata: 'Yalnızca çevrimdışı (henüz eşitlenmemiş) müşteri cihazda düzenlenebilir.' };
+  }
+
+  const a = ayarlariOku();
+  const liste = Array.isArray(a.plasiyerYerelMusteriler) ? a.plasiyerYerelMusteriler : [];
+  const m = liste.find(function (x) { return x && String(x.id) === id; });
+
+  if (!m) return { ok: false, durum: 404, hata: 'Kayıt bulunamadı.' };
+
+  if (m.senkron) {
+    return { ok: false, hata: 'Bu müşteri sunucuya eşitlendi; bilgileri sunucu üzerinden güncellenir.' };
+  }
+
+  /* BEYAZ LİSTE: yalnızca bunlar yazılabilir. */
+  const ALANLAR = ['unvan', 'ad', 'kimlikNo', 'kimlikTuru', 'telefon', 'eposta', 'il', 'ilce', 'adres', 'not', 'iskonto'];
+
+  const guncel = Object.assign({}, m);
+
+  ALANLAR.forEach(function (alan) {
+    if (undefined === veri[alan] || null === veri[alan]) return;
+
+    guncel[alan] = ('iskonto' === alan) ? (Number(veri[alan]) || 0) : String(veri[alan]);
+  });
+
+  /* Kimlik ve eşitleme künyesi KORUNUR. */
+  guncel.id = m.id;
+  guncel.gecici = true;
+  guncel.senkron = !!m.senkron;
+  guncel.gercekId = m.gercekId;
+
+  const yeniListe = liste.map(function (x) { return (x && String(x.id) === id) ? guncel : x; });
+
+  ayarlariYaz({ plasiyerYerelMusteriler: yeniListe });
+
+  return { ok: true, musteri: guncel };
+});
+
+/**
+ * Sunucudaki bayinin bilgilerini günceller (Faz 13).
+ *
+ * Jeton ve plasiyer kimliği ana süreç belleğinden alınır — arayüzden gelen
+ * kimliğe güvenilmez (Faz 1 kuralı). Sunucu ayrıca bayinin gerçekten bu
+ * plasiyerin portföyünde olduğunu doğrular.
+ */
+ipcMain.handle('musteri:guncelle', async function (olay, veri) {
+  veri = veri || {};
+
+  if (!plasiyerOturumuGecerliMi()) {
+    return { ok: false, durum: 401, hata: 'Oturum kapalı. PIN ile giriş yapın.' };
+  }
+
+  const govde = Object.assign({}, veri, {
+    plasiyerId: plasiyerOturumu.id,
+    token: plasiyerOturumu.token
+  });
+
+  return plasiyerIstek('/plasiyer/musteri-guncelle', govde);
 });
 
 /** Ziyaret notunu yerel kuyruğa yazar (çevrimdışı yol). */

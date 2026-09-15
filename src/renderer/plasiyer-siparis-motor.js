@@ -58,6 +58,23 @@
     return Math.floor(n);
   }
 
+  /**
+   * Ürünün KDV oranı (%). SUNUCUDAN gelir; panel kendi listesini tutmaz.
+   * Katalog kaydı `kdv_orani`, ham REST yükü `byom.kdvOrani` adını kullanır.
+   * Çözülemeyen değer 0 = "bilinmiyor" (yanlış bir oran uydurmaktan iyidir).
+   */
+  function kdvOrani(urun) {
+    if (!urun || 'object' !== typeof urun) return 0;
+
+    var byom = urun.byom || {};
+    var n = Number(undefined !== urun.kdv_orani ? urun.kdv_orani
+      : (undefined !== urun.kdvOrani ? urun.kdvOrani : byom.kdvOrani));
+
+    if (!isFinite(n) || n < 0) return 0;
+
+    return n > 100 ? 100 : Math.round(n * 100) / 100;
+  }
+
   /** Ürün koli katlarında mı satılır? */
   function koliliMi(urun) {
     return koliIci(urun) > 1;
@@ -125,7 +142,22 @@
       vadeNotu: '',
       siparisNotu: '',
       iskonto: 0,        // bayi iskontosu (%), tavana tabidir
-      odemeIskonto: 0    // ödeme yöntemi iskontosu (%) — bkz. odemeSec
+      odemeIskonto: 0,   // ödeme yöntemi iskontosu (%) — bkz. odemeSec
+      /*
+       * KDV İSTENİYOR MU? (2.18.3 — "KDV İSTİYORUM / KDV İSTEMİYORUM")
+       *
+       * VARSAYILAN TRUE: fiyatlar KDV DAHİL girilir (sistemin sözleşmesi),
+       * yani normal sipariş KDV'lidir. Varsayılanı false yapmak, seçim
+       * ekranına hiç girmeyen her siparişi sessizce KDV'siz yazardı — bu bir
+       * arayüz tercihi değil, doğrudan fatura hatasıdır.
+       *
+       * BU BAYRAK FİYAT HESABINA GİRMEZ. `toplamlar()` dokunulmadı: KDV'nin
+       * satırlardan düşülmesi SUNUCUNUN işidir
+       * (B2B_Order_Revision::apply_vat_mode → `_b2b_vat_excluded`), çünkü oran
+       * ürün başınadır (`_byom_kdv_rate`) ve panel kendi oran listesini tutmaz.
+       * Motor yalnızca kararı TAŞIR.
+       */
+      kdvDahil: true
     };
   }
 
@@ -157,6 +189,14 @@
         barcode: String(urun.barcode || ''),
         price: Number(urun.price) || 0,
         koli_ici_adet: koliIci(urun),
+        /*
+         * ÜRÜNÜN KDV ORANI — yalnızca TAŞINIR, hesaba girmez. Katalog kaydı
+         * sunucudan gelir (wc/v3 ürün eki → `byom.kdvOrani`); alan yoksa 0,
+         * yani "bilmiyorum". Arayüz o hâlde tahmini KDV düşümü GÖSTERMEZ,
+         * "sunucuda hesaplanacak" der — uydurma sayı basmak, plasiyerin
+         * müşteriye yanlış fiyat söylemesi demek olurdu.
+         */
+        kdv_orani: kdvOrani(urun),
         adet: istenen
       });
     } else {
@@ -627,6 +667,10 @@
       musteriId: sepet.musteri ? sepet.musteri.id : 0,
       geciciMusteri: !!(sepet.musteri && geciciMi(sepet.musteri.id)) ? sepet.musteri : null,
       odeme: String(sepet.odeme || ''),
+      /* KDV KARARI SUNUCUYA TAŞINIR (/plasiyer/siparis → kdvDahil). Alan
+         tanımsızsa KDV'li sayılır: eski kuyruk kayıtları ve eski panel
+         sürümleri sessizce KDV'siz siparişe dönüşmemeli. */
+      kdvDahil: false !== sepet.kdvDahil,
       vadeNotu: String(sepet.vadeNotu || ''),
       siparisNotu: String(sepet.siparisNotu || ''),
       iskontoOrani: t.iskontoOrani,
@@ -654,6 +698,7 @@
     adimla: adimla,
     koliSayisi: koliSayisi,
     adetEtiketi: adetEtiketi,
+    kdvOrani: kdvOrani,
     /* sepet */
     sepetKur: sepetKur,
     ekle: ekle,

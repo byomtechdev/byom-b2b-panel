@@ -32,7 +32,108 @@
   /** Son çekilen liste — yeniden çizimde tekrar istek atmamak için. */
   var kayit = { plasiyerler: [], genelCiro: 0, genelSiparis: 0, paraBirimi: '', bayiler: [],
     /* Tablo sıralaması (Faz 12): başlığa tıklanır, yerel — ağa çıkmaz. */
-    sirala: { alan: 'ciro', yon: -1 } };
+    sirala: { alan: 'ciro', yon: -1 },
+    /* CİRO DÖNEMİ (Faz 13): 'ay' | 'yil' | 'tumu'. Varsayılan AY, çünkü
+       "bu ay ne yaptık" sahada sorulan ilk sorudur. */
+    donem: 'ay',
+    /* Dönem toplamları — eski eklenti göndermez, o yüzden 0 DEĞİL null:
+       0 yazmak "bu ay hiç satış yok" gibi YANLIŞ bir şey söylerdi. */
+    genelCiroAy: null, genelCiroYil: null, donemAy: '', donemAyAd: '' };
+
+  /* ------------------------------------------------------------------ *
+   *  CİRO DÖNEMİ — aylık / yıllık / tümü  (Faz 13)
+   *  ---------------------------------------------------------------
+   *  Sunucu (B2B_Plasiyer::get_plasiyer_stats) üç kovayı TEK sorguda
+   *  doldurur: ciro/siparis (tüm zamanlar), ciroAy/siparisAy (takvim ayı),
+   *  ciroYil/siparisYil (takvim yılı). Dönem değiştirmek bu yüzden YENİ BİR
+   *  İSTEK DEĞİL, yalnızca hangi alanın okunacağıdır: çipe basmak HİÇBİR
+   *  REST/IPC turu üretmez ("ölçüt değişimi ağa çıkmaz", panel CLAUDE.md §4.10).
+   * ------------------------------------------------------------------ */
+
+  /** Dönem → okunacak alan adları. TEK sözlük: üç yerde üç kural doğmasın. */
+  var DONEMLER = {
+    ay:   { ciro: 'ciroAy',  siparis: 'siparisAy',  genel: 'genelCiroAy' },
+    yil:  { ciro: 'ciroYil', siparis: 'siparisYil', genel: 'genelCiroYil' },
+    tumu: { ciro: 'ciro',    siparis: 'siparis',    genel: 'genelCiro' }
+  };
+
+  /** Yoksa null: "alan gelmedi" ile "değer sıfır" aynı şey değildir. */
+  function sayiYaDaNull(v) {
+    return (undefined === v || null === v || '' === v) ? null : (Number(v) || 0);
+  }
+
+  /**
+   * Eklenti dönem alanlarını gönderiyor mu?
+   *
+   * ESKİ EKLENTİ DAYANIKLILIĞI: bu alanlardan önceki sürümler yalnızca
+   * ciro/siparis gönderir. O yükte aylık çip "undefined ₺" basardı; bunun
+   * yerine çipler DEVRE DIŞI kalır ve tablo tüm zamanları gösterir.
+   */
+  function donemDestekli() {
+    if (null !== kayit.genelCiroAy || null !== kayit.genelCiroYil) return true;
+
+    return kayit.plasiyerler.some(function (p) {
+      return !!p && (undefined !== p.ciroAy || undefined !== p.ciroYil);
+    });
+  }
+
+  /** Ekranda GERÇEKTEN kullanılan dönem (destek yoksa daima 'tumu'). */
+  function aktifDonem() {
+    if (!donemDestekli()) return 'tumu';
+
+    return DONEMLER[kayit.donem] ? kayit.donem : 'tumu';
+  }
+
+  /** Bir plasiyerin aktif dönemdeki ciro / sipariş sayısı. */
+  function donemSayi(p, tur) {
+    var deger = p ? p[DONEMLER[aktifDonem()][tur]] : 0;
+
+    /* Alan yoksa tüm zamanlara düş: ekrana undefined / NaN ₺ basmaktansa
+       anlamlı bir sayı göstermek yeğdir (Faz 11 ilkesi). */
+    if (undefined === deger || null === deger || '' === deger) deger = p ? p[DONEMLER.tumu[tur]] : 0;
+
+    return Number(deger) || 0;
+  }
+
+  /** Aktif dönemin genel ciro toplamı; sunucu vermediyse satırlardan toplanır. */
+  function genelDonemCiro() {
+    var deger = kayit[DONEMLER[aktifDonem()].genel];
+
+    if (undefined !== deger && null !== deger) return Number(deger) || 0;
+
+    /* "toplamın %N'i" satırı aktif dönemle tutarsız kalmasın. */
+    return kayit.plasiyerler.reduce(function (t, p) { return t + donemSayi(p, 'ciro'); }, 0);
+  }
+
+  /** Aktif dönemin genel sipariş adedi (sunucu yalnızca tüm zamanları gönderir). */
+  function genelDonemSiparis() {
+    if ('tumu' === aktifDonem()) return Number(kayit.genelSiparis) || 0;
+
+    return kayit.plasiyerler.reduce(function (t, p) { return t + donemSayi(p, 'siparis'); }, 0);
+  }
+
+  /** Dönemin kısa adı: 'Eylül' / '2026' / 'Tümü' — başlıkta ve özette. */
+  function donemAdi(ad) {
+    if ('ay' === ad) return kayit.donemAyAd || 'Bu Ay';
+    if ('yil' === ad) return /^[0-9]{4}/.test(kayit.donemAy) ? kayit.donemAy.slice(0, 4) : 'Bu Yıl';
+
+    return 'Tümü';
+  }
+
+  /**
+   * Dönem çipi: YALNIZCA kayit.donem'i değiştirir.
+   *
+   * listeyiGetir() BİLEREK ÇAĞRILMAZ — üç kova da elimizde; yeniden istemek
+   * hem gereksiz ağ turu hem de §4.10 sözünün ihlali olurdu.
+   */
+  function donemSec(ad) {
+    if (!DONEMLER[ad] || !donemDestekli()) return;
+
+    kayit.donem = ad;
+
+    tabloyuCiz();
+    ozetiTazele();
+  }
 
   /** Sıralanmış kopya; ad Türkçe harf duyarlı, sayılar sayısal. */
   function siraliPlasiyerler() {
@@ -41,6 +142,10 @@
 
     return kayit.plasiyerler.slice().sort(function (a, b) {
       if ('ad' === alan) return String(a.ad || '').localeCompare(String(b.ad || ''), 'tr') * yon;
+
+      /* Ciro/sipariş AKTİF DÖNEMİN alanından okunur: ekranda Eylül cirosu
+         yazarken tüm zamanların cirosuna göre sıralamak listeyi yalancı yapar. */
+      if ('ciro' === alan || 'siparis' === alan) return (donemSayi(a, alan) - donemSayi(b, alan)) * yon;
 
       return ((Number(a[alan]) || 0) - (Number(b[alan]) || 0)) * yon;
     });
@@ -139,6 +244,12 @@
     kayit.genelSiparis = Number(cevap.veri.genelSiparis) || 0;
     kayit.paraBirimi   = String(cevap.veri.paraBirimi || '');
 
+    /* DÖNEM TOPLAMLARI (Faz 13). Alan yoksa null kalır → çipler devre dışı. */
+    kayit.genelCiroAy  = sayiYaDaNull(cevap.veri.genelCiroAy);
+    kayit.genelCiroYil = sayiYaDaNull(cevap.veri.genelCiroYil);
+    kayit.donemAy      = String(cevap.veri.donemAy || '');
+    kayit.donemAyAd    = String(cevap.veri.donemAyAd || '');
+
     tabloyuCiz();
     ozetiTazele();
   }
@@ -148,8 +259,10 @@
 
     if (!ozet) return;
 
-    ozet.textContent = kayit.plasiyerler.length + ' pazarlamacı · ' +
-                       kayit.genelSiparis + ' sipariş · ' + paraYaz(kayit.genelCiro);
+    /* Özet de AKTİF DÖNEMİ anlatır: tablo Eylül'ü gösterirken başlıktaki
+       toplamın tüm zamanları söylemesi iki farklı gerçek üretirdi. */
+    ozet.textContent = kayit.plasiyerler.length + ' pazarlamacı · ' + donemAdi(aktifDonem()) + ': ' +
+                       genelDonemSiparis() + ' sipariş · ' + paraYaz(genelDonemCiro());
   }
 
   /* ------------------------------------------------------------------ *
@@ -313,6 +426,72 @@
            'doğrudan saha satış terminali olarak başlayacak.', 'basari');
   }
 
+  /**
+   * ÜÇ DÖNEM ÇİPİ — tablonun üstünde.
+   *
+   * index.html'e dokunulmadı: çipler tablonun kendi kabına çizilir ve zaten
+   * var olan `#plasiyerTablo` delegasyonu tıklamayı yakalar. Böylece hem
+   * işaretleme tek yerde kalır hem de her yeniden çizimde seçim doğru görünür.
+   */
+  function donemCipleri() {
+    var destek = donemDestekli();
+    var etkin = aktifDonem();
+
+    var secenekler = [
+      { ad: 'ay',   ikon: '📅', etiket: 'Bu Ay' + (kayit.donemAyAd ? ' (' + kayit.donemAyAd + ')' : '') },
+      { ad: 'yil',  ikon: '🗓️', etiket: 'Bu Yıl' },
+      { ad: 'tumu', ikon: 'Σ',  etiket: 'Tümü' }
+    ];
+
+    return '<div class="mb-4 flex items-center gap-2 flex-wrap" role="tablist" aria-label="Ciro dönemi">' +
+      '<span class="text-sm font-bold text-slate-500 dark:text-slate-400">Ciro dönemi:</span>' +
+      secenekler.map(function (sec) {
+        var secili = (sec.ad === etkin);
+
+        return '<button type="button" role="tab" data-donem="' + sec.ad + '" ' +
+          /* Durum `aria-selected`'te taşınır (alt sekmelerle aynı kural):
+             ekran ve ekran okuyucu asla ayrışmaz. */
+          'aria-selected="' + (secili ? 'true' : 'false') + '" ' +
+          (destek
+            ? ''
+            : 'disabled aria-disabled="true" title="Bu eklenti sürümü aylık/yıllık ciro göndermiyor — güncelleyin." ') +
+          'class="plasiyer-donem px-3 py-1.5 rounded-xl border-2 font-bold text-sm transition ' +
+            (secili
+              ? 'border-marka-700 bg-marka-700 text-white'
+              : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700') +
+            (destek ? '' : ' opacity-50 cursor-not-allowed') + '">' +
+          '<span aria-hidden="true">' + sec.ikon + '</span> ' + kacis(sec.etiket) +
+        '</button>';
+      }).join('') +
+      (destek
+        ? ''
+        : '<span class="text-xs font-bold text-amber-600 dark:text-amber-400">' +
+          'Aylık/yıllık ciro için eklentiyi güncelleyin; tablo tüm zamanları gösteriyor.</span>') +
+    '</div>';
+  }
+
+  /**
+   * Hücrenin ikinci satırı: aylık VE yıllık ciro, küçük punto, yan yana.
+   *
+   * Ürün sahibinin asıl isteği "ikisini de AYRI AYRI görmek"ti: kalın satır
+   * seçili dönemi söyler, bu satır her ikisini birden gösterir — dönem
+   * değiştirmeden karşılaştırma yapılabilsin. Alanlar yoksa satır HİÇ basılmaz
+   * (eski eklentide "undefined ₺" görünmez).
+   */
+  function ciroAltSatiri(p) {
+    var ay = p ? p.ciroAy : undefined;
+    var yil = p ? p.ciroYil : undefined;
+    var parca = [];
+
+    if (undefined !== ay && null !== ay && '' !== ay) parca.push(donemAdi('ay') + ' ' + paraYaz(ay));
+    if (undefined !== yil && null !== yil && '' !== yil) parca.push('Yıllık ' + paraYaz(yil));
+
+    if (!parca.length) return '';
+
+    return '<div class="plasiyer-ciro-alt mt-0.5 text-xs font-bold text-slate-500 dark:text-slate-400">' +
+      kacis(parca.join(' · ')) + '</div>';
+  }
+
   function tabloyuCiz() {
     var kap = el('plasiyerTablo');
 
@@ -329,17 +508,20 @@
       return;
     }
 
-    /* Çubuk ölçeği EN YÜKSEK ciroya göre — genel toplama göre değil.
+    /* Çubuk ölçeği AKTİF DÖNEMİN en yükseğine göre — genel toplama göre değil.
        Genel toplamla ölçeklenseydi 10 plasiyerli bir firmada tüm çubuklar
-       okunamayacak kadar kısa kalırdı. */
+       okunamayacak kadar kısa kalırdı; tüm zamanların en yükseğiyle
+       ölçeklenseydi de aylık görünümde bütün çubuklar ezilirdi. */
     var enYuksek = kayit.plasiyerler.reduce(function (m, p) {
-      return Math.max(m, Number(p.ciro) || 0);
+      return Math.max(m, donemSayi(p, 'ciro'));
     }, 0);
 
+    var genelDonem = genelDonemCiro();
+
     var satirlar = siraliPlasiyerler().map(function (p) {
-      var ciro = Number(p.ciro) || 0;
+      var ciro = donemSayi(p, 'ciro');
       var oran = enYuksek > 0 ? (ciro / enYuksek) : 0;
-      var pay = kayit.genelCiro > 0 ? Math.round((ciro / kayit.genelCiro) * 100) : 0;
+      var pay = genelDonem > 0 ? Math.round((ciro / genelDonem) * 100) : 0;
 
       return '' +
         '<tr class="border-t-2 border-slate-100 dark:border-slate-700">' +
@@ -362,10 +544,11 @@
               : '<div class="plasiyer-iller mt-1 text-xs font-bold text-amber-600 dark:text-amber-400">il atanmamış</div>') +
           '</td>' +
           '<td class="py-4 pr-4 text-center font-bold">' + (Number(p.bayi) || 0) + '</td>' +
-          '<td class="py-4 pr-4 text-center font-bold">' + (Number(p.siparis) || 0) + '</td>' +
+          '<td class="plasiyer-siparis py-4 pr-4 text-center font-bold">' + donemSayi(p, 'siparis') + '</td>' +
           '<td class="py-4 pr-4 text-center font-bold" title="İskonto tavanı">%' + kacis(String(Number(p.maxIskonto) || 0)) + '</td>' +
-          '<td class="py-4 pr-4 min-w-56">' +
+          '<td class="plasiyer-ciro py-4 pr-4 min-w-56">' +
             '<div class="font-extrabold">' + kacis(paraYaz(ciro)) + '</div>' +
+            ciroAltSatiri(p) +
             '<div class="mt-2 h-2.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">' +
               '<div class="ciro-cubuk h-full rounded-full bg-marka-700" ' +
                    'style="transform: scaleX(' + oran.toFixed(4) + ');" ' +
@@ -397,7 +580,12 @@
           etiket + ok + '</button></th>';
     }
 
+    /* Sütun başlığı AKTİF DÖNEMİ yazar: "Ciro" tek başına hangi pencereden
+       söz ettiğini söylemez ve yönetici yanlış rakamı raporlar. */
+    var donemEk = ' · ' + donemAdi(aktifDonem());
+
     kap.innerHTML =
+      donemCipleri() +
       '<div class="overflow-x-auto">' +
         '<table class="w-full text-left">' +
           '<thead class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400">' +
@@ -405,9 +593,9 @@
               baslik('ad', 'Pazarlamacı', '') +
               '<th class="pb-3 pr-4">Bölge</th>' +
               baslik('bayi', 'Bayi', 'text-center') +
-              baslik('siparis', 'Sipariş', 'text-center') +
+              baslik('siparis', kacis('Sipariş' + donemEk), 'text-center') +
               baslik('maxIskonto', 'Tavan', 'text-center') +
-              baslik('ciro', 'Ciro', '') +
+              baslik('ciro', kacis('Ciro' + donemEk), '') +
               '<th class="pb-3 text-right">İşlem</th>' +
             '</tr>' +
           '</thead>' +
@@ -889,6 +1077,18 @@
 
     if (kap) {
       kap.addEventListener('click', function (olay) {
+        /* DÖNEM ÇİPİ — yalnızca yerel durum değişir, `listeyiGetir()` ÇAĞRILMAZ.
+           Üç kova da (`ciro`/`ciroAy`/`ciroYil`) elimizde; yeniden istemek
+           hem gereksiz bir ağ turu hem de "ölçüt değişimi ağa çıkmaz" sözünün
+           (panel CLAUDE.md §4.10) ihlali olurdu. */
+        var cip = olay.target.closest('.plasiyer-donem');
+
+        if (cip) {
+          /* Devre dışı çip (eski eklenti) tarayıcıya göre olay üretebilir. */
+          if (!cip.disabled) donemSec(String(cip.dataset.donem || 'tumu'));
+          return;
+        }
+
         var sirala = olay.target.closest('.plasiyer-sirala');
 
         if (sirala) {
@@ -977,6 +1177,8 @@
     cihaziTahsisEt: cihaziTahsisEt,
     tahsisliId: tahsisliId,
     altSekmeAc: altSekmeAc,
+    donemSec: donemSec,
+    aktifDonem: aktifDonem,
     haritaRozetiYaz: haritaRozetiYaz,
     altSekme: function () { return altSekme; },
     kayit: kayit

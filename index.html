@@ -187,6 +187,12 @@
     --kose:         6px;
     --kose-kucuk:   4px;
     --logo-width:   220px;   /* Vitrin Editörü › Marka Görselleri → Masaüstü logo genişliği (Faz 11 · Eksen 2) */
+    /* Logo YÜKSEKLİĞİ de kaydırıcıyla ölçeklenir (Faz 12.1). Yalnızca genişlik
+       değişkeni varken kare ya da 3:1 bir logoda kaydırıcı hiçbir şey yapmıyordu:
+       gerçek boyutu alttaki `max-height: 40px` sabitliyor, 220→320 hareketi ancak
+       5,5:1'den geniş logolarda görünüyordu. Oran 220px ↔ 40px korunur
+       (renderer.js → logoGenisligiUygula ikisini birlikte yazar). */
+    --logo-height:  40px;
   }
 
   html.dark {
@@ -582,7 +588,11 @@
      (bkz. 13. bölüm); buradaki açık tema sınıfları koyu temada ezilmez. */
 
   header { background: var(--panel) !important; border-bottom: 1px solid var(--kenar) !important; box-shadow: none !important; }
-  header.h-20 { height: 52px !important; padding-left: 14px !important; padding-right: 14px !important; }
+  /* Üst çubuk SABİT yükseklikte DEĞİL: logo büyütüldüğünde (--logo-height 58px'e
+     kadar çıkar) 52px'lik sabit yükseklik logoyu kırpıyor ve kaydırıcı "çalışmıyor"
+     gibi görünüyordu. `height: auto` + `min-height` yoğun görünümü korur, gerekince
+     büyür. Tailwind'in `h-20` (80px) kuralı `height: auto !important` ile ezilir. */
+  header.h-20 { height: auto !important; min-height: 52px !important; padding-left: 14px !important; padding-right: 14px !important; }
   #firmaVarsayilanSimge {
     width: 30px !important; height: 30px !important;
     border-radius: var(--kose-kucuk) !important;
@@ -595,7 +605,7 @@
      yalnızca yüksekliği sınırlar; genişlik logonun kendi oranından gelir. */
   #firmaLogoKutu {
     width: auto !important; height: auto !important;
-    max-height: 40px !important;
+    max-height: var(--logo-height, 40px) !important;
     padding: 0 !important;
     background: transparent !important;
     border: 0 !important;
@@ -603,7 +613,12 @@
     box-shadow: none !important;
     overflow: visible !important;
   }
-  #firmaLogo { display: block; max-height: 40px !important; width: auto !important; max-width: var(--logo-width, 220px); object-fit: contain; }
+  #firmaLogo { display: block; max-height: var(--logo-height, 40px) !important; width: auto !important; max-width: var(--logo-width, 220px); object-fit: contain; }
+
+  /* Vitrin Editörü › Marka Görselleri — kaydırıcının YANINDAKİ canlı önizleme.
+     Gerçek logo, üst çubuktaki iki sınırın AYNISIYLA basılır; kullanıcı sürüklerken
+     değişimi ekranın öbür ucundaki üst çubuğa bakmadan burada görür. */
+  #veLogoOnizleme { max-width: var(--logo-width, 220px); max-height: var(--logo-height, 40px); width: auto; height: auto; object-fit: contain; }
   #firmaVarsayilanSimge .ik { width: 16px; height: 16px; }
   #firmaAdiBaslik { font-size: 14px !important; font-weight: 650 !important; }
 
@@ -2076,7 +2091,7 @@
            Müşterilerim; Çıkış Yap mt-auto ile en altta kalır. -->
       <button data-sekme="siparislerim" data-rol-izin="plasiyer" data-kabuk="plasiyer" class="menu-btn text-left px-5 py-6 rounded-2xl font-extrabold text-xl transition border-2">
         <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg>
-        <span class="align-middle">Kendi Siparişlerim</span>
+        <span class="align-middle">Saha Siparişlerim</span>
       </button>
       <!-- MÜŞTERİLERİM (Faz 9) — YALNIZCA plasiyer kabuğunda.
            Plasiyerin portföyü: müşteri kartları, algoritmik doğrulamalı yeni
@@ -2522,6 +2537,18 @@
             <span aria-hidden="true">👤</span>
             <span class="align-middle ml-1">Web Perakende Müşterileri</span>
           </button>
+          <!-- SAHA MÜŞTERİLERİ (Faz 12.1): pazarlamacıların sahada açtığı hesaplar.
+               Sunucu tarafında `_b2b_musteri_kaynagi = byom_plasiyer_masaustu` damgası
+               taşırlar; liste GET /dealers?kaynak=saha ile daraltılır. Kartta il ve
+               sorumlu pazarlamacı yazar — patronun "bu müşteriyi kim getirdi?"
+               sorusunun tek ekranda cevabı. Sınıf `uye-alt` OLMALI: `plasiyer-alt`
+               olsaydı plasiyer-yonetimi.js → altSekmeAc her harita tıklamasında bu
+               sekmeyi de kurcalardı (Faz 10 kilidi). -->
+          <button type="button" class="uye-alt px-5 py-3 rounded-xl font-extrabold transition"
+                  role="tab" data-alt="saha" aria-selected="false">
+            <span aria-hidden="true">🚚</span>
+            <span class="align-middle ml-1">Saha / Pazarlamacı Müşterileri</span>
+          </button>
         </div>
         <p class="mb-5 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
                   border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4">
@@ -2763,8 +2790,9 @@
             <div class="text-base font-extrabold mb-1"><svg class="ik" aria-hidden="true"><use href="#ik-resim"></use></svg> Firma Logosu</div>
             <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
               Üst çubukta ve depo fişlerinin başlığında görünür.
-              Sitenize bağlandığınızda logo otomatik çekilir; site logosu yoksa
-              veya çekilemezse burada yüklediğiniz yerel logo kullanılır.
+              Buraya yüklediğiniz logo <b>önceliklidir</b>: sitenizde ayrı bir logo olsa
+              bile üst çubukta sizin yüklediğiniz görünür. Hiç yüklemezseniz sitenizden
+              otomatik çekilen logo kullanılır.
             </p>
             <div class="flex items-center gap-4">
               <div id="logoOnizlemeKutu" class="hidden w-20 h-20 rounded-xl bg-slate-50 dark:bg-slate-900
@@ -2791,6 +2819,58 @@
               En fazla 3 MB · PNG, JPG, WEBP veya SVG.
             </p>
           </div>
+        </div>
+
+              <!-- Masaüstü logo BOYUTU (Faz 11 · Eksen 2; Faz 12.1'de logo kutusunun hemen
+                   altına alındı ve yükseklik eklendi). Ürün sahibi kaydırıcıyı "çalışmıyor"
+                   diye bildirdi: iki sebebi vardı — (1) yalnızca --logo-width yazılıyordu,
+                   gerçek boyutu #firmaLogo'nun sabit `max-height: 40px` kuralı tutuyordu;
+                   (2) kutu panelin en altındaydı, kaydırıcının yanında değişen hiçbir şey
+                   yoktu. Şimdi ikisi birlikte (--logo-width + --logo-height) yazılıyor ve
+                   hemen üstte gerçek logoyla canlı bir önizleme şeridi duruyor.
+                   YALNIZCA bu uygulamanın sol üst logosunu ölçekler: ayarlar.json →
+                   masaustuLogoGenislik (100–320 px), renderer.js logoGenisligiUygula().
+                   Siteye/temaya GİTMEZ: theme-config branding yüküne ve "SİTEYE GÖNDER"e
+                   girmez (renderer-vitrin.js; yonetici-arayuz.dom.test.js kaynak kilidi).
+                   Kaydırırken yalnızca CSS değişkeni yazılır; diske ancak [Kaydet] ile
+                   gider (ayar:yaz). -->
+              <div id="veLogoGenislikKutu" class="mt-4 pt-4 border-t-2 border-slate-200 dark:border-slate-700">
+                <div class="text-base font-extrabold mb-1"><svg class="ik" aria-hidden="true"><use href="#ik-ekran"></use></svg> Masaüstü logo boyutu</div>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
+                  Kaydırdıkça hem aşağıdaki önizleme hem sol üstteki gerçek logo <b>anında</b>
+                  değişir. Beğendiğiniz boyutta <b>Kaydet</b> deyin; uygulama her açılışta
+                  o boyutta gelir.
+                </p>
+
+                <!-- CANLI ÖNİZLEME ŞERİDİ: gerçek logo, üst çubuktaki iki sınırın aynısıyla
+                     (--logo-width / --logo-height) basılır. Ağ ve IPC yok; yalnızca CSS. -->
+                <div id="veLogoOnizlemeSerit"
+                     class="mb-3 px-2 py-2 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600
+                            bg-slate-50 dark:bg-slate-900 flex items-center gap-3 overflow-hidden">
+                  <img id="veLogoOnizleme" alt="Masaüstü logo önizlemesi" hidden />
+                  <span id="veLogoOnizlemeYok" class="text-sm font-semibold text-slate-400 dark:text-slate-500">
+                    Önce yukarıdan bir logo yükleyin; boyut değişimi burada canlı görünür.
+                  </span>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="text-sm font-bold text-slate-500">100px</span>
+                  <input id="veLogoGenislik" type="range" min="100" max="320" step="10" value="220"
+                         class="flex-1 accent-marka-600" aria-label="Masaüstü logo genişliği (piksel)" />
+                  <span class="text-sm font-bold text-slate-500">320px</span>
+                  <span id="veLogoGenislikDeger" class="text-right text-base font-black tabular-nums whitespace-nowrap">220px · %100</span>
+                  <button id="veLogoGenislikKaydet" type="button"
+                          class="h-11 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
+                                 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
+                                 text-base font-extrabold transition">Kaydet</button>
+                </div>
+                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  Yalnızca bu bilgisayardaki uygulamanın sol üst logosunu boyutlandırır; web sitenizin
+                  temasına ve site logosuna <b>hiç dokunmaz</b>, "SİTEYE GÖNDER" ile de gitmez.
+                </p>
+              </div>
+
+        <div id="markaFaviconKutusu" class="mt-4 pt-4 border-t-2 border-slate-200 dark:border-slate-700">
 
           <!-- Site favicon'u -->
           <div>
@@ -2825,30 +2905,6 @@
             </p>
           </div>
         </div>
-              <!-- Masaüstü logo genişliği (Faz 11 · Eksen 2; ürün sahibi: API sekmesinde ayar kartı
-                   istenmiyor). YALNIZCA bu uygulamanın sol üst logosunu ölçekler: ayarlar.json →
-                   masaustuLogoGenislik (100–320 px), renderer.js logoGenisligiUygula() → --logo-width.
-                   Siteye/temaya GİTMEZ: theme-config branding yüküne ve "SİTEYE GÖNDER"e girmez
-                   (renderer-vitrin.js; yonetici-arayuz.dom.test.js kaynak kilidi). Kaydırırken
-                   yalnızca CSS değişkeni yazılır; diske ancak [Kaydet] ile gider (ayar:yaz). -->
-              <div id="veLogoGenislikKutu" class="mt-4 pt-4 border-t-2 border-slate-200 dark:border-slate-700">
-                <div class="text-base font-extrabold mb-1"><svg class="ik" aria-hidden="true"><use href="#ik-ekran"></use></svg> Masaüstü logo genişliği</div>
-                <div class="flex flex-wrap items-center gap-3">
-                  <span class="text-sm font-bold text-slate-500">100px</span>
-                  <input id="veLogoGenislik" type="range" min="100" max="320" step="10" value="220"
-                         class="flex-1 accent-marka-600" aria-label="Masaüstü logo genişliği (piksel)" />
-                  <span class="text-sm font-bold text-slate-500">320px</span>
-                  <span id="veLogoGenislikDeger" class="w-16 text-right text-lg font-black tabular-nums">220px</span>
-                  <button id="veLogoGenislikKaydet" type="button"
-                          class="h-11 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                                 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                                 text-base font-extrabold transition">Kaydet</button>
-                </div>
-                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                  Yalnızca bu bilgisayardaki uygulamanın sol üst logosunu boyutlandırır; web sitenizin
-                  temasına ve site logosuna <b>hiç dokunmaz</b>, "SİTEYE GÖNDER" ile de gitmez.
-                </p>
-              </div>
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <button id="veMarkaGonderBtn" type="button"
                         class="h-11 px-4 rounded-xl bg-marka-700 hover:bg-marka-800 text-white text-base font-extrabold transition">
@@ -3539,7 +3595,7 @@
       <section id="sekme-siparislerim" class="sekme-govde" data-kabuk="plasiyer">
         <div class="flex items-center gap-4 mb-5 flex-wrap">
           <h1 class="text-3xl font-black">
-            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg> Kendi Siparişlerim
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-paket"></use></svg> Saha Siparişlerim
           </h1>
           <span id="siparislerimOzet"
                 class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
@@ -3567,11 +3623,13 @@
 
           <div id="musteriSerit" class="flex-1 min-w-64"></div>
 
-          <button type="button" id="gorunumAnahtar"
-                  class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold
-                         hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-                  title="Görünümü değiştir (Tab)">🛍️ Vitrin</button>
-
+          <!--
+            "Vitrin görünümü" anahtarı KALDIRILDI (Faz 13). Ürün sahibinin kararı:
+            görünür ama yarım kalmış bir düğme, kullanıcıya olmayan bir özellik
+            vaat ediyordu. Matris (hızlı liste) kipi DURUYOR ve iki yoldan
+            açılıyor: arama kutusunda Enter, ya da alan dışında Tab. İpucu
+            filtre barında yazılı — düğme kalkınca kısayol keşfedilemez olmasın.
+          -->
           <button type="button" id="katalogEsitle"
                   class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold
                          hover:bg-slate-100 dark:hover:bg-slate-700 transition">⟳ Kataloğu Eşitle</button>
@@ -3615,32 +3673,6 @@
           </div>
         </div>
 
-        <!-- ÜRÜN DETAY / BÜYÜTME PENCERESİ -->
-        <div id="urunPerde" hidden
-             class="fixed inset-0 z-[68] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6">
-          <div id="urunModal"
-               class="urun-modal w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
-                      border-2 border-slate-200 dark:border-slate-700 p-6"></div>
-        </div>
-
-        <!-- SAHA ZİYARET NOTU PENCERESİ (Faz 3)
-             Plasiyerin patrona not bıraktığı ve patron yanıtlarını okuduğu
-             perde. İçerik src/renderer/modules/plasiyer-ziyaret.js tarafından
-             çizilir. NOT BIRAKMAK TAMAMEN İSTEĞE BAĞLIDIR. -->
-        <div id="ziyaretPerde" hidden
-             class="fixed inset-0 z-[71] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6 overflow-y-auto">
-          <div id="ziyaretModal"
-               class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
-                      border-2 border-slate-200 dark:border-slate-700 p-8"></div>
-        </div>
-
-        <!-- MÜŞTERİ EKLE / SİPARİŞİ TAMAMLA PENCERESİ -->
-        <div id="satisPerde" hidden
-             class="fixed inset-0 z-[69] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6 overflow-y-auto">
-          <div id="satisModal"
-               class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
-                      border-2 border-slate-200 dark:border-slate-700 p-8"></div>
-        </div>
       </section>
 
       <!-- ============================================================
@@ -4263,6 +4295,58 @@
 <!-- ==================================================================
      BAYİ DETAY & GEÇMİŞ SİPARİŞ DÖKÜMÜ PENCERESİ
      ================================================================== -->
+<!-- ============================================================
+ SAHA PERDELERİ — SEKME GÖVDELERİNİN DIŞINDA (Faz 13)
+ ------------------------------------------------------------
+ Bu üç perde Faz 2-3'te "Katalog & Satış" sekme gövdesinin İÇİNDE
+ duruyordu. `.sekme-govde { display: none }` olduğu için, başka bir
+ sekme açıkken perdeyi göstermek İMKÂNSIZDI: `position: fixed` bunu
+ kurtarmaz — bir atanın `display:none` olması alt ağacın tamamını
+ render dışı bırakır ve hiçbir alt eleman CSS'i bunu geri alamaz.
+
+ Sonuç canlıda ÜÇ ÖLÜ DÜĞMEYDİ: Müşterilerim'deki [+ Yeni Müşteri],
+ Müşterilerim ve Saha Haritam kartlarındaki [Ziyaret Notu], ve üst
+ bardaki bildirim zili. Hiçbiri hata vermiyor, hiçbir şey de olmuyordu.
+
+ jsdom bunu göremez (ata zincirinin `display` değerini hesaplamaz) —
+ Faz 4 `[hidden]` ve Faz 10 `window.durum` ile AYNI kör nokta sınıfı.
+ Bu yüzden test, hesaplanmış stile değil, ATA ZİNCİRİNE bakar:
+ perdenin hiçbir atası `.sekme-govde` olmamalı.
+
+ `data-kabuk="plasiyer"` ZORUNLU: Clean Shell Router bunu yönetici
+ kabuğunda söker (kabuk izolasyonu sözü korunur).
+ ============================================================ -->
+<div id="sahaPerdeleri" data-kabuk="plasiyer">
+
+  <!-- ÜRÜN DETAY / BÜYÜTME PENCERESİ -->
+  <div id="urunPerde" hidden
+       class="fixed inset-0 z-[68] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6">
+    <div id="urunModal"
+         class="urun-modal w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+                border-2 border-slate-200 dark:border-slate-700 p-6"></div>
+  </div>
+
+  <!-- SAHA ZİYARET NOTU PENCERESİ (Faz 3)
+       Plasiyerin patrona not bıraktığı ve patron yanıtlarını okuduğu perde.
+       İçerik src/renderer/modules/plasiyer-ziyaret.js tarafından çizilir.
+       NOT BIRAKMAK TAMAMEN İSTEĞE BAĞLIDIR. -->
+  <div id="ziyaretPerde" hidden
+       class="fixed inset-0 z-[71] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6 overflow-y-auto">
+    <div id="ziyaretModal"
+         class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+                border-2 border-slate-200 dark:border-slate-700 p-8"></div>
+  </div>
+
+  <!-- MÜŞTERİ EKLE / SİPARİŞİ TAMAMLA PENCERESİ -->
+  <div id="satisPerde" hidden
+       class="fixed inset-0 z-[69] bg-slate-900/70 backdrop-blur-sm grid place-items-center p-6 overflow-y-auto">
+    <div id="satisModal"
+         class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+                border-2 border-slate-200 dark:border-slate-700 p-8"></div>
+  </div>
+
+</div>
+
 <div id="bayiModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-5xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700">

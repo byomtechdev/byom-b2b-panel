@@ -576,38 +576,61 @@
       '<p id="' + id + 'Hata" class="hidden mt-1 text-xs font-semibold text-red-600 dark:text-red-400"></p>';
   }
 
-  function yeniPerdesiniAc() {
+  /**
+   * Müşteri formu — İKİ KİP, TEK FORM (Faz 13).
+   *
+   * `mevcut` verilirse düzenleme kipi: alanlar dolu açılır, başlık ve düğme
+   * değişir, kayıt yolu farklıdır. Doğrulama (`musteriFormuDenetle`) ve alan
+   * listesi ORTAK kalır — iki kopya, iki kural demek olurdu ve bu depoda iki
+   * kez canımızı yakmış hata sınıfıdır (§5.13 / §5.14).
+   */
+  function yeniPerdesiniAc(mevcut) {
     var t = tavan();
+    var duzenle = !!(mevcut && mevcut.id);
+    var d = duzenle ? mevcut : {};
 
     var modal = perdeAc(
       '<div class="flex items-start justify-between gap-4">' +
         '<div>' +
-          '<div class="text-xl font-extrabold">Yeni Müşteri</div>' +
+          '<div class="text-xl font-extrabold">' + (duzenle ? 'Müşteri Bilgilerini Düzenle' : 'Yeni Müşteri') + '</div>' +
           '<div class="text-sm text-slate-500 dark:text-slate-400 mt-1">' +
-            'Çevrimdışı kaydedilir, eşitlemede sunucuya iletilir. Kimlik ve telefon algoritmik olarak denetlenir.' +
+            (duzenle
+              ? (M().geciciMi(d.id)
+                  ? 'Bu kayıt henüz sunucuya gitmedi; değişiklik cihazda saklanır ve eşitlemede iletilir.'
+                  : 'Bu müşteri sunucuda kayıtlı; değişiklik doğrudan merkeze yazılır.')
+              : 'Çevrimdışı kaydedilir, eşitlemede sunucuya iletilir. Kimlik ve telefon algoritmik olarak denetlenir.') +
           '</div>' +
         '</div>' +
         '<button type="button" id="satisKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
       '</div>' +
 
-      alan('ymUnvan', 'Firma ünvanı *', 'text') +
-      alan('ymYetkili', 'Yetkili ad soyad *', 'text') +
-      alan('ymKimlik', 'Vergi No (10 hane) / TC Kimlik No (11 hane) *', 'text', 'inputmode="numeric" maxlength="11"') +
-      alan('ymTelefon', 'Cep telefonu (05XX XXX XX XX) *', 'tel', 'inputmode="tel"') +
-      alan('ymEposta', 'E-posta', 'email') +
-      alan('ymIl', 'İl *', 'text') +
-      alan('ymIlce', 'İlçe', 'text') +
-      alan('ymIskonto', 'Bayi iskontosu (%) — en fazla %' + yuzdeYaz(t), 'number', 'min="0" max="' + t + '" step="0.5" value="0"') +
+      alan('ymUnvan', 'Firma ünvanı *', 'text', onDeger(d.unvan)) +
+      alan('ymYetkili', 'Yetkili ad soyad *', 'text', onDeger(d.ad || d.yetkili)) +
+      alan('ymKimlik', 'Vergi No (10 hane) / TC Kimlik No (11 hane) *', 'text', 'inputmode="numeric" maxlength="11" ' + onDeger(d.kimlikNo || d.vergiNo)) +
+      alan('ymTelefon', 'Cep telefonu (05XX XXX XX XX) *', 'tel', 'inputmode="tel" ' + onDeger(d.telefon)) +
+      /* E-posta İSTEĞE BAĞLI: sahada çoğu zaman toplanamaz. Boş bırakılırsa
+         müşteriye HİÇBİR e-posta gönderilmez (sunucu 2.19.0'dan beri uydurma
+         adres üretmiyor); iletişim WhatsApp üzerinden kurulur. */
+      alan('ymEposta', 'E-posta (isteğe bağlı)', 'email', onDeger(epostaGoster(d.eposta))) +
+      '<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Boş bırakabilirsiniz — müşteriye e-posta gönderilmez, iletişim telefondan kurulur.</p>' +
+      alan('ymIl', 'İl *', 'text', onDeger(d.il)) +
+      alan('ymIlce', 'İlçe', 'text', onDeger(d.ilce)) +
+      alan('ymIskonto', 'Bayi iskontosu (%) — en fazla %' + yuzdeYaz(t), 'number', 'min="0" max="' + t + '" step="0.5" value="' + (Number(d.iskonto) || 0) + '"') +
 
       '<div id="ymMukerrer" class="hidden mt-4 p-3 rounded-xl bg-amber-50 border-2 border-amber-200 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200 text-sm font-semibold"></div>' +
       '<p id="ymHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>' +
-      '<button type="button" id="ymKaydet" class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">Kaydet ve Seç</button>'
+      '<button type="button" id="ymKaydet" class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">' +
+        (duzenle ? 'Değişiklikleri Kaydet' : 'Kaydet ve Seç') + '</button>'
     );
 
     if (!modal) return;
 
     el('satisKapat').addEventListener('click', perdeKapat);
-    el('ymKaydet').addEventListener('click', yeniKaydet);
+    el('ymKaydet').addEventListener('click', function () {
+      if (duzenle) return duzenlemeyiKaydet(mevcut);
+
+      return yeniKaydet();
+    });
 
     /* Kimlik kutusu yalnızca rakam alır (yapıştırma da süzülür). */
     var kimlik = el('ymKimlik');
@@ -618,6 +641,106 @@
     });
 
     el('ymUnvan').focus();
+  }
+
+  /** `value="…"` özniteliği — boş değer için hiç yazılmaz. */
+  function onDeger(v) {
+    var s = String(v === null || v === undefined ? '' : v).trim();
+
+    return s ? ('value="' + kacis(s) + '"') : '';
+  }
+
+  /**
+   * Yer tutucu e-postayı GÖSTERMEZ.
+   *
+   * Sunucu e-postasız bayi için `…@<alan>.invalid` üretir (RFC 6761: asla
+   * çözülmez, posta dışarı çıkmaz). Bunu forma doldurmak kullanıcıya gerçek
+   * bir adres varmış gibi gösterirdi.
+   */
+  function epostaGoster(v) {
+    var s = String(v || '').trim();
+
+    return /\.invalid$/i.test(s) ? '' : s;
+  }
+
+  /**
+   * Düzenlemeyi kaydeder — kayıt türüne göre İKİ AYRI YOL.
+   *
+   * Çevrimdışı (henüz eşitlenmemiş) kayıt cihazda güncellenir; eşitlenmiş ya
+   * da sunucudan gelen bayi merkeze yazılır. Ara yol YOKTUR: `musteri-esitle`
+   * mevcut bayiyi bulunca alanları GÜNCELLEMEZ (yalnızca eşleştirir), bu
+   * yüzden "eşitlenince düzelir" beklentisi yanlış olurdu.
+   */
+  async function duzenlemeyiKaydet(mevcut) {
+    var dogrulama = D();
+    var form = formuOku();
+
+    if (!dogrulama) {
+      yaz(el('ymHata'), 'Doğrulama motoru yüklenemedi; kayıt güncellenemez.');
+      return;
+    }
+
+    var denetim = dogrulama.musteriFormuDenetle(form, { iskontoTavani: tavan() });
+
+    hatalariYaz(denetim.hatalar);
+
+    if (!denetim.ok) {
+      yaz(el('ymHata'), 'Eksik ya da hatalı alanlar var; işaretli kutuları düzeltin.');
+      return;
+    }
+
+    yaz(el('ymHata'), '');
+
+    var t = denetim.temiz;
+    var yuk = {
+      id: mevcut.id,
+      unvan: t.firmaAdi,
+      ad: t.yetkili,
+      kimlikNo: t.kimlikNo,
+      kimlikTuru: t.kimlikTuru,
+      telefon: t.telefon,
+      eposta: form.eposta,
+      il: t.il,
+      ilce: t.ilce,
+      iskonto: t.iskonto
+    };
+
+    var gecici = M().geciciMi(mevcut.id);
+    var cevap = null;
+
+    try {
+      cevap = await ipcRenderer.invoke(gecici ? 'musteri:kuyrukta-guncelle' : 'musteri:guncelle', yuk);
+    } catch (e) {
+      cevap = { ok: false, hata: String(e && e.message ? e.message : e) };
+    }
+
+    if (!cevap || !cevap.ok) {
+      yaz(el('ymHata'), (cevap && cevap.hata) || 'Kayıt güncellenemedi.');
+      return;
+    }
+
+    /* Yerel görünümü tazele: kullanıcı değişikliği ANINDA görmeli. */
+    var guncel = Object.assign({}, mevcut, yuk);
+
+    if (cevap.musteri) guncel = Object.assign(guncel, cevap.musteri);
+
+    durumM.yereller = durumM.yereller.map(function (x) { return (x && String(x.id) === String(mevcut.id)) ? guncel : x; });
+    durumM.musteriler = durumM.musteriler.map(function (x) { return (x && String(x.id) === String(mevcut.id)) ? guncel : x; });
+
+    if (durumM.secili && String(durumM.secili.id) === String(mevcut.id)) musteriSec(guncel, { sessiz: true });
+    if (durumM.profil && String(durumM.profil.id) === String(mevcut.id)) durumM.profil = guncel;
+
+    perdeKapat();
+    portfoyuCiz();
+    profiliCiz(durumM.profil);
+    seridiCiz();
+
+    if (cevap.iskontoKirpildi) {
+      bildir('Bilgiler güncellendi. İskonto tavanınız aşıldığı için oran %' + yuzdeYaz(tavan()) + ' olarak kaydedildi.', 'uyari');
+      return;
+    }
+
+    bildir(guncel.unvan + ' bilgileri güncellendi.', 'ok');
   }
 
   /** Formu okur — doğrulayıcının beklediği alan adlarıyla. */
@@ -884,8 +1007,50 @@
   }
 
   /* ------------------------------------------------------------------ *
-   *  SİPARİŞİ TAMAMLA — BİLEŞİK İSKONTO ÖZETİ
+   *  SİPARİŞİ TAMAMLA — BİLEŞİK İSKONTO ÖZETİ + KDV TERCİHİ
    * ------------------------------------------------------------------ */
+
+  /**
+   * "KDV istemiyorum" seçildiğinde TAHMİNİ düşüm.
+   *
+   * Fiyatlar KDV DAHİL girilir (sistemin sözleşmesi), yani KDV tutarın
+   * İÇİNDEDİR: tutar × o / (100 + o). Oran ÜRÜN BAŞINADIR ve sunucudan gelir
+   * (`_byom_kdv_rate` → katalogda `kdv_orani`); panel kendi oran listesini
+   * TUTMAZ.
+   *
+   * ORANI BİLİNMEYEN SATIR İÇİN SAYI UYDURULMAZ. Katalog eski bir eşitlemeden
+   * kalmış olabilir; "yaklaşık %20" yazmak plasiyerin müşteriye YANLIŞ fiyat
+   * söylemesi demektir. O satırlar sayılır ve ekranda "sunucuda hesaplanacak"
+   * denir. SON SÖZ ZATEN SUNUCUDADIR (B2B_Order_Revision::apply_vat_mode) —
+   * buradaki sayı GÖSTERİMDİR, sipariş yükünü değiştirmez.
+   */
+  function kdvTahmini(s) {
+    var kdv = 0;
+    var oranlar = [];
+    var bilinmeyen = 0;
+
+    (s.satirlar || []).forEach(function (satir) {
+      var adet = M().adediOturt(satir, satir.adet);
+      var tutar = (Number(satir.price) || 0) * adet;
+      var oran = M().kdvOrani(satir);
+
+      if (oran > 0) {
+        kdv += tutar * oran / (100 + oran);
+
+        if (-1 === oranlar.indexOf(oran)) oranlar.push(oran);
+      } else {
+        bilinmeyen++;
+      }
+    });
+
+    return {
+      tutar: Math.round(kdv * 100) / 100,
+      oran: 1 === oranlar.length ? oranlar[0] : 0,
+      karisik: oranlar.length > 1,
+      bilinmeyen: bilinmeyen,
+      hicYok: 0 === oranlar.length
+    };
+  }
 
   function tamamlamaAc() {
     var s = sepet();
@@ -915,6 +1080,33 @@
               : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700') +
             '" data-odeme="' + y + '">' + kacis(M().ODEME_ETIKET[y]) +
             (oran > 0 ? '<span class="block text-xs font-bold opacity-80">%' + kacis(yuzdeYaz(oran)) + ' iskonto</span>' : '') +
+          '</button>';
+        }).join('') +
+      '</div>' +
+
+      /*
+       * KDV TERCİHİ — ödeme yönteminin HEMEN ALTINDA, çünkü ikisi de "bu
+       * sipariş nasıl kesilecek" sorusunun parçasıdır ve plasiyer ikisini de
+       * müşterinin yanında, aynı anda sorar.
+       *
+       * VARSAYILAN "KDV İSTİYORUM": fiyatlar KDV dahil girilir, normal sipariş
+       * KDV lidir. Varsayılanı diğer yöne çevirmek, bu ekrana hiç bakmayan
+       * plasiyerin her siparişini sessizce KDV siz yazması olurdu.
+       */
+      '<div class="mt-5 text-sm font-bold text-slate-600 dark:text-slate-300">KDV Tercihi *</div>' +
+      '<div class="mt-2 grid grid-cols-2 gap-2">' +
+        [
+          { kod: '1', etiket: '✅ KDV İSTİYORUM', alt: 'Fiyatlar KDV dahildir' },
+          { kod: '0', etiket: '🚫 KDV İSTEMİYORUM', alt: 'Ürünlerin tekil KDV oranları düşülür' }
+        ].map(function (y) {
+          var secili = ('1' === y.kod) === (false !== s.kdvDahil);
+
+          return '<button type="button" class="kdv-sec px-4 py-4 rounded-xl border-2 font-extrabold transition ' +
+            (secili
+              ? ('0' === y.kod ? 'bg-amber-600 text-white border-amber-600' : 'bg-marka-700 text-white border-marka-700')
+              : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700') +
+            '" data-kdv="' + y.kod + '" aria-pressed="' + (secili ? 'true' : 'false') + '">' + kacis(y.etiket) +
+            '<span class="block text-xs font-bold opacity-80">' + kacis(y.alt) + '</span>' +
           '</button>';
         }).join('') +
       '</div>' +
@@ -957,6 +1149,15 @@
       });
     });
 
+    /* KDV seçimi vitrin fiyatlarını DEĞİŞTİRMEZ (KDV fiyatın içindedir, raf
+       etiketi aynı kalır); yalnızca pencere ve özet bloğu yeniden çizilir. */
+    modal.querySelectorAll('.kdv-sec').forEach(function (d) {
+      d.addEventListener('click', function () {
+        s.kdvDahil = '1' === d.dataset.kdv;
+        tamamlamaAc();
+      });
+    });
+
     el('vadeNotu').addEventListener('input', function () { s.vadeNotu = this.value; });
     el('siparisNotu').addEventListener('input', function () { s.siparisNotu = this.value; });
 
@@ -995,7 +1196,35 @@
         '<div class="flex justify-between text-lg font-black"><span>Net toplam</span><span>' + kacis(paraYaz(g.genelToplam)) + '</span></div>' +
         (g.indirim > 0 || g.odemeIndirim > 0
           ? '<div class="text-xs text-slate-500 dark:text-slate-400">Net = Liste × (1 − bayi/100) × (1 − ödeme/100)</div>'
-          : '');
+          : '') +
+        kdvOzetBlogu(g);
+    }
+
+    /** KDV istenmediğinde özetin altına düşen blok — YALNIZCA GÖSTERİM. */
+    function kdvOzetBlogu(g) {
+      if (false !== s.kdvDahil) return '';
+
+      var t = kdvTahmini(s);
+      var baslik = '<div class="mt-2 pt-2 border-t border-dashed border-amber-400 font-extrabold text-amber-700 dark:text-amber-400">' +
+        '🚫 Bu sipariş KDV UYGULANMADAN yazılacak</div>';
+
+      /* Hiçbir satırın oranı bilinmiyorsa SAYI BASILMAZ: uydurma bir tutar,
+         plasiyerin müşteriye yanlış fiyat söylemesi demektir. */
+      if (t.hicYok) {
+        return baslik +
+          '<div class="text-xs text-slate-500 dark:text-slate-400">KDV tutarı sunucuda hesaplanacak ' +
+          '(ürünlerin KDV oranları bu cihazda yok; kataloğu eşitleyin).</div>';
+      }
+
+      var oranYazisi = t.karisik ? 'karışık oran' : '%' + yuzdeYaz(t.oran);
+
+      return baslik +
+        '<div class="flex justify-between text-amber-700 dark:text-amber-400"><span>Tahmini KDV düşümü (' + kacis(oranYazisi) + ')</span>' +
+          '<span class="font-bold">−' + kacis(paraYaz(t.tutar)) + '</span></div>' +
+        '<div class="flex justify-between text-lg font-black"><span>Tahmini net (KDV hariç)</span>' +
+          '<span>' + kacis(paraYaz(Math.round((g.genelToplam - t.tutar) * 100) / 100)) + '</span></div>' +
+        '<div class="text-xs text-slate-500 dark:text-slate-400">Kesin tutar sunucuda, ürün başına KDV oranıyla hesaplanır.' +
+          (t.bilinmeyen > 0 ? ' ' + t.bilinmeyen + ' kalemin oranı bu cihazda yok, sunucuda çözülecek.' : '') + '</div>';
     }
   }
 
@@ -1043,6 +1272,9 @@
        görülen akış). Ödeme yöntemi ve notlar sıfırlanır — sipariş başına karar. */
     M().bosalt(s);
     M().odemeSec(s, '');
+    /* KDV tercihi de SİPARİŞ BAŞINA karardır: bir müşteriye KDV siz yazmak,
+       sıradaki siparişi de sessizce KDV siz yapmamalı. */
+    s.kdvDahil = true;
     s.vadeNotu = '';
     s.siparisNotu = '';
 
@@ -1228,6 +1460,7 @@
           (m.gecici
             ? ''
             : '<button type="button" class="mk-tekrar px-3 py-2 rounded-lg border-2 border-emerald-300 text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-300 font-bold text-sm hover:bg-emerald-50 dark:hover:bg-emerald-500/10" data-id="' + kacis(String(m.id)) + '" title="Son siparişi bugünün fiyatıyla sepete doldur">🔁 Tekrar Sipariş</button>') +
+          '<button type="button" class="mk-duzenle px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '" title="Müşteri bilgilerini düzenle">✏️</button>' +
           '<button type="button" class="mk-profil px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '">Profil</button>' +
           /* Yalnızca henüz sunucuya gitmemiş kayıt silinebilir (Faz 11). Metinde
              "ÇEVRİMDIŞI" geçmez — eşitleme testi rozetin kalktığını o sözcükle ölçer. */
@@ -1300,6 +1533,7 @@
         '</div>' +
         '<div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 flex flex-col gap-2">' +
           '<button type="button" id="profilSiparis" class="px-4 py-3 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600">🛍️ Bu Müşteriye Sipariş Yaz</button>' +
+          '<button type="button" id="profilDuzenle" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700">✏️ Müşteri Bilgilerini Düzenle</button>' +
           '<button type="button" id="profilNot" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700">📝 Saha Ziyaret Notu <span class="font-normal opacity-70">(isteğe bağlı)</span></button>' +
         '</div>' +
       '</div>' +
@@ -1332,6 +1566,10 @@
 
     el('profilSiparis').addEventListener('click', function () { siparisYazmayaGec(m); });
     el('profilNot').addEventListener('click', function () { ziyaretNotuAc(m); });
+
+    var duzenleD = el('profilDuzenle');
+
+    if (duzenleD) duzenleD.addEventListener('click', function () { yeniPerdesiniAc(m); });
   }
 
   /** Müşteriyi seçip Katalog & Satış'a geçer. */
@@ -1383,6 +1621,7 @@
       if (hedef.classList.contains('mk-not')) return ziyaretNotuAc(m);
       if (hedef.classList.contains('mk-sil')) return yerelMusteriSil(m);
       if (hedef.classList.contains('mk-tekrar')) return tekrarSiparisGec(m);
+      if (hedef.classList.contains('mk-duzenle')) return yeniPerdesiniAc(m);
 
       /* Profil düğmesi ya da kartın kendisi → profil */
       durumM.profil = m;

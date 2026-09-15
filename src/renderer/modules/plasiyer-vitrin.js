@@ -14,12 +14,23 @@
  *  süreçteki yerel depoya gider (bkz. main.js § 3.7). Plasiyer internetsizken
  *  de tam hızda çalışır; ağ yalnızca "Kataloğu Eşitle" anında konuşulur.
  *
- *  GÖRÜNÜM ANAHTARI: üst bardaki düğme ya da Tab tuşu. İki mod:
+ *  GÖRÜNÜM KİPLERİ: üst bardaki "Vitrin Görünümü" düğmesi KALDIRILDI (Faz 13,
+ *  ürün sahibinin kararı). Matris kipi duruyor ve iki yoldan açılıyor:
+ *    · arama kutusunda Enter  · alan dışında Tab
  *    vitrin → büyük kart, yerel diskten net görsel, koli + liste fiyatı
  *    matris → kompakt satır, küçük resim, [Enter → Adet → Enter] akışı
+ *  Düğme gidince kısayol keşfedilemez olmasın diye filtre barına KALICI bir
+ *  ipucu basılır (`kipIpucu`) — yoksa matrise geçen kullanıcı vitrine
+ *  dönemez.
  *
  *  PERFORMANS: liste `EN_COK_KART` ile kırpılır ve "Daha Göster" ile büyür.
  *  5.000 kartı birden basmak Electron'da ilk boyamayı saniyelere çıkarırdı.
+ *
+ *  SAYFALAMA (Faz 13): `katalog:ara` en çok `SAYFA` (500) kayıt döner ama
+ *  `toplam` alanıyla kaç kalem olduğunu da söyler. "Daha Göster" ekrandaki
+ *  sınırı büyütür; sınır yüklü kayıtları aşarsa SONRAKİ SAYFA çekilir (yine
+ *  yerel indeksten, AĞA ÇIKMADAN). Eskiden dizi 500'de bittiği için alfabetik
+ *  501. ürüne filtresiz gezinmeyle asla ulaşılamıyordu.
  * ==========================================================================*/
 
 'use strict';
@@ -28,6 +39,9 @@
 
   /** Tek seferde basılan en çok kart/satır. */
   var EN_COK_KART = 60;
+
+  /** Tek IPC turunda istenen en çok kayıt (depo tarafındaki kırpma sınırı). */
+  var SAYFA = 500;
 
   /** Görünüm modları. */
   var VITRIN = 'vitrin';
@@ -39,6 +53,12 @@
     sorgu: '',
     sinir: EN_COK_KART,
     urunler: [],
+    /* Süzgeçten geçen KIRPILMAMIŞ kalem sayısı — "1111 kalem" bundan yazılır. */
+    toplam: 0,
+    /* Son çekilen sayfanın başlangıcı (tanı ve sonraki sayfa isteği için). */
+    ofset: 0,
+    /* Katalogdaki toplam ürün (`katalog:durum`) — "1111 kaleminde 37 sonuç". */
+    katalogToplam: 0,
     kategoriler: [],
     sepet: null,
     tavan: 0,
@@ -56,6 +76,18 @@
 
   function el(id) {
     return document.getElementById(id);
+  }
+
+  /**
+   * Sayıyı güvenli okur; geçersizse yedeğe düşer.
+   *
+   * Eski bir ana süreçle (yanıtta `toplam` alanı yok) çalışıldığında liste
+   * "0 kalem" demesin diye: bilinmiyorsa elimizdeki uzunluk doğrudur.
+   */
+  function sayiOku(deger, yedek) {
+    var n = Number(deger);
+
+    return isFinite(n) && n >= 0 ? n : yedek;
   }
 
   function paraYaz(n) {
@@ -97,17 +129,54 @@
     kategorileriCiz();
   }
 
+  /**
+   * İLK SAYFAYI çeker (süzgeç değiştiğinde). AĞA ÇIKMAZ — `katalog:ara`
+   * ana süreçteki yerel indekse gider.
+   */
   async function urunleriGetir() {
     var cevap = await ipcRenderer.invoke('katalog:ara', {
       sorgu: durumV.sorgu,
       kategori: durumV.kategori,
-      adet: 500
+      adet: SAYFA,
+      ofset: 0
     });
 
     durumV.urunler = (cevap && cevap.urunler) || [];
+    durumV.ofset = 0;
+    durumV.toplam = sayiOku(cevap && cevap.toplam, durumV.urunler.length);
     durumV.sinir = EN_COK_KART;
 
     vitriniCiz();
+    filtreEtiketiniCiz();
+  }
+
+  /**
+   * SONRAKİ SAYFAYI ekler (yine yerel indeksten).
+   *
+   * "Daha Göster" sınırı yüklü kayıtların ötesine taşıdığında çağrılır.
+   * Boş yanıt gelirse `toplam` elimizdekine çekilir: aksi hâlde düğme
+   * sonsuza kadar "N ürün daha göster" der ve hiçbir şey gelmezdi.
+   */
+  async function sonrakiSayfa() {
+    var cevap = await ipcRenderer.invoke('katalog:ara', {
+      sorgu: durumV.sorgu,
+      kategori: durumV.kategori,
+      adet: SAYFA,
+      ofset: durumV.urunler.length
+    });
+
+    var gelen = (cevap && cevap.urunler) || [];
+
+    if (!gelen.length) {
+      durumV.toplam = durumV.urunler.length;
+      filtreEtiketiniCiz();
+      return;
+    }
+
+    durumV.ofset = durumV.urunler.length;
+    durumV.urunler = durumV.urunler.concat(gelen);
+    durumV.toplam = sayiOku(cevap && cevap.toplam, durumV.urunler.length);
+
     filtreEtiketiniCiz();
   }
 
@@ -116,13 +185,23 @@
 
     var k = (cevap && cevap.durum) || {};
     var g = (cevap && cevap.gorsel) || {};
+
+    /* Katalogdaki GERÇEK kalem sayısı. Filtre etiketi "1111 kaleminde 37
+       sonuç" derken bunu kullanır; ekrandaki dizi kırpılmış olabilir ve
+       kullanıcının "sistem yarım mı çekiyor?" sorusu tam buradan doğmuştu. */
+    durumV.katalogToplam = Number(k.urun) || 0;
+
+    filtreEtiketiniCiz();
+
     var kutu = el('katalogKunye');
 
     if (!kutu) return;
 
-    var zaman = k.sonGuncelleme ? new Date(k.sonGuncelleme).toLocaleString('tr-TR') : 'hiç eşitlenmedi';
+    var zaman = k.sonGuncelleme
+      ? 'son eşitleme ' + new Date(k.sonGuncelleme).toLocaleString('tr-TR')
+      : 'hiç eşitlenmedi';
 
-    kutu.textContent = (k.urun || 0) + ' ürün · ' + zaman +
+    kutu.textContent = 'Katalogda ' + (k.urun || 0) + ' ürün · ' + zaman +
       (g.bekleyen ? ' · ' + g.bekleyen + ' görsel iniyor' : '');
   }
 
@@ -185,11 +264,41 @@
     if (dugme) dugme.setAttribute('aria-expanded', durumV.menuAcik ? 'true' : 'false');
   }
 
-  /** Aktif filtreyi gösteren dinamik etiket. */
+  /**
+   * KİP İPUCU — "Vitrin Görünümü" düğmesi kaldırıldığı için (Faz 13) matris
+   * kipinin klavye kısayolu keşfedilemez olmasın diye filtre barında KALICI
+   * olarak durur. Matristeyken metin geri dönüş yolunu söyler; yoksa kullanıcı
+   * hızlı listeye geçtikten sonra vitrine dönemez.
+   */
+  function kipIpucu() {
+    return '<span class="ml-3 text-xs font-semibold text-slate-400 dark:text-slate-500" ' +
+                 'title="Hızlı liste (matris) kipi: arama kutusunda Enter, alan dışında Tab">' +
+      (MATRIS === durumV.mod ? '⌨️ Hızlı liste · Tab: vitrine dön' : 'Tab: hızlı liste') +
+    '</span>';
+  }
+
+  /**
+   * Aktif filtreyi gösteren dinamik etiket.
+   *
+   * SAYILAR KIRPILMAMIŞ OLANDIR (Faz 13): ekrandaki dizi 500'de bitse bile
+   * etiket gerçek kalem sayısını yazar. Ürün sahibinin şikâyeti tam buydu —
+   * solda "500 kalem", sağ üstte "1111 ürün" yazınca sistem yarım çekiyor
+   * sanılıyordu. Kırpma varsa ikinci satır bunu AÇIKÇA söyler.
+   */
   function filtreEtiketiniCiz() {
     var kutu = el('filtreEtiket');
 
     if (!kutu) return;
+
+    var yuklu = durumV.urunler.length;
+    var toplam = Math.max(sayiOku(durumV.toplam, yuklu), yuklu);
+    var katalog = durumV.katalogToplam || toplam;
+
+    /* Elimizdeki dizi süzgeç sonucunun tamamı değilse kullanıcı uyarılır. */
+    var uyari = yuklu < toplam
+      ? '<div class="w-full text-xs font-semibold text-amber-600 dark:text-amber-400">ilk ' + yuklu +
+        ' gösteriliyor — arama ile daraltın</div>'
+      : '';
 
     var parcalar = [];
 
@@ -198,7 +307,7 @@
 
     if (!parcalar.length) {
       kutu.innerHTML = '<span class="text-slate-500 dark:text-slate-400">Tüm ürünler · ' +
-        durumV.urunler.length + ' kalem</span>';
+        toplam + ' kalem</span>' + kipIpucu() + uyari;
       return;
     }
 
@@ -208,7 +317,8 @@
         '<button type="button" id="filtreTemizle" class="ml-1 px-2 rounded-lg bg-white/20 hover:bg-white/30 font-black" ' +
                 'title="Filtreyi temizle">✕ Temizle</button>' +
       '</span>' +
-      '<span class="ml-3 text-slate-500 dark:text-slate-400">' + durumV.urunler.length + ' kalem</span>';
+      '<span class="ml-3 text-slate-500 dark:text-slate-400">' + katalog + ' kaleminde ' + toplam + ' sonuç</span>' +
+      kipIpucu() + uyari;
 
     var temizle = el('filtreTemizle');
 
@@ -230,14 +340,19 @@
    *  GÖRÜNÜM
    * ------------------------------------------------------------------ */
 
+  /**
+   * Vitrin ↔ matris kipi.
+   *
+   * Tetikleyiciler: arama kutusunda Enter, alan dışında Tab. Üst bardaki
+   * "Vitrin Görünümü" düğmesi kaldırıldığı için (Faz 13) burada artık düğme
+   * etiketi güncellenmez; kullanıcıya kipi ve dönüş yolunu filtre barındaki
+   * kalıcı ipucu söyler — bu yüzden etiket de yeniden çizilir.
+   */
   function modAnahtarla() {
     durumV.mod = (VITRIN === durumV.mod) ? MATRIS : VITRIN;
 
-    var dugme = el('gorunumAnahtar');
-
-    if (dugme) dugme.textContent = (VITRIN === durumV.mod) ? '🛍️ Vitrin' : '⌨️ Hızlı Liste';
-
     vitriniCiz();
+    filtreEtiketiniCiz();
   }
 
   function gosterilenler() {
@@ -300,14 +415,42 @@
     return M().netFiyat(u.price, s.iskonto, s.odemeIskonto);
   }
 
-  function fiyatHtml(u, sinif) {
+  /**
+   * ÜRÜN KOD/BARKOD — tek kaynak.
+   *
+   * Kart, matris satırı ve ürün detay penceresi bu fonksiyonu çağırır; kalıp
+   * eskiden üç yerde tekrarlanıyordu ve kart yalnızca SKU basıyordu: SKU'su
+   * olmayan üründe ekranda BOŞ BİR SATIR kalıyor, barkod hiç görünmüyordu.
+   * Sahada ürün çoğu kez barkodundan okunur.
+   *
+   * @param {object} u Ürün kaydı.
+   * @returns {string} 'SKU', 'barkod', 'SKU · barkod' ya da '-'.
+   */
+  function kodBarkod(u) {
+    var sku = String((u && u.sku) || '').trim();
+    var barkod = String((u && u.barcode) || '').trim();
+
+    if (sku && barkod) return sku + ' · ' + barkod;
+
+    return sku || barkod || '-';
+  }
+
+  /**
+   * Fiyat etiketi.
+   *
+   * "onek" verilirse metin "Fiyat : " ile başlar (ürün sahibinin istediği kart
+   * düzeni). NET/liste MANTIĞI DEĞİŞMEDİ: müşteri seçiliyken yeşil net fiyat
+   * ve üstü çizili liste fiyatı aynen basılır (bileşik iskonto sözü).
+   */
+  function fiyatHtml(u, sinif, onek) {
     var net = netFiyati(u);
+    var bas = onek ? 'Fiyat : ' : '';
 
     if (null === net || net === (Number(u.price) || 0)) {
-      return '<div class="' + sinif + '">' + kacis(paraYaz(u.price)) + '</div>';
+      return '<div class="' + sinif + '">' + bas + kacis(paraYaz(u.price)) + '</div>';
     }
 
-    return '<div class="' + sinif + ' text-emerald-700 dark:text-emerald-400">' + kacis(paraYaz(net)) +
+    return '<div class="' + sinif + ' text-emerald-700 dark:text-emerald-400">' + bas + kacis(paraYaz(net)) +
       ' <span class="ml-1 text-xs font-bold text-slate-400 line-through">' + kacis(paraYaz(u.price)) + '</span></div>';
   }
 
@@ -315,12 +458,26 @@
     return u.is_spot ? '<span class="spot-rozet">🔥 SPOT / FIRSAT</span>' : '';
   }
 
+  /**
+   * Satış birimi rozeti.
+   *
+   * "yalniz_koli" sunucudan gelir (_byom_only_box) ve depo kaydında artık
+   * saklanıyor. "Koli: 24 adet" ile "Sadece koli: 24 adet" farklı sözlerdir:
+   * ikincisinde bayi tekil alamaz ve plasiyerin bunu müşterinin karşısında
+   * bilmesi gerekir.
+   */
   function koliEtiketi(u) {
     var koli = M().koliIci(u);
+    var yalniz = !!(u && u.yalniz_koli);
+    var vurgu = 'px-2 py-1 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-extrabold';
 
-    return koli > 1
-      ? '<span class="px-2 py-1 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-extrabold">Koli: ' + koli + ' adet</span>'
-      : '<span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 text-xs font-bold">Tekil satış</span>';
+    if (koli > 1) {
+      return '<span class="' + vurgu + '">' + (yalniz ? 'Sadece koli: ' : 'Koli: ') + koli + ' adet</span>';
+    }
+
+    if (yalniz) return '<span class="' + vurgu + '">Sadece koli</span>';
+
+    return '<span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 text-xs font-bold">Tekil satış</span>';
   }
 
   /** VİTRİN (sunum) modu — büyük kartlar. */
@@ -333,10 +490,14 @@
             '<button type="button" class="urun-buyut w-full" data-id="' + u.id + '" title="Büyüt">' +
               gorselEtiketi(u) +
             '</button>' +
+            /* ÜRÜN SAHİBİNİN İSTEDİĞİ SIRA: görsel → ad → kod/barkod →
+               (rozet + fiyat aynı satırda). */
             '<div class="mt-3 font-extrabold leading-snug line-clamp-2" title="' + kacis(u.name) + '">' + kacis(u.name) + '</div>' +
-            '<div class="mt-1 text-xs text-slate-500 dark:text-slate-400">' + kacis(u.sku || '') + '</div>' +
-            '<div class="mt-2 flex items-center gap-2 flex-wrap">' + koliEtiketi(u) + '</div>' +
-            fiyatHtml(u, 'mt-2 text-lg font-black') +
+            '<div class="mt-1 text-xs text-slate-500 dark:text-slate-400">Ürün Kod/Barkod : ' + kacis(kodBarkod(u)) + '</div>' +
+            '<div class="mt-2 flex items-center justify-between gap-2 flex-wrap">' +
+              koliEtiketi(u) +
+              fiyatHtml(u, 'text-lg font-black', true) +
+            '</div>' +
             /* HIZLI ADET (Faz 10 — Görsel 4): kartta doğrudan sayı yazılır;
                −/+ koli katlarında ilerler, Enter ya da "Sepete Ekle" yazılan
                adedi sepete koyar (motor koli katına YUKARI tamamlar). */
@@ -386,7 +547,7 @@
                   '</div>' +
                   '<div class="min-w-0">' +
                     '<div class="font-bold truncate">' + (u.is_spot ? '🔥 ' : '') + kacis(u.name) + '</div>' +
-                    '<div class="text-xs text-slate-500 dark:text-slate-400">' + kacis(u.sku || '') + (u.barcode ? ' · ' + kacis(u.barcode) : '') + '</div>' +
+                    '<div class="text-xs text-slate-500 dark:text-slate-400">' + kacis(kodBarkod(u)) + '</div>' +
                   '</div>' +
                 '</div>' +
               '</td>' +
@@ -403,12 +564,22 @@
     '</div>';
   }
 
+  /**
+   * "Daha Göster" düğmesi.
+   *
+   * Kalan sayısı EKRANDAKİ diziye değil SÜZGECİN TOPLAMINA göre hesaplanır:
+   * yüklü kayıtlar bittiğinde düğme sonraki sayfayı çeker (yerel indeks, ağ
+   * yok). Eskiden sınır büyüse de dizi 500'de bittiği için 501. ürün
+   * erişilemezdi.
+   */
   function dahaDugmesiniCiz() {
     var kap = el('vitrinDaha');
 
     if (!kap) return;
 
-    var kalan = durumV.urunler.length - durumV.sinir;
+    var yuklu = durumV.urunler.length;
+    var toplam = Math.max(sayiOku(durumV.toplam, yuklu), yuklu);
+    var kalan = toplam - Math.min(durumV.sinir, yuklu);
 
     kap.innerHTML = kalan > 0
       ? '<button type="button" id="dahaGoster" class="px-6 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">' +
@@ -418,8 +589,15 @@
     var daha = el('dahaGoster');
 
     if (daha) {
-      daha.addEventListener('click', function () {
+      daha.addEventListener('click', async function () {
+        daha.disabled = true;
         durumV.sinir += EN_COK_KART;
+
+        /* Sınır yüklü kayıtları aştıysa sıradaki sayfa gerekir. */
+        if (durumV.sinir > durumV.urunler.length && durumV.urunler.length < durumV.toplam) {
+          await sonrakiSayfa();
+        }
+
         vitriniCiz();
       });
     }
@@ -451,8 +629,8 @@
       '<div class="mt-4 grid gap-5 sm:grid-cols-2">' +
         '<div class="relative">' + spotRozeti(u) + gorselEtiketi(u) + '</div>' +
         '<div>' +
-          '<div class="text-sm text-slate-500 dark:text-slate-400">' + kacis(u.sku || '') + (u.barcode ? ' · ' + kacis(u.barcode) : '') + '</div>' +
-          fiyatHtml(u, 'mt-3 text-3xl font-black') +
+          '<div class="text-sm text-slate-500 dark:text-slate-400">Ürün Kod/Barkod : ' + kacis(kodBarkod(u)) + '</div>' +
+          fiyatHtml(u, 'mt-3 text-3xl font-black', true) +
           '<div class="mt-3">' + koliEtiketi(u) + '</div>' +
           (null === u.stock_quantity
             ? ''
@@ -646,8 +824,8 @@
     var menu = el('katMenuAnahtar');
     if (menu) menu.addEventListener('click', menuyuAnahtarla);
 
-    var gorunum = el('gorunumAnahtar');
-    if (gorunum) gorunum.addEventListener('click', modAnahtarla);
+    /* "Vitrin Görünümü" düğmesi işaretlemeden kaldırıldı (Faz 13); bağlanacak
+       düğüm yok. Kip değişimi Enter ve Tab ile yapılır (aşağıda). */
 
     var esitle = el('katalogEsitle');
     if (esitle) esitle.addEventListener('click', kataloguEsitle);
@@ -873,6 +1051,9 @@
 
   window.PlasiyerVitrin = {
     sekmeyiAc: sekmeyiAc,
+    kodBarkod: kodBarkod,
+    urunleriGetir: urunleriGetir,
+    filtreEtiketiniCiz: filtreEtiketiniCiz,
     sepetAl: sepetAl,
     sepetiCiz: sepetiCiz,
     vitriniCiz: vitriniCiz,

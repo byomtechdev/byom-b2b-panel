@@ -31,6 +31,16 @@
  *  gerçek (§0 madde 1 — formül burada YENİDEN YAZILMAZ, yalnızca dökülür).
  *  Hiçbir alan NaN/undefined çıkmaz; her tutar kuruşa yuvarlanır.
  *
+ *  KDV — BELGEDE DÖKÜLÜR, BURADA HESAPLANMAZ:
+ *      Fiyatlar KDV DAHİL girilir (sistemin sözleşmesi); WooCommerce vergi
+ *      motoruna dokunulmaz. Oran ürün başına `_byom_kdv_rate`, yoksa mağaza
+ *      varsayılanı — PANEL KENDİ ORAN LİSTESİNİ TUTMAZ. Satır KDV'si sunucudan
+ *      `vat_rate` / `vat_amount` olarak gelir ve OLDUĞU GİBİ basılır; alan hiç
+ *      yoksa (eski eklenti) yalnızca o zaman orandan türetilir.
+ *      "KDV istemiyorum" siparişinde sunucu satırları netleştirir
+ *      (`_b2b_vat_excluded`, `_b2b_vat_removed`); fiş bunu AÇIKÇA yazar ve
+ *      NET'ten KDV'yi İKİNCİ KEZ DÜŞMEZ.
+ *
  *  GÜVENLİK: her kullanıcı metni HTML'e `kacis` ile girer; logo yalnızca
  *  data:image/ ya da http(s)/file şemasıyla basılır (javascript: giremez).
  *  Fişte etkileşimli öğe, harici CSS/JS ya da CDN YOKTUR.
@@ -216,7 +226,7 @@
    * `liste` (iskontosuz satır tutarı) dışa VERİLMEZ; yalnızca ara toplam ve
    * satır iskontosu hesabında kullanılır.
    */
-  function kalemNormalle(k) {
+  function kalemNormalle(k, kdvHaric) {
     k = (k && 'object' === typeof k) ? k : {};
 
     var adet = ilkPozitif(k.adet, k.quantity);
@@ -244,6 +254,27 @@
     if (!tutar && birim > 0 && adet > 0) tutar = kurus(birim * adet);
     if (!birim && tutar > 0 && adet > 0) birim = kurus(tutar / adet);
 
+    /*
+     * SATIR KDV KÜNYESİ — SUNUCUDAN GELİR, BURADA YENİDEN HESAPLANMAZ.
+     * `prepare_order` ve `kalem_dokumu` satır başına `vat_rate` + `vat_amount`
+     * üretiyor (satır metası → ürün oranı; WooCommerce vergi satırı varsa O
+     * kazanıyor). Aynı hesabı panelde tekrarlamak aynı kuralın ikinci kopyası
+     * olurdu — panel KENDİ oran listesini tutmaz, sunucudan geleni basar.
+     */
+    var kdvOrani = yuzde(ilkPozitif(k.kdvOrani, k.vat_rate, k.kdv_orani));
+    var kdvTutar = kurus(ilkPozitif(k.kdvTutar, k.vat_amount, k.kdv_tutari));
+
+    /*
+     * TEK YEDEK — alan HİÇ gelmediyse (eski eklenti / ince yük) orandan türetilir.
+     * Fiyatlar KDV DAHİL girilir (sistemin sözleşmesi), yani KDV tutarın
+     * İÇİNDEDİR: tutar × o / (100 + o). Sipariş "KDV hariç" kipine çevrildiyse
+     * satır tutarı zaten nettir ve KDV üstüne eklenir: tutar × o / 100.
+     * Sunucu tutarı gönderdiği anda bu dal hiç çalışmaz.
+     */
+    if (!kdvTutar && kdvOrani > 0 && tutar > 0) {
+      kdvTutar = kdvHaric ? kurus(tutar * kdvOrani / 100) : kurus(tutar * kdvOrani / (100 + kdvOrani));
+    }
+
     /* Liste tutarı satır tutarından küçük olamaz; küçük/yoksa iskonto yok sayılır. */
     if (liste < tutar) liste = tutar;
 
@@ -255,7 +286,9 @@
         koli: koli,
         koliIci: koliIci,
         birim: kurus(birim),
-        tutar: kurus(tutar)
+        tutar: kurus(tutar),
+        kdvOrani: kdvOrani,
+        kdvTutar: kdvTutar
       },
       liste: kurus(liste)
     };
@@ -298,6 +331,57 @@
     if (k.koli > 0) return sayiYaz(k.koli) + ' koli · ' + adet;
 
     return adet;
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  KDV ÖZETİ — SUNUCUNUN SATIRLARINDAN, YENİDEN HESAPLAMADAN
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Fişin KDV künyesi: toplam, tek oran (varsa) ve "karışık oran" bayrağı.
+   *
+   * Toplam için SUNUCUNUN kök alanı (`vat_total` → `kdvToplam`) önce gelir;
+   * yoksa satırların kendi tutarları toplanır. İki yol da sunucu verisidir —
+   * panel oran × tutar çarpmaz (§0 madde 1: formül burada yeniden yazılmaz).
+   *
+   * Sepette birden çok KDV oranı olabilir (%1 gıda + %20 hırdavat). Tek bir
+   * oran yazmak müşteriye yanlış bilgi olurdu; o hâlde etiket "karışık oran"
+   * der ve tutar yine doğru kalır.
+   */
+  function kdvOzeti(fis) {
+    var kalemler = Array.isArray(fis && fis.kalemler) ? fis.kalemler : [];
+    var oranlar = [];
+    var kalemToplam = 0;
+
+    kalemler.forEach(function (k) {
+      if (!k || 'object' !== typeof k) return;
+
+      kalemToplam = kurus(kalemToplam + sayi(k.kdvTutar));
+
+      var o = sayi(k.kdvOrani);
+
+      if ((o > 0 || sayi(k.kdvTutar) > 0) && -1 === oranlar.indexOf(o)) oranlar.push(o);
+    });
+
+    var kokToplam = kurus(sayi(fis && fis.kdvToplam));
+    var toplam = kokToplam > 0 ? kokToplam : kalemToplam;
+    var istenmedi = !!(fis && fis.kdvIstenmedi);
+
+    return {
+      /* KDV hiç bilinmiyorsa fişte KDV sütunu/satırı BASILMAZ — boş bir
+         "%0 · 0,00" sütunu belgeyi kalabalıklaştırır ve yanlış okunur. */
+      dolu: !!(toplam > 0.005 || oranlar.length || istenmedi),
+      toplam: toplam,
+      oran: 1 === oranlar.length ? oranlar[0] : 0,
+      karisik: oranlar.length > 1
+    };
+  }
+
+  function kdvEtiketi(oz) {
+    if (oz.karisik) return 'KDV (karışık oran)';
+    if (oz.oran > 0) return 'KDV (' + oranYazi(oz.oran) + ')';
+
+    return 'KDV';
   }
 
   /* ------------------------------------------------------------------ *
@@ -395,6 +479,15 @@
       listeVerilen: ilkPozitif(fiyat.list_total),
       araVerilen: ilkPozitif(k.subtotal),
       netVerilen: ilkPozitif(k.total),
+      /*
+       * KDV KÜNYESİ (sunucu sözleşmesi). "KDV'siz sipariş"in sunucu temsili:
+       * `_b2b_vat_excluded = 'yes'` + `_b2b_vat_removed` (B2B_Order_Revision::
+       * apply_vat_mode). `vat_total` satır KDV'lerinin toplamıdır; WooCommerce
+       * vergi motoru açıksa gerçek vergi zaten o toplamın içindedir.
+       */
+      kdvIstenmedi: !!(true === k.vat_excluded || 'yes' === k.vat_excluded || k.kdvIstenmedi || 'yes' === meta._b2b_vat_excluded),
+      kdvDusulen: ilkPozitif(k.vat_removed, k.kdvDusulen, meta._b2b_vat_removed),
+      kdvToplam: ilkPozitif(k.vat_total, k.kdvToplam, k.total_tax),
       odeme: odemeEtiketi(ilkDolu(k.payment_method_title, k.payment_title, meta._b2b_odeme_tipi, k.payment_type_label, k.payment_method)),
       not: ilkDolu(k.customer_note, meta._b2b_vade_notu, k.note),
       kalemler: Array.isArray(k.items) ? k.items : (Array.isArray(k.line_items) ? k.line_items : k.kalemler)
@@ -436,6 +529,12 @@
       listeVerilen: 0,
       araVerilen: ilkPozitif(k.araToplam),
       netVerilen: ilkPozitif(k.tutar, k.net, k.genelToplam),
+      /* Panelin normalizasyonları aynı künyeyi Türkçe adlarla taşır
+         (plasiyer-siparislerim.js → normalle); İngilizce adlar da kabul edilir
+         ki iki okuyucu ASLA ayrışmasın. */
+      kdvIstenmedi: !!(k.kdvIstenmedi || true === k.vat_excluded || 'yes' === k.vat_excluded),
+      kdvDusulen: ilkPozitif(k.kdvDusulen, k.vat_removed),
+      kdvToplam: ilkPozitif(k.kdvToplam, k.vat_total, k.toplamKdv),
       odeme: odemeEtiketi(ilkDolu(k.odeme, k.odemeTipiEtiket, k.odemeTipi)),
       not: ilkDolu(k.notlar, k.not, k.siparisNotu, k.vadeNotu),
       kalemler: k.kalemler
@@ -455,7 +554,8 @@
    * @returns {object} { numara, tarih, tarihYazi, durumEtiketi, firma, plasiyer,
    *                     musteri, kalemler, cesit, toplamAdet, toplamKoli, araToplam,
    *                     bayiIskontoOrani, bayiIskontoTutar, odemeIskontoOrani,
-   *                     odemeIskontoTutar, net, odeme, not }
+   *                     odemeIskontoTutar, kdvToplam, kdvIstenmedi, kdvDusulen,
+   *                     net, odeme, not }
    */
   function normalle(kaynak, baglam) {
     var k = (kaynak && 'object' === typeof kaynak) ? kaynak : {};
@@ -467,15 +567,21 @@
     var toplamKoli = 0;
     var araKalem = 0;
     var listeKalem = 0;
+    var kdvKalem = 0;
+
+    /* KDV hariç kipinde satır tutarı ZATEN nettir; kalem çözücüsü yedek
+       türetmeyi buna göre yapmalı (içinden ayrıştır ≠ üstüne ekle). */
+    var kdvIstenmedi = !!o.kdvIstenmedi;
 
     (Array.isArray(o.kalemler) ? o.kalemler : []).forEach(function (h) {
-      var n = kalemNormalle(h);
+      var n = kalemNormalle(h, kdvIstenmedi);
 
       kalemler.push(n.kalem);
       toplamAdet += n.kalem.adet;
       toplamKoli += n.kalem.koli;
       araKalem += n.kalem.tutar;
       listeKalem += n.liste;
+      kdvKalem += n.kalem.kdvTutar;
     });
 
     araKalem = kurus(araKalem);
@@ -512,6 +618,19 @@
 
     if (net < 0) net = 0;
 
+    /*
+     * KDV TOPLAMI — sunucunun kök alanı önce, yoksa satırların toplamı.
+     * NET'ten İKİNCİ KEZ DÜŞÜLMEZ: fiyatlar KDV dahil girilir, "KDV istemiyorum"
+     * seçildiğinde satır tutarları sunucuda ZATEN netleştirilmiştir. Burada
+     * tekrar çıkarmak müşteriye iki kez indirim yazmak olurdu.
+     */
+    var kdvToplam = kurus(o.kdvToplam) || kurus(kdvKalem);
+
+    /* "Düşülen KDV" yalnızca KDV hariç siparişte anlamlıdır. Sunucu damgası
+       (`_b2b_vat_removed`) yoksa satır KDV'lerinin toplamı aynı tutardır —
+       ikisi de sunucu verisi, panel yeni bir sayı uydurmaz. */
+    var kdvDusulen = kdvIstenmedi ? (kurus(o.kdvDusulen) || kdvToplam) : 0;
+
     /* Plasiyer: siparişin damgası önce; bağlamdaki ad yalnızca aynı kişiyse
        (ya da sipariş kimlik taşımıyorsa) kullanılır — 7 numaralı plasiyerin
        siparişine 3 numaranın adını yazmak yanlış künye olurdu. */
@@ -539,6 +658,9 @@
       bayiIskontoTutar: bayiTutar,
       odemeIskontoOrani: odemeOrani,
       odemeIskontoTutar: odemeTutar,
+      kdvToplam: kdvToplam,
+      kdvIstenmedi: kdvIstenmedi,
+      kdvDusulen: kdvDusulen,
       net: net,
       odeme: o.odeme,
       not: o.not
@@ -579,6 +701,15 @@
       '.toplamlar td { padding:1.2mm 1.5mm; }',
       '.toplamlar .etiket { text-align:right; color:#475569; }',
       '.toplamlar .indirim .deger { color:#b91c1c; }',
+      '.toplamlar .kdv .etiket, .toplamlar .kdv .deger { font-weight:700; }',
+      '.toplamlar .kdv-yok .deger { color:#b45309; font-weight:800; }',
+      /* KDV'siz sipariş uyarısı: müşteri fişe bakınca "neden KDV yok?" sorusunu
+         sormadan cevabını görmeli. Bu yüzden toplam bloğunun altında, çerçeveli. */
+      '.kdv-notu { margin-top:3mm; border:1.5px solid #b45309; border-radius:2mm; padding:2.5mm 3mm; color:#7c2d12; background:#fffbeb; font-weight:600; }',
+      /* Termal kip: KDV kalemin ALTINDA ikinci satırdır; üstteki satırın alt
+         çizgisi kaldırılır ki kalem tek blok gibi okunsun. */
+      '.kalemler tr.s-kdvli td { border-bottom:0; }',
+      '.s-kdv-bilgi { padding-top:0 !important; color:#475569; }',
       '.toplamlar .net td { font-weight:900; border-top:2px solid #0f172a; padding-top:2.5mm; }',
       '.not { border:1px dashed #94a3b8; border-radius:2mm; padding:3mm; white-space:pre-wrap; overflow-wrap:anywhere; }',
       '.alt { border-top:1px solid #cbd5e1; padding-top:2mm; font-size:9px; color:#64748b; text-align:center; }',
@@ -688,17 +819,51 @@
       '<dt>Kalem</dt><dd>' + kacis(ozet) + '</dd>' +
       '</dl></div>';
 
+    /*
+     * KDV YERLEŞİMİ — AYNI VERİ, İKİ DÜZEN, TEK KOD.
+     *
+     * A4'te KDV oranı kod/barkodun hemen ardından, KDV tutarı ise tutarın
+     * yanında KENDİ SÜTUNUDUR (ürün sahibinin istediği sıra: ad · kod ·
+     * KDV · koli×adet · birim · KDV tutarı · toplam).
+     *
+     * 80 mm TERMALDE kâğıt tek sütundur: iki sütun daha eklemek ürün adını
+     * üç harfe düşürür. Aynı bilgi kalemin ALTINDA ikinci satır olur
+     * ("KDV %20 · 34,20 TL"). İki ayrı çizici yazmak yerine iki bayrak —
+     * düzen değişir, veri ve kaynak değişmez.
+     */
+    var oz = kdvOzeti(fis);
+    var kdvSutun = oz.dolu && !termal;
+    var kdvAltSatir = oz.dolu && termal;
+    var sutunSayisi = 5 + (kdvSutun ? 2 : 0);
+
+    /* Oranı da tutarı da bilinmeyen kalem "%0" yazmaz: %0 KDV gerçek bir
+       orandır (bazı gıda/kitap), "bilmiyorum" ile karıştırılamaz. */
+    function kdvliMi(k) {
+      return k.kdvOrani > 0 || k.kdvTutar > 0;
+    }
+
     var satirlar = kalemler.length
       ? kalemler.map(function (k) {
-          return '<tr>' +
+          var altVar = kdvAltSatir && kdvliMi(k);
+
+          var satir = '<tr' + (altVar ? ' class="s-kdvli"' : '') + '>' +
             '<td class="s-ad">' + kacis(k.ad || '—') + '</td>' +
             '<td class="s-sku">' + kacis(k.sku || '—') + '</td>' +
+            (kdvSutun ? '<td class="s-kdv sayi">' + kacis(kdvliMi(k) ? oranYazi(k.kdvOrani) : '—') + '</td>' : '') +
             '<td class="s-adet sayi">' + kacis(koliAdetYazi(k)) + '</td>' +
             '<td class="s-birim sayi">' + kacis(para(k.birim)) + '</td>' +
+            (kdvSutun ? '<td class="s-kdvtutar sayi">' + kacis(kdvliMi(k) ? para(k.kdvTutar) : '—') + '</td>' : '') +
             '<td class="s-tutar sayi">' + kacis(para(k.tutar)) + '</td>' +
             '</tr>';
+
+          if (altVar) {
+            satir += '<tr class="s-kdv-satir"><td class="s-kdv-bilgi" colspan="' + sutunSayisi + '">' +
+              kacis('KDV ' + oranYazi(k.kdvOrani) + ' · ' + para(k.kdvTutar)) + '</td></tr>';
+          }
+
+          return satir;
         }).join('')
-      : '<tr><td class="bos" colspan="5">Kalem yok</td></tr>';
+      : '<tr><td class="bos" colspan="' + sutunSayisi + '">Kalem yok</td></tr>';
 
     function toplamSatiri(etiket, deger, sinif) {
       return '<tr' + (sinif ? ' class="' + sinif + '"' : '') + '>' +
@@ -718,7 +883,25 @@
         ? toplamSatiri('Ödeme iskontosu (' + kacis(oranYazi(fis.odemeIskontoOrani)) + ')',
                        '&minus;' + kacis(para(fis.odemeIskontoTutar)), 'indirim')
         : '') +
+      /*
+       * Σ KDV — müşterinin "kaç KDV'li aldım" sorusunun cevabı. KDV
+       * İSTENMEDİYSE bu satır BASILMAZ: tutar zaten düşüldü, burada göstermek
+       * "ayrıca KDV ödeyeceğim" diye okunurdu; yerine aşağıdaki açık blok çıkar.
+       */
+      (!fis.kdvIstenmedi && oz.toplam > 0.005
+        ? toplamSatiri(kacis(kdvEtiketi(oz)), kacis(para(oz.toplam)), 'kdv')
+        : '') +
+      (fis.kdvIstenmedi ? toplamSatiri('KDV', 'UYGULANMADI', 'kdv-yok') : '') +
       toplamSatiri('NET ÖDENECEK', kacis(para(fis.net)), 'net');
+
+    /* Sunucu damgası yoksa satır KDV'lerinin toplamı aynı tutardır. */
+    var kdvDusulen = kurus(fis.kdvDusulen) || (fis.kdvIstenmedi ? oz.toplam : 0);
+
+    var kdvNotu = fis.kdvIstenmedi
+      ? '<section class="kdv-notu">Bu siparişte KDV uygulanmamıştır' +
+        (kdvDusulen > 0.005 ? ' (düşülen KDV: ' + kacis(para(kdvDusulen)) + ')' : '') +
+        '. Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.</section>'
+      : '';
 
     return '<!DOCTYPE html>\n' +
       '<html lang="tr"><head><meta charset="UTF-8">' +
@@ -740,9 +923,14 @@
       '</header>' +
       '<section class="kunye">' + bayiKutusu + siparisKutusu + '</section>' +
       '<table class="kalemler"><thead><tr>' +
-        '<th>Ürün</th><th>SKU</th><th class="sayi">Koli × Adet</th><th class="sayi">Birim</th><th class="sayi">Tutar</th>' +
+        '<th>Ürün</th><th>Kod / Barkod</th>' +
+        (kdvSutun ? '<th class="sayi">KDV</th>' : '') +
+        '<th class="sayi">Koli × Adet</th><th class="sayi">Birim</th>' +
+        (kdvSutun ? '<th class="sayi">KDV Tutarı</th>' : '') +
+        '<th class="sayi">Tutar</th>' +
       '</tr></thead><tbody>' + satirlar + '</tbody></table>' +
       '<table class="toplamlar"><tbody>' + toplamlar + '</tbody></table>' +
+      kdvNotu +
       (fis.not ? '<section class="not"><h3>Sipariş Notu</h3>' + kacis(fis.not) + '</section>' : '') +
       '<footer class="alt">' + kacis(ALT_YAZI) + '</footer>' +
       '</div></body></html>';
@@ -792,6 +980,21 @@
 
     if (fis.odemeIskontoTutar > 0.005 || fis.odemeIskontoOrani > 0) {
       son.push('*Ödeme iskontosu (' + oranYazi(fis.odemeIskontoOrani) + '):* −' + para(fis.odemeIskontoTutar));
+    }
+
+    /*
+     * KDV TEK SATIR. WhatsApp 1800 karakterle sınırlı; kalem başına KDV yazmak
+     * bütçeyi yer ve sınıra dayanınca ilk düşen şey KALEM olur. Müşterinin
+     * mesajdan öğrenmesi gereken tek şey "ne kadar KDV var / var mı".
+     */
+    var waOz = kdvOzeti(fis);
+
+    if (fis.kdvIstenmedi) {
+      var waDusulen = kurus(fis.kdvDusulen) || waOz.toplam;
+
+      son.push('*KDV UYGULANMADI*' + (waDusulen > 0.005 ? ' (düşülen: ' + para(waDusulen) + ')' : ''));
+    } else if (waOz.toplam > 0.005) {
+      son.push('*' + kdvEtiketi(waOz) + ':* ' + para(waOz.toplam));
     }
 
     son.push('*NET ÖDENECEK: ' + para(fis.net) + '*');

@@ -2184,17 +2184,24 @@
     if (typeof faviconOnizlemeGuncelle === 'function') { try { faviconOnizlemeGuncelle(); } catch (e) { /* ayarlar henüz yok */ } }
   }
 
-  /* ---------- masaüstü logo genişliği (Faz 11 · Eksen 2) ----------
-   * Sol üst logonun genişliği YALNIZCA bu uygulamanın ayarıdır
+  /* ---------- masaüstü logo genişliği (Faz 11 · Eksen 2; canlı şerit Faz 12.1) ----------
+   * Sol üst logonun ölçeği YALNIZCA bu uygulamanın ayarıdır
    * (ayarlar.json → masaustuLogoGenislik, 100–320 px). Kaydırıcı "Marka
-   * Görselleri" panelinde durur ama SİTEYE GİTMEZ: theme-config/branding
+   * Görselleri" panelinde durur ama SİTEYE GİTMEZ: theme-config/marka
    * yüküne (showcaseKaydet) ve storefront-layout PUT'una asla girmez —
    * yonetici-arayuz.dom.test.js bunu kaynak üzerinden kilitler.
-   *   input  → logoGenisligiUygula(px): yalnızca --logo-width (IPC yok, disk yok)
+   *   input  → logoGenisligiUygula(px): yalnızca CSS değişkenleri (IPC yok, disk yok)
    *   Kaydet → ayar:yaz { masaustuLogoGenislik }  (tek IPC, tek disk yazımı)
    *   sekme değişimi / yeniden açılış → kaydedilmemiş değer geri alınır
    * Kırpma kuralı tek yerde (renderer.js → logoGenisligiUygula); burada yalnızca
-   * gösterim var. O fonksiyon yoksa (jsdom) ham değer gösterilir, CSS yazılmaz. */
+   * gösterim var. O fonksiyon yoksa (jsdom) ham değer gösterilir, CSS yazılmaz.
+   *
+   * CANLI ÖNİZLEME ŞERİDİ (Faz 12.1): kaydırıcının hemen üstünde GERÇEK logo,
+   * üst çubuktaki iki sınırın aynısıyla (--logo-width / --logo-height, kural
+   * index.html'de) basılır. Öncesinde kaydırırken kullanıcının yanında değişen
+   * hiçbir şey yoktu (yandaki 80×80 kutu sabit) — değişen tek şey ekranın öbür
+   * ucundaki üst çubuktu ve ürün sahibi bunu "çalışmıyor" olarak bildirdi.
+   * Şerit tamamen yereldir: ağ ve IPC yok, kaynak durum.ayarlar'dan okunur. */
 
   var LOGO_GENISLIK_VARSAYILAN = 220;
 
@@ -2205,12 +2212,45 @@
     return ham > 0 ? ham : LOGO_GENISLIK_VARSAYILAN;
   }
 
-  /** Kaydırıcı + px etiketini çizer; ayarlara ve CSS'e dokunmaz. */
+  /**
+   * Önizleme şeridini tazeler: logo varsa gerçek görsel, yoksa yönlendirici metin.
+   * Boyut CSS değişkenlerinden gelir; burada yalnızca KAYNAK ve görünürlük yönetilir.
+   */
+  function logoSeridiCiz() {
+    var img = secDeg('#veLogoOnizleme');
+    var bosMetin = secDeg('#veLogoOnizlemeYok');
+    if (!img) return;
+
+    var kaynak = '';
+    /* Tek doğruluk kaynağı renderer.js → markaLogosu() (yerel logo ÖNCE). */
+    if (typeof markaLogosu === 'function') {
+      try { kaynak = String(markaLogosu() || ''); } catch (e) { kaynak = ''; }
+    }
+    if (!kaynak) {
+      var d = durumNesnesi();
+      kaynak = String((d && d.ayarlar && (d.ayarlar.yerelLogo || d.ayarlar.siteLogosu)) || '');
+    }
+
+    if (kaynak) {
+      if (img.getAttribute('src') !== kaynak) img.setAttribute('src', kaynak);
+      img.hidden = false;
+      if (bosMetin) bosMetin.hidden = true;
+    } else {
+      img.removeAttribute('src');
+      img.hidden = true;
+      if (bosMetin) bosMetin.hidden = false;
+    }
+  }
+
+  /** Kaydırıcı + değer etiketi + önizleme şeridi; ayarlara dokunmaz. */
   function logoGenislikCiz(px) {
     var aralik = secDeg('#veLogoGenislik');
     var deger = secDeg('#veLogoGenislikDeger');
     if (aralik) aralik.value = String(px);
-    if (deger) deger.textContent = px + 'px';
+    /* Etiket hem px hem YÜZDE söyler: "ne kadar büyüdü?" sorusunun cevabı
+       220px referansına göre doğrudan görünsün (260px · %118). */
+    if (deger) deger.textContent = px + 'px · %' + Math.round((px / LOGO_GENISLIK_VARSAYILAN) * 100);
+    logoSeridiCiz();
   }
 
   /** Kaydedilmiş değeri (durum.ayarlar) hem CSS'e hem kaydırıcıya yazar. */
@@ -2228,6 +2268,13 @@
   function logoGenislikOlaylariBagla() {
     var aralik = secDeg('#veLogoGenislik');
     var kaydet = secDeg('#veLogoGenislikKaydet');
+
+    /* Yeni logo yüklendiğinde renderer.js → markaGorseliDegisti() şeridi
+       tazelesin (editör açıkken kullanıcı logoyu yükleyip hemen kaydırıcıya
+       geçiyor). Kanca kaydırıcıdan ÖNCE kurulur ki işaretleme eksik olsa bile
+       çalışsın; yalnızca yerel çizim yapar. */
+    if (typeof window !== 'undefined') window.veLogoSeridiTazele = logoSeridiCiz;
+
     if (!aralik || !kaydet) return;
 
     aralik.addEventListener('input', function () {
