@@ -500,8 +500,18 @@ test('bildir: istek 3 sn sonra AbortSignal ile kesilir', async (t) => {
   assert.equal(istekAtildi, true, 'istege AbortSignal verilir');
   assert.equal(yakalananSignal.aborted, false, 'baslangicta kesilmemis');
 
-  /* Süre aşımından biraz sonra sinyal düşmüş olmalı. */
-  const kesildi = await bekle(() => yakalananSignal.aborted, T.SURE_ASIMI_MS + 900);
+  /*
+   * Süre aşımından sonra sinyal düşmüş olmalı.
+   *
+   * BEKLEME PAYI BÜYÜK, ÖLÇÜLEN SÖZ AYNI: burada kilitlenen şey "istek 3000 ms'de
+   * kesilir"dir, "tam 3900 ms içinde kesildiğini görürüm" değil. Eski 900 ms'lik
+   * pay, `check-all.js` 13 PHP koşucusunu aynı anda çatallarken zamanlayıcının
+   * ~3970 ms'de ateşlenmesiyle taşıyor ve test YÜKE BAĞLI olarak kırmızı
+   * yanıyordu (tek başına 31/31 geçiyor). Payı büyütmek sözü gevşetmez —
+   * zamanlayıcı hiç kurulmazsa test yine kırmızı yanar, yalnızca meşgul bir
+   * makinede yanlış alarm vermez.
+   */
+  const kesildi = await bekle(() => yakalananSignal.aborted, T.SURE_ASIMI_MS + 4000);
 
   assert.equal(kesildi, true, 'istek ' + T.SURE_ASIMI_MS + ' ms sonra kesilir');
   assert.equal(kuyruk().length, 1, 'kesilen istegin kaydi kuyrukta kalir');
