@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.0.0**.
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.1.0** (Faz 14).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -70,7 +70,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | Dosya | Sorumluluk | İç bölüm haritası (satır) |
 |---|---|---|
 | `index.html` (233 KB) | Tüm işaretleme + Tailwind yapılandırması + 4 satır içi betik. **Betik yükleme sırası dosyanın sonundadır ve kritiktir** (→ §2). **Faz 13:** saha perdeleri (`#satisPerde`/`#ziyaretPerde`/`#urunPerde`) `<body>` altındaki `#sahaPerdeleri` kapsayıcısında — **asla bir `.sekme-govde` içine konmaz** (→ §4.17.1); `--logo-height` değişkeni ve `header.h-20 { min-height }` | — |
-| `renderer.js` (330 KB) | **Arayüz çekirdeği.** **Faz 13:** `logoGenisligiUygula` `--logo-height` DE yazar (dönüş değeri hâlâ genişlik), Üye Onayları `UYE_ALT_SEKMELER` üç sekme + `sahaMusterileriYukle`/`uyeIletisimHtml` (→ §4.17.6/§4.17.9). Diğer tüm dosyalar buradaki `durum`, `$`, `bildir`, `api/woo/b2b`, `sekmeAc`, `kacis`, `ikon` yardımcılarını kullanır | `1` yardımcılar **14** · `2` demo veri **337** · `3` durum/sabitler **555** · `4` REST köprüsü **1214** · `5` üst çubuk **2083** · `6` sekme yönetimi **2293** · `7` siparişler **2343** (revize **2944**) · `8` ürün & stok **3644** · `9` üye onayları **4613** · `10` depo fişi **5558** · `11` ayarlar **6377** · `12` tema/zoom **7033** · `13` olay bağlama + başlangıç **7096** |
+| `renderer.js` (330 KB) | **Arayüz çekirdeği.** **Faz 14:** depo fişi sabit ölçü + sayfalama + ortak özet (`depoFisiHtml` → `SiparisFisi.sayfalaraBol/ozetBlogu/aracCubugu`, `DEPO_SAYFA_KAPASITESI`), revize penceresi `[KALDIR]`/`[GERİ AL]` (`data-kaldir`, gövde `remove:true`), `#revizeHazirYap` KAPALI başlar, `siparisFisiAc` → `pencere()` (→ §4.18). **Faz 13:** `logoGenisligiUygula` `--logo-height` DE yazar (dönüş değeri hâlâ genişlik), Üye Onayları `UYE_ALT_SEKMELER` üç sekme + `sahaMusterileriYukle`/`uyeIletisimHtml` (→ §4.17.6/§4.17.9). Diğer tüm dosyalar buradaki `durum`, `$`, `bildir`, `api/woo/b2b`, `sekmeAc`, `kacis`, `ikon` yardımcılarını kullanır | `1` yardımcılar **14** · `2` demo veri **337** · `3` durum/sabitler **555** · `4` REST köprüsü **1214** · `5` üst çubuk **2083** · `6` sekme yönetimi **2293** · `7` siparişler **2343** (revize **2944**) · `8` ürün & stok **3644** · `9` üye onayları **4613** · `10` depo fişi **5558** · `11` ayarlar **6377** · `12` tema/zoom **7033** · `13` olay bağlama + başlangıç **7096** |
 | `renderer-ek.js` (136 KB) | Ek modül — `renderer.js`'ten **SONRA** yüklenir, onun fonksiyonlarını sarar | `0` yardımcılar **23** · `A` ödeme matrisi **100** (kalıcılık **274**, min. sipariş **977**) · `B` sipariş rozeti **1103** · `C` ürün düzenle **1160** · `D` sürükle-bırak sıralama **1956** · `E` ürün silme **2832** · `F` sipariş iptali **2903** · `F2` kalıcı silme **3193** · `G` bayi silme **3272** · `H` olay bağlama **3351** |
 | `renderer-izgara.js` (115 KB) | Excel tipi ürün veri ızgarası. `renderer.js` + `renderer-ek.js`'e bağımlı | `0` durum **32** · `A` sanallaştırılmış ızgara **224** · `B` hücre içi düzenleme **663** · `C` kısmi güncelleme **845** · `D` seçim/toplu işlem **958** · `E` kategori ağacı **1725** · `F` görünüm + olay bağlama **2062** · `G` mevcut akışlara bağlanma **2270** · `H` yapışkan haplar/kısayollar **2329** · `I` domino sıralama + 60 FPS **2472** |
 | `renderer-excel.js` (41 KB) | Excel dökümü + sütun eşleştirmeli içe aktarma. Izgaranın `izgOlaylariBagla`'sını sarar → ondan **SONRA** | `0` durum **30** · `A` dışa aktarma **90** · `B` eşleştirme sihirbazı **198** · `C` içe aktarma motoru **592** · `D` olay bağlama **1050** · `E` mevcut akışa bağlanma **1125** |
@@ -81,16 +81,16 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/telemetry.js`** | **Telemetri · arayüz.** EN ÖNCE yüklenir (→ §4) | — |
 | **`renderer-plasiyer.js`** | **Çift kapılı giriş + rol kısıtlaması.** Kapı kaplaması, `durum.oturum`, menü daraltma, üst bar, çıkış. EN SONA yüklenir (→ §5) | — |
 | **`src/renderer/modules/plasiyer-yonetimi.js`** | **Yöneticinin "Pazarlamacılar" sekmesi:** tanımlama, PIN, bayi atama, performans tablosu + ciro çubuğu, **cihaz tahsis düğmesi** (→ §4.9), **alt sekme denetleyicisi** (Ciro / Harita → §4.10). **Faz 13:** `DONEMLER` sözlüğü + `[Bu Ay][Bu Yıl][Tümü]` çipleri — **tıklamak ağa çıkmaz** (→ §4.17.7). `sekmeAc`'ı SARAR | — |
-| **`src/renderer/plasiyer-siparis-motor.js`** | **DOM'suz sipariş motoru** (Faz 2): koli matematiği, sepet indirgeyici, "son siparişi kopyala", geçici müşteri UUID, iskonto tavanı, sipariş gövdesi. **Faz 13:** `kdvOrani(urun)` + sepet `kdvDahil` bayrağı (gövdede `false !== sepet.kdvDahil` — `undefined` KDV dahil sayılır, kuyruktaki eski siparişler kip değiştirmez). `node --test` altında koşar (→ §4.6, §4.17.4) | — |
+| **`src/renderer/plasiyer-siparis-motor.js`** | **DOM'suz sipariş motoru** (Faz 2): koli matematiği, sepet indirgeyici, "son siparişi kopyala", geçici müşteri UUID, iskonto tavanı, sipariş gövdesi. **Faz 13:** `kdvOrani(urun)` + sepet `kdvDahil` bayrağı (gövdede `false !== sepet.kdvDahil` — `undefined` KDV dahil sayılır, kuyruktaki eski siparişler kip değiştirmez). **Faz 14:** `kalemKdv(satir)` + `toplamlar()` KDV kipini bilir — satır neti = brüt / (1+o/100), iskontolar **NET matrahtan**, `kdv{…}` künyesi, `brutAraToplam` (→ §4.18). `node --test` altında koşar (→ §4.6, §4.17.4) | — |
 | **`src/renderer/modules/plasiyer-vitrin.js`** | **Satış vitrini** (Faz 2): daraltılabilir kategori kenar çubuğu, filtre barı, çift görünüm (Vitrin/Matris), SPOT rozeti, ürün detay penceresi, sepet. **Faz 13:** `sonrakiSayfa()` sayfalama + gerçek sayaç metinleri, tek `kodBarkod()` yardımcısı (kart/matris/detay), `Fiyat : ` öneki, `#gorunumAnahtar` **silindi** → `kipIpucu()` (→ §4.17.2/§4.17.3). `sekmeAc`'ı SARAR | — |
-| **`src/renderer/modules/plasiyer-musteri.js`** | **Müşteri ve sipariş akışı** (Faz 2): seçim/arama, cari risk uyarısı, çevrimdışı müşteri, son siparişi kopyala, üç ödeme yöntemi + notlar. **Faz 13:** `KDV Tercihi` seçimi + `kdvTahmini`/`kdvOzetBlogu` (ekranda "tahmini" yazar), **müşteri bilgilerini düzenleme** (tek form iki kip: `musteri:kuyrukta-guncelle` / `musteri:guncelle`), `epostaGoster()` `.invalid` yer tutucuyu forma doldurmaz (→ §4.17.4/§4.17.5) | — |
+| **`src/renderer/modules/plasiyer-musteri.js`** | **Müşteri ve sipariş akışı** (Faz 2): seçim/arama, cari risk uyarısı, çevrimdışı müşteri, son siparişi kopyala, üç ödeme yöntemi + notlar. **Faz 13:** `KDV Tercihi` seçimi + `kdvTahmini`/`kdvOzetBlogu` (ekranda "tahmini" yazar), **müşteri bilgilerini düzenleme** (tek form iki kip: `musteri:kuyrukta-guncelle` / `musteri:guncelle`), `epostaGoster()` `.invalid` yer tutucuyu forma doldurmaz (→ §4.17.4/§4.17.5). **Faz 14:** perde özeti motorun `kdv` künyesinden (KDV dâhil bilgi satırı / KDV hariç düşüm + net matrah), `kdvDokumu()` satır satır; `kdvTahmini` **kaldırıldı** (→ §4.18) | — |
 | **`src/renderer/plasiyer-sync-motor.js`** | **DOM'suz eşitleme motoru** (Faz 3): outbox dağıtıcı, kimlik köprüsü, hata toleransı. Ana süreç de `require` eder (→ §4.7) | — |
 | **`src/renderer/harita-veri.js`** | **DOM'suz 81 il kütüğü + ziyaret notu mantığı** (Faz 3): plaka/ad/bölge/konum, durum geçişleri, filtreler, yoğunluk. **Gerçek sınır yolları YOK** — gerekçe dosya başlığında (→ §4.8) | — |
 | **`src/renderer/harita-yollar.js`** | **81 ilin GERÇEK sınır yolları** (Faz 10, üretilmiş dosya, 58 KB): Natural Earth 1:10m Admin-1 (kamu malı), ISO 3166-2 = plaka, `YOLLAR/MERKEZLER/SINIRLAR/ADLAR`, 1000×420 tuval. **Elle düzenlenmez**; `scratchpad/geo-donustur.js` yeniden üretir. Kokpit açılışta `yollariBesle()` ile `HaritaVeri`ye besler (→ §4.14) | — |
 | **`src/renderer/modules/harita-kokpit.js`** | **Faz 13:** yönetici kartı tıklanınca **mevcut** `window.bayiDetayiAc` profil modalı açılır (ikinci kopya yok); saha kabuğunda **bilerek** tıklanamaz (→ §4.17.8). **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. **Faz 10:** `yollariBesle()` — gerçek `<path>` sınırlar. **Faz 12: FABRİKA** `olustur({kip, kapId, onek})` → `window.HaritaKokpit` (yönetici, renk hâkimiyeti + lejant + zengin kartlar) ve `window.SahaHarita` (plasiyer, `plasiyer:harita`, kendi illeri/bayileri, kart kısayolları). `sekmeAc` sarmalı yalnızca saha örneği için (→ §4.16) | — |
 | **`src/renderer/modules/plasiyer-ziyaret.js`** | **Saha ziyaret notu** (Faz 3): plasiyerin not girişi (İSTEĞE BAĞLI) + patron yanıtlarının düştüğü bildirim zili. `PlasiyerMusteri.seridiCiz`'i SARAR | — |
-| **`src/renderer/modules/plasiyer-siparislerim.js`** | **Kendi Siparişlerim — bağımsız saha şablonu** (Faz 10): `plasiyer:get-orders` ile **sunucudan daraltılmış** liste (`GET /plasiyer/siparislerim`), kartta TEK eylem `[📄 Sipariş / Fiş Detayı]`, kuyruk şeridi (`PlasiyerMusteri.kuyrukSeridiniCiz`). Yönetici sipariş isteği **hiç atılmaz**. `sekmeAc`'ı SARAR (→ §4.14) | — |
-| **`src/renderer/siparis-fisi.js`** | **Kurumsal sipariş fişi motoru** (Faz 12, DOM'suz, çift modlu): `normalle` (yönetici / plasiyer / ham `prepare_order`), `html` (A4 / 80 mm termal, inline CSS), `whatsappMetni` (kalın başlıklar, koli×adet, iskontolar, net, ≤ 1800 kr), `waTelefon`, `waAdresi`, `paraYaz`. **Faz 13:** KDV sütunları + `KDV UYGULANMADI` bloğu; **KDV yeniden HESAPLANMAZ**, sunucudan geleni basar (→ §4.17.4). İki kabuk aynı fişi basar (→ §4.16.4) | `node --test` altında koşar |
+| **`src/renderer/modules/plasiyer-siparislerim.js`** | **Kendi Siparişlerim — bağımsız saha şablonu** (Faz 10): `plasiyer:get-orders` ile **sunucudan daraltılmış** liste (`GET /plasiyer/siparislerim`), kartta TEK eylem `[📄 Sipariş / Fiş Detayı]`, kuyruk şeridi (`PlasiyerMusteri.kuyrukSeridiniCiz`). Yönetici sipariş isteği **hiç atılmaz**. **Faz 14:** detayda `.sk-iptal` / `.sk-sil` (→ `plasiyer:siparis-iptal` / `plasiyer:siparis-sil`), fiş `pencere()` ile (Yazdır · PDF · WhatsApp · Kapat) (→ §4.18). `sekmeAc`'ı SARAR (→ §4.14) | — |
+| **`src/renderer/siparis-fisi.js`** | **Kurumsal sipariş fişi motoru** (Faz 12, DOM'suz, çift modlu): `normalle` (yönetici / plasiyer / ham `prepare_order`), `html` (A4 / 80 mm termal, inline CSS), `whatsappMetni` (kalın başlıklar, koli×adet, iskontolar, net, ≤ 1800 kr), `waTelefon`, `waAdresi`, `paraYaz`. **Faz 13:** KDV sütunları + `KDV UYGULANMADI` bloğu; **KDV yeniden HESAPLANMAZ**, sunucudan geleni basar (→ §4.17.4). **Faz 14:** sabit 8 sütun + kalem `listeBirim`; **`ozetBlogu`** (altı sabit satır — depo fişi de bunu çağırır), **`sayfalaraBol`** (sabit sayfa ölçüsü), **`aracCubugu` + `pencere`** (Yazdır · PDF · WhatsApp · Kapat; `html()` saf kalır) (→ §4.18). İki kabuk aynı fişi basar (→ §4.16.4) | `node --test` altında koşar |
 | **`src/renderer/modules/plasiyer-performansim.js`** | **Performansım** (Faz 11): saha 4. sekmesi — TEK IPC `plasiyer:performans` ile gün/7 gün/30 gün sipariş + net ciro kartları, bayi katkı çubukları (`scaleX`), il dağılımı; yönetici uçlarına gidilmez; `sekmeAc`'ı SARAR (→ §4.15) | — |
 | **`src/renderer/modules/plasiyer-otosync.js`** | **Otomatik eşitleme tetikleyicisi** (Faz 4): `online` olayı + 60 sn hafif yoklama + `visibilitychange`. Kuyruk boşsa **ağa çıkmaz**, hata sessizdir (→ §4.7) | — |
 | `lisans/lisans.html` + `lisans/lisans.js` | Lisans/aktivasyon penceresi — ana pencereden bağımsız | — |
@@ -181,12 +181,12 @@ listeye **elle** eklemen gerekir.
 | `auth:` | `main.js` § 3.9 | `auth:yonetici-pin-durum`, `auth:yonetici-pin-kur`, `auth:yonetici-pin-dogrula`, `auth:yonetici-pin-degistir`, **`auth:pin-kurtarma-talep`**, **`auth:pin-kurtarma-dogrula`** (→ §4.12) |
 | `cihaz:` | `main.js` § 3.9 | `cihaz:durum`, `cihaz:kilitle` (plasiyere tahsis), `cihaz:ac` (Master PIN ile kilidi kaldır) |
 | `woo:` / `api:` | `main.js` | `woo:istek` (wc/v3), `api:istek` (wc-b2b/v1) |
-| `fis:` | `main.js` | `fis:onizleme`, `fis:yazdir`, `fis:pdf`, `fis:kapat` |
+| `fis:` | `main.js` | `fis:onizleme`, `fis:yazdir`, `fis:pdf` (**Faz 14:** başlık `veri.baslik`), `fis:kapat`, **`fis:whatsapp`** (Faz 14: fiş görseli gizli offscreen pencerede → panoya, `wa.me` sohbeti; WhatsApp dosya ekletmez → Ctrl+V yönergesi) |
 | `excel:` | `main.js` | `excel:disaAktar`, `excel:dosyaSec`, `excel:tabloOku` |
 | `uygulama:` | `main.js` | `uygulama:bilgi` (gerçek paket sürümü) |
 | `byom:` | `src/main/byom.js` | `byom:hwid`, `byom:durum`, `byom:aktive`, `byom:yeniden-dogrula`, `byom:lisans-sil`, `byom:hwid-yenile`, `byom:api-url:oku/yaz`, `byom:baglanti-testi`, `byom:uygulamayi-ac`, `byom:cikis`, `byom:panoya-kopyala`, `byom:dis-baglanti`, `byom:destek:liste/detay/olustur/yanit/secenekler` |
 | `byom:telemetri` | `src/main/byom-telemetri.js` | **Tek yönlü** (`ipcMain.on` + `ipcRenderer.send`) — cevap beklenmez |
-| `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout`, **`plasiyer:get-orders`** (Faz 10: `GET /plasiyer/siparislerim`, jeton bellekten — kendi siparişleri **sunucuda** daraltılır), **`plasiyer:performans`** (Faz 11: `GET /plasiyer/performans`, kimlik + jeton oturumdan), **`plasiyer:harita`** (Faz 12: `GET /plasiyer/harita` — kendi sorumlu illeri + kendi bayileri; `gun`/`tarih` arayüzden) |
+| `plasiyer:` | `main.js` § 3.6 | `plasiyer:auth` (PIN → oturum), `plasiyer:session` (etkin oturumu sor), `plasiyer:save-session` (SIR OLMAYAN kısmı ayarlara yaz), `plasiyer:get-dealers` (kendi bayileri), `plasiyer:logout`, **`plasiyer:get-orders`** (Faz 10: `GET /plasiyer/siparislerim`, jeton bellekten — kendi siparişleri **sunucuda** daraltılır), **`plasiyer:performans`** (Faz 11: `GET /plasiyer/performans`, kimlik + jeton oturumdan), **`plasiyer:harita`** (Faz 12: `GET /plasiyer/harita` — kendi sorumlu illeri + kendi bayileri; `gun`/`tarih` arayüzden), **`plasiyer:siparis-iptal`** / **`plasiyer:siparis-sil`** (Faz 14: `POST /plasiyer/siparis-iptal` / `-sil`; arayüz yalnızca `siparisId` (+`sebep`) söyler, kimlik ve jeton oturumdan) |
 | `katalog:` | `main.js` § 3.7 | `katalog:guncelle` (sunucudan eşitle + görsel kuyruğu), `katalog:ara` (**AĞA ÇIKMAZ**, yerel indeks; **Faz 13:** yanıt `toplam` + `ofset` taşır → §4.17.2), `katalog:kategoriler`, `katalog:urun`, `katalog:barkod`, `katalog:durum` |
 | `gorsel:` | `main.js` § 3.7 | `gorsel:onbellege-al` (indirmeyi tetikle), `gorsel:yol` (yerel `file://` ya da uzak adres — **base64 DÖNMEZ**) |
 | `sync:` | `main.js` § 3.8 | `sync:esitle` (kuyruğu boşalt — **sıra: müşteri → köprü → sipariş → not**), `sync:durum` (bekleyen/hatalı sayıları) |
@@ -1499,6 +1499,83 @@ denenmesin). E-posta yoksa ya da `.invalid` ise e-posta satırı yerine
 
 ---
 
+## 4.18 Faz 14 — Revizede KALDIR, fiş sistemi yeniden, saha KDV matematiği, saha iptal/sil
+
+Tetikleyici: ürün sahibinin yönetici + plasiyer ekranlarında yaptığı canlı denetim.
+Eklenti **2.20.0**, tema 2.11.0 / 2.0.1, panel **2.1.0** → `../BYOM-REGISTRY.md §5.41`,
+kök `CLAUDE.md §10 Faz 14`.
+
+### 4.18.1 Revize penceresi — ürün KALDIR + "Sipariş Hazır" kapalı başlar
+| Ne | Nerede |
+|---|---|
+| Satırda `[🗑️ KALDIR]` / `[↩ GERİ AL]`; işaret **`data-kaldir`** özniteliğinde (delegasyon `olaylariBagla` içinde: `[data-revize-kaldir]` / `[data-revize-geri]`) | `renderer.js → revizeModaliAc` |
+| `revizeSatirlariOku()` → `kaldir:true, adet:0`; `revizeToplamiTazele()` kaldırılanı **saymaz**, "Kaldırılacak ürün: N", adet kutusu + ± kilitli, tutar hücresi `KALDIRILACAK` | `renderer.js` |
+| Gövde `{ id, quantity:0, remove:true }` (eklenti 2.20.0); **tümü kaldırılamaz** → istek atılmaz, uyarı iptal düğmesini gösterir; eklentisiz yolda `quantity:0` → WooCommerce satırı zaten siler; demo yolunda kalem dizisinden düşer | `revizeyiOnayla` |
+| `#revizeHazirYap` **KAPALI** başlar; kutu kapalıysa `status:''` gider ve sunucu **durumu değiştirmez** (2.20.0 — eski kök sebep sunucudaydı: boş status → order-ready) | `renderer.js`, `index.html` |
+| Başarı mesajı "N ürün siparişten kaldırıldı" — "adedi güncellendi" bir ürünün çıktığını anlatmaz | `revizeyiOnayla` |
+
+### 4.18.2 Fiş sistemi — sabit ölçü, sayfalama, altı satırlık ORTAK özet, araç çubuğu
+- **Yoğunluk kademeleri KALKTI** (`.orta/.sik`, `--gorsel/--yazi`): görsel 30 px ve punto sabit;
+  kalem artınca **sayfa artar**. `SiparisFisi.sayfalaraBol(n, {ilk, devam, ozet})` saf;
+  A4 sipariş fişi `{20, 26, 9}`, depo fişi `DEPO_SAYFA_KAPASITESI {22, 24, 9}`. Son sayfada
+  özet için yer yoksa özet **tek başına** yeni sayfaya. Her `.sayfa` sabit yükseklik
+  (ekran 297 mm, kâğıt 273/281 mm) + `page-break-after:always`; devam sayfalarında
+  kompakt başlık + "Sayfa i / n"; `thead` her sayfada; ürün adı `line-clamp:2`.
+- **A4 sütunları sabit (8):** Ürün Adı · Kod / Barkod · Koli / Adet · Birim Fiyat ·
+  İskontolu Birim Fiyat · KDV Oranı · KDV Tutarı · Satır Tutarı; bilinmeyen "—".
+  Kalem `listeBirim` (`list_unit_price` ‖ satır metası/adet ‖ birim); liste toplamı
+  **birim × güncel adet** (depo fişinin revizyon koruması artık sipariş fişinde de).
+- **`SiparisFisi.ozetBlogu(o)`** — altı sabit satır: Liste Fiyatı Ara Toplamı · Bayi
+  İskonto Tutarı (%x) · İskontolu Ara Toplam · `<Yöntem>` Sipariş İskontosu (%x) · KDV ·
+  NET ÖDENECEK TUTAR. Değer yoksa "—"; KDV bilgi satırıdır ("fiyatlara dâhil" /
+  vergi motoru ekledi ise "+ … toplama eklenir" / hariçte `UYGULANMADI`); ek satırlar
+  (kargo, kupon, kapanmayan fark) yalnızca sıfır değilse. **Depo fişi aynı çiziciyi
+  çağırır** (`ozetGirdisi` → `F.ozetBlogu`); `siparisFinansOzeti` motoru değişmedi.
+- **`aracCubugu()` + `pencere()`:** Yazdır · PDF Olarak Kaydet · WhatsApp'tan Gönder ·
+  Kapat + gömülü IPC betiği. `html()` **saf** (etkileşim/betik yok; testin "DOM/ağ/require
+  yok" sözü motor içindir). Gömülü JSON `<` kaçışlı. İki kabuk `pencere()` ile açar;
+  depo fişi aynı `aracCubugu`yu basar.
+- **`fis:whatsapp` (main.js):** gizli **offscreen** pencerede aynı geçici HTML yüklenir,
+  araç çubuğu gizlenir, tam belge yüksekliği ölçülür, tek karede yakalanır →
+  `clipboard.writeImage` → `shell.openExternal('https://wa.me/<tel>?text=…')`. Toast:
+  "Fiş görseli panoya kopyalandı — Ctrl+V ile yapıştırıp gönderin". **Dürüst sınır:**
+  WhatsApp Web/Desktop dışarıdan dosya ekletmez; PDF elle eklenir. Telefonsuz müşteride
+  düğme devre dışı + sebep. 16.000 px (~14 sayfa) üstü görsel alınmaz.
+
+### 4.18.3 Saha "Siparişi Tamamla" — KDV matematiği MOTORDA
+- `PlasiyerSiparisMotor.kalemKdv(satir)` → `{adet, brut, net, kdv, oran, bilinmiyor}`;
+  **net = brüt / (1 + o/100)**: 100 TL %10 → 90,91 (90 DEĞİL — yüzde çıkaran sistem
+  "90'a %10 ekle → 99" ile kendini yalanlar).
+- `toplamlar(sepet, tavan)`: `sepet.kdvDahil === false` iken `araToplam/indirim/odemeIndirim/
+  genelToplam` NET satırlardan (**iskontolar NET matrahtan, sunucuyla aynı sıra**);
+  `brutAraToplam` her kipte KDV dâhil; `kdv {dahil, tutar, dusulen, oran, karisik,
+  bilinmeyen, hicYok}`. `siparisGovdesi.toplamlar` da bu resmi taşır.
+- `plasiyer-musteri.js → ozetiCiz`: KDV dâhil → "KDV (%x) — fiyatlara dâhil: tutar";
+  KDV hariç → Liste (KDV dâhil) · Düşülen KDV · Liste (KDV hariç) · iskontolar · Net (KDV
+  hariç) + "KDV UYGULANMADAN yazılacak"; `kdvDokumu()` satır satır (ürün · % · KDV ·
+  KDV hariç). **`kdvTahmini` kaldırıldı** — ikinci hesap iskontolu sepette yanlış sayı
+  üretiyordu.
+- Alt yazı taşması: `index.html` `.kdv-sec, .odeme-sec { white-space:normal;
+  flex-direction:column }` (global `button{white-space:nowrap}` ezmesi, §4.11.4 sınıfı).
+
+### 4.18.4 Saha Siparişlerim — iptal / sil
+- Detayda `.sk-iptal` (yalnızca açık: pending/on-hold/processing/order-ready/b2b-*) ve
+  `.sk-sil` (yalnızca cancelled/failed). Kartın dışında **hâlâ TEK** birincil düğme;
+  `data-eylem` YOK (G5 sözü korunur — bunlar depo eylemi değil, plasiyerin kendi kararı).
+- `plasiyer:siparis-iptal {siparisId, sebep}` / `plasiyer:siparis-sil {siparisId}`:
+  kimlik + jeton **oturumdan**; sunucu damgayı yeniden doğrular (403) ve durumu (409).
+  Sunucu reddederse kart değişmez, sebep `bildir(…, 'hata')`.
+
+### Bozmaman gereken sözler (Faz 14)
+- `#revizeHazirYap` kapalı başlar; `status:''` = durum değişmez.
+- Kaldırılan satır toplamlara girmez; gövdede `remove:true`; tüm satırlar kaldırılamaz.
+- Fiş sayfa ölçüsü sabittir — yoğunluk kademesi geri gelmez; özet bloğu bölünmez.
+- İki fiş aynı `ozetBlogu` / `aracCubugu`yu kullanır; `html()` saf kalır.
+- KDV: bölme, çıkarma değil; iskontolar net matrahtan; bilinmeyen oranda sayı yok.
+- `plasiyer:siparis-*` kimliği gövdeden okumaz.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1506,22 +1583,24 @@ denenmesin). E-posta yoksa ya da `.invalid` ise e-posta satırı yerine
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**681 test**: panel 310 + kök 371).
+İkisini birden `../scripts/check-all.js` koşar (**762 test**: panel 323 + kök 439).
 
 ```bash
-# Bu submodule'un kendi birim testleri (310 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
-node --test test/plasiyer-siparis.test.js   # 47 — koli matematigi, sepet, son siparis, UUID, tavan,
-                                            #      kendiSiparisleri ("Kendi Siparislerim" suzgeci)
+node --test test/plasiyer-siparis.test.js   # 54 — koli matematigi, sepet, son siparis, UUID, tavan,
+                                            #      kendiSiparisleri ("Kendi Siparislerim" suzgeci),
+                                            #      Faz 14: kalemKdv + toplamlar KDV kipi (100/%10 → 90,91; iskonto NET matrahtan)
 node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprusu, hata toleransi,
                                             #      esitlemeGerekliMi (Faz 4 oto-esitleme karari)
 node --test test/harita-notlar.test.js      # 46 — 81 il kutugu, TR il kodlari, tarih (belirli gun) suzgeci, durum gecisleri, filtreler,
                                             #      harita-yollar.js (81 gercek sinir, Natural Earth)
 node --test test/cihaz-kilidi.test.js       # 52 — Master PIN hash/kilit, cihaz tahsisi, PIN SIFIRLAMA, KAYNAK denetimi
 node --test test/rest-adres.test.js         # 13 — restYoluKur, tabanAdresiTemizle, sorgu korunmasi
-node --test test/siparis-fisi.test.js       # 20 — kurumsal fis motoru: normalle (3 kaynak), A4/termal HTML, WhatsApp metni
+node --test test/siparis-fisi.test.js       # 40 — kurumsal fis motoru: normalle (3 kaynak), A4/termal HTML, WhatsApp metni,
+                                            #      Faz 14: sayfalaraBol, ozetBlogu (6 sabit satir), fisOzeti, pencere/aracCubugu
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
 
@@ -1551,10 +1630,12 @@ node --test scripts/tests/saha-perde.dom.test.js      # 6  — Faz 13: perde ATA
 node --test scripts/tests/plasiyer-menu.dom.test.js   # 19 — menü hiyerarşisi, alt sekmeler, Saha Notlarım, dönem çipleri
 node --test scripts/tests/yonetici-pin.dom.test.js    # 17 — PIN değiştirme kartı + giriş kartı düzeni
 node --test scripts/tests/harita-kokpit.dom.test.js   # 18 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran, bayi profili
-node --test scripts/tests/saha-denetim.dom.test.js    # 27 — Faz 10-13: hızlı adet, Saha Siparişlerim, üç üye alt sekmesi, katalog sayfalama, ürün kartı
+node --test scripts/tests/saha-denetim.dom.test.js    # 30 — Faz 10-14: hızlı adet, Saha Siparişlerim (+ iptal/sil), üç üye alt sekmesi, katalog sayfalama, ürün kartı, KDV İSTEMİYORUM matematiği
 node --test scripts/tests/saha-analitik.dom.test.js   # 11 — Faz 11: Performansım, kalem dökümü üç şekil, harita tarih + bayi kartı, çevrimdışı müşteri silme
 node --test scripts/tests/yonetici-arayuz.dom.test.js # 18 — Faz 11-13: sipariş sekmesi iki seviye, WhatsApp fişi, logo ÖLÇEĞİ (--logo-height, önizleme şeridi), üç görsel yuvası
 node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki rol iki harita, renk/il formu, saha kısayolları, bayi profili kapısı
+node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
+node --test scripts/tests/fis-pencere.test.js         # 4  — Faz 14 (kaynak): fis:whatsapp offscreen+pano, plasiyer:siparis-* kimlik oturumdan, pencere()
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
 node --test scripts/tests/registry-parity.test.js     # 3 registry kopyası eşit mi
@@ -1565,7 +1646,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (681 test)
+# Bitirirken: üç katmanın tamamı (762 test)
 node scripts/check-all.js
 ```
 
@@ -1644,7 +1725,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 160 php / 93 js / 681 test
+cd .. && node scripts/check-all.js     # 0 hata / 185 php / 102 js / 762 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

@@ -236,6 +236,13 @@
   }
   button { font-family: inherit; cursor: pointer; }
   input, select, textarea { font-family: inherit; }
+  /* Saha "Siparişi Tamamla" seçim kartları (ödeme yöntemi / KDV tercihi):
+     iki satırlı düğmeler. Global `button { white-space:nowrap; inline-flex }`
+     kuralı alt yazıyı tek satıra sıkıştırıp kartın DIŞINA taşırıyordu
+     (Faz 14, ürün sahibi bildirimi) — .kapi-kart ile aynı ezme. */
+  .kdv-sec, .odeme-sec { white-space: normal; flex-direction: column; align-items: center;
+                         text-align: center; line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
+  .kdv-sec > span, .odeme-sec > span { white-space: normal; }
   code, .font-mono, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace !important; }
   * { box-sizing: border-box; }
 
@@ -4495,6 +4502,8 @@
  <svg class="ik" aria-hidden="true"><use href="#ik-bilgi"></use></svg> <b>Koliye fiilen koyduğunuz adedi</b> yazın. Örnek: müşteri 25 adet istedi, koli bozulmasın
         diye 20 adet koyduysanız <b>20</b> girin. Sitedeki <b>tutar ve KDV</b> yeni adetlere göre
         otomatik yeniden hesaplanır, <b>stok farkı</b> geri eklenir.
+        Elinizde <b>hiç olmayan</b> ürünü <b>KALDIR</b> ile siparişten çıkarın: satır silinir, stoğu iade edilir
+        ve depo / sipariş fişinde <b>görünmez</b>.
       </div>
 
       <!-- Ürün satırları (renderer.js doldurur) -->
@@ -4544,6 +4553,7 @@
         <input id="revizeHazirYap" type="checkbox" class="w-6 h-6 mt-1 accent-emerald-600 shrink-0" />
         <span class="text-lg leading-relaxed">
           Onaylayınca siparişi <b>“Sipariş Hazır”</b> durumuna al.
+          <span class="block text-base text-slate-500 dark:text-slate-400">İşaretlemezseniz durum <b>değişmez</b>; yalnızca adetler / kaldırılan ürünler güncellenir.</span>
         </span>
       </label>
 

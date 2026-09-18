@@ -1010,47 +1010,15 @@
    *  SİPARİŞİ TAMAMLA — BİLEŞİK İSKONTO ÖZETİ + KDV TERCİHİ
    * ------------------------------------------------------------------ */
 
-  /**
-   * "KDV istemiyorum" seçildiğinde TAHMİNİ düşüm.
-   *
-   * Fiyatlar KDV DAHİL girilir (sistemin sözleşmesi), yani KDV tutarın
-   * İÇİNDEDİR: tutar × o / (100 + o). Oran ÜRÜN BAŞINADIR ve sunucudan gelir
-   * (`_byom_kdv_rate` → katalogda `kdv_orani`); panel kendi oran listesini
-   * TUTMAZ.
-   *
-   * ORANI BİLİNMEYEN SATIR İÇİN SAYI UYDURULMAZ. Katalog eski bir eşitlemeden
-   * kalmış olabilir; "yaklaşık %20" yazmak plasiyerin müşteriye YANLIŞ fiyat
-   * söylemesi demektir. O satırlar sayılır ve ekranda "sunucuda hesaplanacak"
-   * denir. SON SÖZ ZATEN SUNUCUDADIR (B2B_Order_Revision::apply_vat_mode) —
-   * buradaki sayı GÖSTERİMDİR, sipariş yükünü değiştirmez.
+  /*
+   * KDV MATEMATİĞİ MOTORDA (Faz 14): `PlasiyerSiparisMotor.toplamlar` KDV
+   * kipini bilir ve `kdv` künyesini verir; `kalemKdv` satır başına net/KDV
+   * döker. Bu dosyada ikinci bir KDV hesabı YOKTUR (Faz 13'ün `kdvTahmini`si
+   * kaldırıldı — aynı kural için iki hesap, iskontoları KDV'li matrahtan
+   * düşüren yanlış sayıyı üretiyordu). Oran ÜRÜN BAŞINADIR ve sunucudan gelir;
+   * oranı bilinmeyen satır için sayı uydurulmaz. SON SÖZ SUNUCUDADIR
+   * (B2B_Order_Revision::apply_vat_mode) — ekrandaki sayı gösterimdir.
    */
-  function kdvTahmini(s) {
-    var kdv = 0;
-    var oranlar = [];
-    var bilinmeyen = 0;
-
-    (s.satirlar || []).forEach(function (satir) {
-      var adet = M().adediOturt(satir, satir.adet);
-      var tutar = (Number(satir.price) || 0) * adet;
-      var oran = M().kdvOrani(satir);
-
-      if (oran > 0) {
-        kdv += tutar * oran / (100 + oran);
-
-        if (-1 === oranlar.indexOf(oran)) oranlar.push(oran);
-      } else {
-        bilinmeyen++;
-      }
-    });
-
-    return {
-      tutar: Math.round(kdv * 100) / 100,
-      oran: 1 === oranlar.length ? oranlar[0] : 0,
-      karisik: oranlar.length > 1,
-      bilinmeyen: bilinmeyen,
-      hicYok: 0 === oranlar.length
-    };
-  }
 
   function tamamlamaAc() {
     var s = sepet();
@@ -1182,49 +1150,92 @@
 
     ozetiCiz();
 
+    /*
+     * ÖZET — KDV KİPİNE GÖRE (Faz 14). Sayılar MOTORDAN gelir
+     * (`toplamlar` → `kdv` künyesi, `brutAraToplam`); burada aritmetik yok.
+     *
+     * KDV DÂHİL: liste, iskontolar, net; altında "KDV (%20) — fiyatlara
+     * dâhil: X" bilgi satırı (müşteri ne kadar KDV'li aldığını görür).
+     * KDV HARİÇ: liste (KDV dâhil) → düşülen KDV → liste (KDV hariç) →
+     * iskontolar NET matrahtan → net (KDV hariç). 100 TL %10 → 90,91 (90 DEĞİL);
+     * sunucu aynı sırayla yazar, ekran onun tahminidir.
+     */
     function ozetiCiz() {
       var g = M().toplamlar(s, tavan());
       var kutu = el('tamamlaOzet');
 
       if (!kutu) return;
 
-      kutu.innerHTML =
-        '<div class="flex justify-between"><span>Kalem</span><span class="font-bold">' + g.satir + ' satır · ' + g.kalem + ' adet' + (g.koli ? ' · ' + g.koli + ' koli' : '') + '</span></div>' +
-        '<div class="flex justify-between"><span>Liste toplamı</span><span class="font-bold">' + kacis(paraYaz(g.araToplam)) + '</span></div>' +
-        (g.indirim > 0 ? '<div class="flex justify-between text-emerald-700 dark:text-emerald-400"><span>Bayi iskontosu %' + kacis(yuzdeYaz(g.iskontoOrani)) + '</span><span class="font-bold">−' + kacis(paraYaz(g.indirim)) + '</span></div>' : '') +
-        (g.odemeIndirim > 0 ? '<div class="flex justify-between text-emerald-700 dark:text-emerald-400"><span>' + kacis(M().ODEME_ETIKET[s.odeme] || 'Ödeme') + ' iskontosu %' + kacis(yuzdeYaz(g.odemeIskontoOrani)) + '</span><span class="font-bold">−' + kacis(paraYaz(g.odemeIndirim)) + '</span></div>' : '') +
-        '<div class="flex justify-between text-lg font-black"><span>Net toplam</span><span>' + kacis(paraYaz(g.genelToplam)) + '</span></div>' +
-        (g.indirim > 0 || g.odemeIndirim > 0
-          ? '<div class="text-xs text-slate-500 dark:text-slate-400">Net = Liste × (1 − bayi/100) × (1 − ödeme/100)</div>'
-          : '') +
-        kdvOzetBlogu(g);
-    }
+      var haric = false === g.kdvDahil;
+      var kdv = g.kdv || {};
+      var satir = function (etiket, deger, sinif) {
+        return '<div class="flex justify-between gap-3' + (sinif ? ' ' + sinif : '') + '"><span>' + etiket + '</span><span class="font-bold whitespace-nowrap">' + deger + '</span></div>';
+      };
+      var oranYazisi = kdv.karisik ? 'karışık oran' : (kdv.oran > 0 ? '%' + yuzdeYaz(kdv.oran) : '');
 
-    /** KDV istenmediğinde özetin altına düşen blok — YALNIZCA GÖSTERİM. */
-    function kdvOzetBlogu(g) {
-      if (false !== s.kdvDahil) return '';
+      var html = satir('Kalem', g.satir + ' satır · ' + g.kalem + ' adet' + (g.koli ? ' · ' + g.koli + ' koli' : ''));
 
-      var t = kdvTahmini(s);
-      var baslik = '<div class="mt-2 pt-2 border-t border-dashed border-amber-400 font-extrabold text-amber-700 dark:text-amber-400">' +
-        '🚫 Bu sipariş KDV UYGULANMADAN yazılacak</div>';
+      if (haric) {
+        html += satir('Liste toplamı (KDV dâhil)', kacis(paraYaz(g.brutAraToplam)), 'text-slate-500 dark:text-slate-400');
 
-      /* Hiçbir satırın oranı bilinmiyorsa SAYI BASILMAZ: uydurma bir tutar,
-         plasiyerin müşteriye yanlış fiyat söylemesi demektir. */
-      if (t.hicYok) {
-        return baslik +
-          '<div class="text-xs text-slate-500 dark:text-slate-400">KDV tutarı sunucuda hesaplanacak ' +
-          '(ürünlerin KDV oranları bu cihazda yok; kataloğu eşitleyin).</div>';
+        if (kdv.hicYok) {
+          html += '<div class="mt-1 text-xs text-amber-700 dark:text-amber-400">KDV oranları bu cihazda yok; düşüm SUNUCUDA hesaplanacak (kataloğu eşitleyin).</div>';
+        } else {
+          html += satir('Düşülen KDV' + (oranYazisi ? ' (' + kacis(oranYazisi) + ')' : ''), '−' + kacis(paraYaz(kdv.dusulen)), 'text-amber-700 dark:text-amber-400');
+        }
+
+        html += satir('Liste toplamı (KDV hariç)', kacis(paraYaz(g.araToplam)));
+      } else {
+        html += satir('Liste toplamı', kacis(paraYaz(g.araToplam)));
       }
 
-      var oranYazisi = t.karisik ? 'karışık oran' : '%' + yuzdeYaz(t.oran);
+      if (g.indirim > 0) html += satir('Bayi iskontosu %' + kacis(yuzdeYaz(g.iskontoOrani)), '−' + kacis(paraYaz(g.indirim)), 'text-emerald-700 dark:text-emerald-400');
+      if (g.odemeIndirim > 0) html += satir(kacis(M().ODEME_ETIKET[s.odeme] || 'Ödeme') + ' iskontosu %' + kacis(yuzdeYaz(g.odemeIskontoOrani)), '−' + kacis(paraYaz(g.odemeIndirim)), 'text-emerald-700 dark:text-emerald-400');
 
-      return baslik +
-        '<div class="flex justify-between text-amber-700 dark:text-amber-400"><span>Tahmini KDV düşümü (' + kacis(oranYazisi) + ')</span>' +
-          '<span class="font-bold">−' + kacis(paraYaz(t.tutar)) + '</span></div>' +
-        '<div class="flex justify-between text-lg font-black"><span>Tahmini net (KDV hariç)</span>' +
-          '<span>' + kacis(paraYaz(Math.round((g.genelToplam - t.tutar) * 100) / 100)) + '</span></div>' +
-        '<div class="text-xs text-slate-500 dark:text-slate-400">Kesin tutar sunucuda, ürün başına KDV oranıyla hesaplanır.' +
-          (t.bilinmeyen > 0 ? ' ' + t.bilinmeyen + ' kalemin oranı bu cihazda yok, sunucuda çözülecek.' : '') + '</div>';
+      html += '<div class="flex justify-between gap-3 text-lg font-black"><span>' + (haric ? 'Net toplam (KDV hariç)' : 'Net toplam') + '</span><span data-tamamla-net>' + kacis(paraYaz(g.genelToplam)) + '</span></div>';
+
+      if (!haric && !kdv.hicYok && kdv.tutar > 0) {
+        html += satir('KDV' + (oranYazisi ? ' (' + kacis(oranYazisi) + ')' : '') + ' — fiyatlara dâhil', kacis(paraYaz(kdv.tutar)), 'text-slate-500 dark:text-slate-400');
+      }
+
+      if (g.indirim > 0 || g.odemeIndirim > 0) {
+        html += '<div class="text-xs text-slate-500 dark:text-slate-400">Net = Liste' + (haric ? ' (KDV hariç)' : '') + ' × (1 − bayi/100) × (1 − ödeme/100)</div>';
+      }
+
+      if (haric) {
+        html += '<div class="mt-2 pt-2 border-t border-dashed border-amber-400 font-extrabold text-amber-700 dark:text-amber-400">🚫 Bu sipariş KDV UYGULANMADAN yazılacak</div>' +
+          '<div class="text-xs text-slate-500 dark:text-slate-400">Kesin tutar sunucuda, ürün başına KDV oranıyla hesaplanır.' +
+          (kdv.bilinmeyen > 0 ? ' ' + kdv.bilinmeyen + ' kalemin oranı bu cihazda yok, sunucuda çözülecek.' : '') + '</div>';
+      }
+
+      html += kdvDokumu(g, haric);
+
+      kutu.innerHTML = html;
+    }
+
+    /**
+     * Satır satır KDV dökümü — ürün · KDV % · KDV tutarı · KDV hariç tutar.
+     * Plasiyer "bu ürünün KDV'si ne kadar?" sorusuna bakmadan cevap verir;
+     * KDV hariç kipte hangi satırın ne kadar düştüğü görünür. Oranı
+     * bilinmeyen satır "—" ile işaretlenir, sayı uydurulmaz.
+     */
+    function kdvDokumu(g, haric) {
+      if (!s.satirlar.length || (g.kdv && g.kdv.hicYok && !haric)) return '';
+
+      var satirlar = s.satirlar.map(function (satir) {
+        var k = M().kalemKdv(satir);
+
+        return '<tr class="border-t border-slate-200 dark:border-slate-700">' +
+          '<td class="py-1 pr-2 truncate max-w-[14rem]">' + kacis(satir.name || '') + ' <span class="text-slate-400">×' + k.adet + '</span></td>' +
+          '<td class="py-1 pr-2 text-right whitespace-nowrap">' + (k.bilinmiyor ? '—' : '%' + kacis(yuzdeYaz(k.oran))) + '</td>' +
+          '<td class="py-1 pr-2 text-right whitespace-nowrap">' + (k.bilinmiyor ? '—' : kacis(paraYaz(k.kdv))) + '</td>' +
+          '<td class="py-1 text-right whitespace-nowrap font-bold">' + kacis(paraYaz(haric ? k.net : k.brut)) + '</td>' +
+        '</tr>';
+      }).join('');
+
+      return '<details class="mt-2 text-xs kdv-dokumu"><summary class="cursor-pointer font-bold text-slate-600 dark:text-slate-300">KDV dökümü (satır satır)</summary>' +
+        '<table class="w-full mt-1"><thead><tr class="text-slate-500"><th class="text-left font-semibold">Ürün</th><th class="text-right font-semibold">KDV %</th><th class="text-right font-semibold">KDV</th><th class="text-right font-semibold">' + (haric ? 'KDV hariç' : 'Tutar') + '</th></tr></thead>' +
+        '<tbody>' + satirlar + '</tbody></table></details>';
     }
   }
 

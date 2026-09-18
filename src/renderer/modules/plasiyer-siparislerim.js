@@ -213,7 +213,9 @@
     var cevap;
 
     try {
-      cevap = await ipcRenderer.invoke('fis:onizleme', { html: F().html(fis, { kagit: baglam.kagit }), baslik: 'Sipariş Fişi #' + fis.numara });
+      /* pencere(): belge + araç çubuğu (Yazdır · PDF · WhatsApp · Kapat) —
+         yönetici fişiyle AYNI pencere (Faz 14). */
+      cevap = await ipcRenderer.invoke('fis:onizleme', { html: F().pencere(fis, { kagit: baglam.kagit }), baslik: 'Sipariş Fişi #' + fis.numara });
     } catch (e) {
       cevap = { ok: false, hata: (e && e.message) || 'Fiş penceresi açılamadı.' };
     }
@@ -329,6 +331,131 @@
     '</div>';
   }
 
+  /* ------------------------------------------------------------------ *
+   *  İPTAL / SİL (Faz 14) — plasiyerin KENDİ siparişi üzerindeki kararlar
+   *
+   *  İki kapı: arayüz düğmeyi yalnızca uygun durumda gösterir (hız), sunucu
+   *  aynı kuralı yeniden uygular (güvenlik: 403 başkasının siparişi, 409
+   *  durum uygun değil). Kimlik ve jeton ANA SÜREÇ belleğinden gider.
+   * ------------------------------------------------------------------ */
+
+  /** Kargoya çıkmamış sipariş iptal edilebilir (sunucu: get_revisable_statuses). */
+  var IPTAL_EDILEBILIR = ['pending', 'on-hold', 'processing', 'order-ready', 'b2b-received', 'b2b-preparing', 'b2b-ready'];
+
+  function durumKodu(s) {
+    return String((s && s.durum) || '').replace(/^wc-/, '');
+  }
+
+  function iptalEdilebilirMi(s) {
+    return IPTAL_EDILEBILIR.indexOf(durumKodu(s)) !== -1;
+  }
+
+  /** Yalnızca iptal edilmiş (ya da başarısız) sipariş silinebilir — iki adım bilinçli. */
+  function silinebilirMi(s) {
+    return ['cancelled', 'failed'].indexOf(durumKodu(s)) !== -1;
+  }
+
+  /** Onay penceresi: yönetici kabuğundaki `onayla` her kabukta vardır (#modalKatman ortak). */
+  async function onaylat(baslik, mesaj, dugme, tehlikeli) {
+    if ('function' === typeof window.onayla) return window.onayla(baslik, mesaj, dugme, tehlikeli);
+
+    return window.confirm(baslik + '\n\n' + mesaj);
+  }
+
+  async function siparisIptal(id) {
+    var sip = siparisBul(id);
+
+    if (!sip) return;
+
+    if (!iptalEdilebilirMi(sip)) {
+      bildir('Bu sipariş iptal edilemez (kargoya verilmiş ya da tamamlanmış).', 'uyari');
+      return;
+    }
+
+    var eminMi = await onaylat(
+      'Siparişi İptal Et',
+      '#' + sip.numara + '  ·  ' + sip.musteri + '  ·  ' + paraYaz(sip.tutar) + '\n\n' +
+      'Sipariş "İptal Edildi" durumuna alınacak. Bu işlem müşteriye e-posta göndermez.\n' +
+      'İptal ettikten sonra siparişi tamamen silebilirsiniz.',
+      'EVET, İPTAL ET',
+      true
+    );
+
+    if (!eminMi) return;
+
+    var cevap;
+
+    try {
+      cevap = await ipcRenderer.invoke('plasiyer:siparis-iptal', { siparisId: sip.id, sebep: 'Saha satış panelinden iptal edildi.' });
+    } catch (e) {
+      cevap = { ok: false, hata: (e && e.message) || 'Ağ hatası.' };
+    }
+
+    /* apiIstek yanıtı { ok, veri } sarar; ana süreç doğrudan geçirir. */
+    var veri = (cevap && cevap.veri) || cevap || {};
+
+    if (!cevap || !cevap.ok || false === veri.ok) {
+      bildir('Sipariş iptal edilemedi:\n' + ((cevap && cevap.hata) || (veri && veri.message) || 'Bilinmeyen hata.'), 'hata');
+      return;
+    }
+
+    /* Yerel kart anında güncellenir; sunucu yanıtındaki sipariş varsa o kazanır. */
+    if (veri.order && 'object' === typeof veri.order) {
+      var yeni = normalle(veri.order);
+      var yer = durumS.siparisler.indexOf(sip);
+      if (yer !== -1) durumS.siparisler[yer] = yeni;
+    } else {
+      sip.durum = 'cancelled';
+      sip.durumEtiketi = 'İptal Edildi';
+    }
+
+    durumS.acik[id] = true;
+    ciz();
+    bildir('#' + sip.numara + ' iptal edildi.' + (veri.tekrar ? ' (Zaten iptal edilmişti.)' : ''), 'ok');
+  }
+
+  async function siparisSil(id) {
+    var sip = siparisBul(id);
+
+    if (!sip) return;
+
+    if (!silinebilirMi(sip)) {
+      bildir('Yalnızca iptal edilmiş siparişler silinebilir. Önce siparişi iptal edin.', 'uyari');
+      return;
+    }
+
+    var eminMi = await onaylat(
+      'Siparişi Sil',
+      '#' + sip.numara + '  ·  ' + sip.musteri + '  ·  ' + paraYaz(sip.tutar) + '\n\n' +
+      'Sipariş sunucudan KALICI olarak silinecek; bu işlem geri alınamaz.\n' +
+      'Müşteri web sitesinden verdiyse Siparişlerim ekranında "silindi" notu görür.',
+      'EVET, KALICI SİL',
+      true
+    );
+
+    if (!eminMi) return;
+
+    var cevap;
+
+    try {
+      cevap = await ipcRenderer.invoke('plasiyer:siparis-sil', { siparisId: sip.id });
+    } catch (e) {
+      cevap = { ok: false, hata: (e && e.message) || 'Ağ hatası.' };
+    }
+
+    var veri = (cevap && cevap.veri) || cevap || {};
+
+    if (!cevap || !cevap.ok || false === veri.ok) {
+      bildir('Sipariş silinemedi:\n' + ((cevap && cevap.hata) || (veri && veri.message) || 'Bilinmeyen hata.'), 'hata');
+      return;
+    }
+
+    durumS.siparisler = durumS.siparisler.filter(function (x) { return String(x.id) !== String(id); });
+    delete durumS.acik[id];
+    ciz();
+    bildir('#' + sip.numara + ' kalıcı olarak silindi.', 'ok');
+  }
+
   function kartHtml(s) {
     var acik = !!durumS.acik[s.id];
     var adetToplam = s.kalemler.reduce(function (t, k) { return t + k.adet; }, 0);
@@ -393,10 +520,21 @@
              tekrar sipariş. Kartın dışında TEK birincil düğme durur (saha ekranı
              sade kalır); depo eylemleri (revize/iptal/durum) burada da YOKTUR. */
           '<div class="siparis-kanallar mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex gap-2 flex-wrap">' +
-            '<button type="button" class="sk-fis px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + s.id + '" data-kagit="a4">📄 Profesyonel Fiş / Yazdır</button>' +
+            '<button type="button" class="sk-fis px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + s.id + '" data-kagit="a4" title="Yazdır · PDF olarak kaydet · WhatsApp\'tan gönder">📄 Profesyonel Fiş / Yazdır / PDF</button>' +
             '<button type="button" class="sk-fis px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + s.id + '" data-kagit="termal" title="80 mm termal yazıcı">🧾 Termal</button>' +
             '<button type="button" class="sk-wa px-3 py-2 rounded-lg bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700" data-id="' + s.id + '">📲 WhatsApp Sipariş Fişi</button>' +
             '<button type="button" class="sk-tekrar px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600" data-id="' + s.id + '" title="Kalemleri bugünün fiyatıyla sepete doldur">🔁 Tekrar Sipariş</button>' +
+            /* İPTAL / SİL (Faz 14): depo eylemi DEĞİL, plasiyerin kendi siparişi
+               üzerindeki iki kararı. Detayın içinde (kartın dışında yine TEK
+               birincil düğme). İptal yalnızca kargoya çıkmamış siparişte, silme
+               yalnızca iptal edilmiş siparişte görünür — sunucu da aynı kuralı
+               uygular (409); düğme yalnızca yol gösterir. */
+            (iptalEdilebilirMi(s)
+              ? '<button type="button" class="sk-iptal px-3 py-2 rounded-lg border-2 border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 font-bold text-sm hover:bg-red-100 dark:hover:bg-red-500/20" data-id="' + s.id + '" title="Siparişi iptal et (durum: İptal Edildi)">🚫 Siparişi İptal Et</button>'
+              : '') +
+            (silinebilirMi(s)
+              ? '<button type="button" class="sk-sil px-3 py-2 rounded-lg bg-red-700 text-white font-bold text-sm hover:bg-red-800" data-id="' + s.id + '" title="İptal edilmiş siparişi sunucudan kalıcı olarak sil">🗑️ Siparişi Sil</button>'
+              : '') +
           '</div>' +
         '</div>' +
       '</div>';
@@ -558,7 +696,14 @@
         if (wa) { whatsappAc(wa.dataset.id); return; }
 
         var tekrar = olay.target.closest('.sk-tekrar');
-        if (tekrar) { tekrarSiparis(tekrar.dataset.id); }
+        if (tekrar) { tekrarSiparis(tekrar.dataset.id); return; }
+
+        /* İptal / sil (Faz 14) */
+        var iptal = olay.target.closest('.sk-iptal');
+        if (iptal) { siparisIptal(iptal.dataset.id); return; }
+
+        var sil = olay.target.closest('.sk-sil');
+        if (sil) { siparisSil(sil.dataset.id); }
       });
     }
 
@@ -594,6 +739,11 @@
     fisAc: fisAc,
     whatsappAc: whatsappAc,
     tekrarSiparis: tekrarSiparis,
+    /* Faz 14 */
+    siparisIptal: siparisIptal,
+    siparisSil: siparisSil,
+    iptalEdilebilirMi: iptalEdilebilirMi,
+    silinebilirMi: silinebilirMi,
     DURUM_CIPLERI: DURUM_CIPLERI,
     durum: durumS
   };

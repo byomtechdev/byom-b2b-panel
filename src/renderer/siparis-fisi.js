@@ -43,7 +43,21 @@
  *
  *  GÜVENLİK: her kullanıcı metni HTML'e `kacis` ile girer; logo yalnızca
  *  data:image/ ya da http(s)/file şemasıyla basılır (javascript: giremez).
- *  Fişte etkileşimli öğe, harici CSS/JS ya da CDN YOKTUR.
+ *  html() çıktısında etkileşimli öğe, betik, harici CSS/JS ya da CDN YOKTUR.
+ *
+ *  FAZ 14 (2026-09-19) — İKİ FİŞİN ORTAK PARÇALARI BURADA:
+ *    · A4 sütunları SABİT (8): Ürün Adı · Kod / Barkod · Koli / Adet · Birim
+ *      Fiyat · İskontolu Birim Fiyat · KDV Oranı · KDV Tutarı · Satır Tutarı.
+ *      Bilinmeyen değer "—" olur, sütun kaybolmaz. Kalem `listeBirim` taşır.
+ *    · ozetBlogu(): ALTI SABİT SATIR (Liste Fiyatı Ara Toplamı · Bayi İskonto
+ *      Tutarı · İskontolu Ara Toplam · <Yöntem> Sipariş İskontosu · KDV ·
+ *      NET ÖDENECEK TUTAR). Depo fişi (renderer.js → depoFisiHtml) de bu
+ *      çiziciyi kullanır — iki fiş aynı sözcük ve sırayla kapanır.
+ *    · sayfalaraBol(): sayfa ÖLÇÜSÜ sabit, sayfa SAYISI değişken; özet bloğu
+ *      bölünmez, yer yoksa tek başına son sayfaya geçer.
+ *    · aracCubugu() + pencere(): Yazdır · PDF · WhatsApp'tan Gönder · Kapat
+ *      araç çubuğu ve gömülü IPC betiği (yalnızca fiş penceresinde). html()
+ *      saf kalır; testin "DOM/ağ/require yok" sözü motorun kendisi içindir.
  * ==========================================================================*/
 
 (function () {
@@ -255,6 +269,22 @@
     if (!birim && tutar > 0 && adet > 0) birim = kurus(tutar / adet);
 
     /*
+     * BİRİM LİSTE FİYATI (Faz 14) — "Birim Fiyat" sütunu ve liste toplamı.
+     *
+     * Kaynak sırası: panelin `listeBirim`i · sunucunun `list_unit_price`ı ·
+     * satır toplamı metasından bölme · yoksa iskontolu birim (iskonto yok).
+     * Liste toplamı BİRİM × GÜNCEL ADET ile kurulur, satır metası
+     * (`list_subtotal`) ile DEĞİL: revizyonda meta ölçeklenmemişse düşen
+     * adet fişte bayi iskontosu gibi görünürdü — depo fişinin
+     * `kalemFiyatKunyesi` ile aynı koruma; iki fiş aynı sayıyı basmalı.
+     */
+    var listeBirim = ilkPozitif(k.listeBirim, k.list_unit_price);
+
+    if (!listeBirim && liste > 0 && adet > 0) listeBirim = kurus(liste / adet);
+    if (listeBirim > 0 && adet > 0) liste = kurus(listeBirim * adet);
+    if (!listeBirim || listeBirim < birim) listeBirim = birim;
+
+    /*
      * SATIR KDV KÜNYESİ — SUNUCUDAN GELİR, BURADA YENİDEN HESAPLANMAZ.
      * `prepare_order` ve `kalem_dokumu` satır başına `vat_rate` + `vat_amount`
      * üretiyor (satır metası → ürün oranı; WooCommerce vergi satırı varsa O
@@ -285,6 +315,7 @@
         adet: adet,
         koli: koli,
         koliIci: koliIci,
+        listeBirim: kurus(listeBirim),
         birim: kurus(birim),
         tutar: kurus(tutar),
         kdvOrani: kdvOrani,
@@ -415,12 +446,13 @@
    */
   function ucretSatirlari(k) {
     var liste = Array.isArray(k.fee_lines) ? k.fee_lines : (Array.isArray(k.ucretler) ? k.ucretler : []);
-    var u = { bayi: 0, bayiOran: 0, odeme: 0, odemeOran: 0 };
+    var u = { bayi: 0, bayiOran: 0, odeme: 0, odemeOran: 0, odemeAd: '' };
 
     liste.forEach(function (f) {
       if (!f || 'object' !== typeof f) return;
 
-      var ad = tekSatir(f.name || f.ad).toLowerCase();
+      var hamAd = tekSatir(f.name || f.ad);
+      var ad = hamAd.toLowerCase();
       var tutar = Math.abs(sayi(f.total !== undefined ? f.total : f.tutar));
       var es = /%\s*(\d+(?:[.,]\d+)?)/.exec(ad);
       var oran = es ? sayi(es[1].replace(',', '.')) : 0;
@@ -430,6 +462,13 @@
       if (/[öo]deme/.test(ad)) {
         u.odeme = kurus(u.odeme + tutar);
         if (oran) u.odemeOran = oran;
+
+        /* "Ödeme Yöntemi İskontosu — Nakit (%5)" → yöntem adı satırdan okunur;
+           ödeme başlığı gelmeyen yükte özet satırı yine "Nakit Sipariş
+           İskontosu" der. */
+        var yontem = /[—–-]\s*([^()]+?)\s*(?:\(|$)/.exec(hamAd);
+
+        if (yontem && metin(yontem[1])) u.odemeAd = metin(yontem[1]);
       } else if (/iskonto|indirim|plasiyer|bayi/.test(ad)) {
         u.bayi = kurus(u.bayi + tutar);
         if (oran) u.bayiOran = oran;
@@ -488,7 +527,7 @@
       kdvIstenmedi: !!(true === k.vat_excluded || 'yes' === k.vat_excluded || k.kdvIstenmedi || 'yes' === meta._b2b_vat_excluded),
       kdvDusulen: ilkPozitif(k.vat_removed, k.kdvDusulen, meta._b2b_vat_removed),
       kdvToplam: ilkPozitif(k.vat_total, k.kdvToplam, k.total_tax),
-      odeme: odemeEtiketi(ilkDolu(k.payment_method_title, k.payment_title, meta._b2b_odeme_tipi, k.payment_type_label, k.payment_method)),
+      odeme: odemeEtiketi(ilkDolu(k.payment_method_title, k.payment_title, meta._b2b_odeme_tipi, k.payment_type_label, k.payment_method, ucret.odemeAd)),
       not: ilkDolu(k.customer_note, meta._b2b_vade_notu, k.note),
       kalemler: Array.isArray(k.items) ? k.items : (Array.isArray(k.line_items) ? k.line_items : k.kalemler)
     };
@@ -535,7 +574,7 @@
       kdvIstenmedi: !!(k.kdvIstenmedi || true === k.vat_excluded || 'yes' === k.vat_excluded),
       kdvDusulen: ilkPozitif(k.kdvDusulen, k.vat_removed),
       kdvToplam: ilkPozitif(k.kdvToplam, k.vat_total, k.toplamKdv),
-      odeme: odemeEtiketi(ilkDolu(k.odeme, k.odemeTipiEtiket, k.odemeTipi)),
+      odeme: odemeEtiketi(ilkDolu(k.odeme, k.odemeTipiEtiket, k.odemeTipi, ucret.odemeAd)),
       not: ilkDolu(k.notlar, k.not, k.siparisNotu, k.vadeNotu),
       kalemler: k.kalemler
     };
@@ -678,7 +717,186 @@
   }
 
   /* ------------------------------------------------------------------ *
-   *  HTML — A4 ve 80 mm termal
+   *  ÖZET BLOĞU — ALTI SABİT SATIR, İKİ FİŞ, TEK ÇİZİCİ (Faz 14)
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Sabit satır etiketleri. Depo fişi (renderer.js → depoFisiHtml) ve sipariş
+   * fişi AYNI çiziciyi çağırır; sözcükler burada tek yerde durur. Ürün
+   * sahibinin isteği: iskonto olmasa da satırlar hep basılır, değeri "—" olur.
+   */
+  var OZET_ETIKET = {
+    liste: 'Liste Fiyatı Ara Toplamı',
+    bayi: 'Bayi İskonto Tutarı',
+    ara: 'İskontolu Ara Toplam',
+    odeme: 'Sipariş İskontosu',
+    odemeYok: 'Ödeme Yöntemi Sipariş İskontosu',
+    kdv: 'KDV',
+    net: 'NET ÖDENECEK TUTAR'
+  };
+
+  /** Olmayan değerin işareti — boş hücre "unutulmuş" okunur, tire "yok" der. */
+  var YOK = '—';
+
+  /**
+   * Sayfalama kapasiteleri (satır). Sayfa ölçüsü SABİTTİR: kalem sayısı
+   * artınca punto/satır küçülmez, sayfa sayısı artar. Kapasiteler bilerek
+   * temkinli: iki satıra sarmış ürün adları ve iskonto notu için pay bırakır.
+   *   ilk   : birinci sayfa (tam başlık + künye alır)
+   *   devam : devam sayfaları (kompakt başlık)
+   *   ozet  : özet bloğu + notlar + alt yazı için son sayfada gereken satır payı
+   */
+  var SAYFA_KAPASITESI = { ilk: 20, devam: 26, ozet: 9 };
+
+  /**
+   * Kalemleri sabit kapasiteli sayfalara böler (saf fonksiyon).
+   *
+   * Son sayfada özet için yer kalmadıysa özet TEK BAŞINA yeni sayfaya geçer;
+   * bloğun yarısı bir sayfada, toplamı ötekinde kalırsa fiş okunamaz olur.
+   *
+   * @param {number} n   Kalem sayısı.
+   * @param {object} kap { ilk, devam, ozet } — verilmeyen alan varsayılandan.
+   * @returns {{ sayfalar: Array<{bas:number, son:number, kapasite:number}>, ozetAyri: boolean, toplam: number }}
+   */
+  function sayfalaraBol(n, kap) {
+    n = Math.max(0, Math.floor(sayi(n)));
+
+    var k = (kap && 'object' === typeof kap) ? kap : {};
+    var ilk = Math.max(1, Math.floor(sayi(k.ilk)) || SAYFA_KAPASITESI.ilk);
+    var devam = Math.max(1, Math.floor(sayi(k.devam)) || SAYFA_KAPASITESI.devam);
+    var ozet = Math.max(0, Math.floor(sayi(k.ozet)) || SAYFA_KAPASITESI.ozet);
+
+    var sayfalar = [];
+    var i = 0;
+
+    do {
+      var kapasite = sayfalar.length ? devam : ilk;
+      var son = Math.min(n, i + kapasite);
+
+      sayfalar.push({ bas: i, son: son, kapasite: kapasite });
+      i = son;
+    } while (i < n);
+
+    var sonSayfa = sayfalar[sayfalar.length - 1];
+    var ozetAyri = (sonSayfa.kapasite - (sonSayfa.son - sonSayfa.bas)) < ozet;
+
+    return { sayfalar: sayfalar, ozetAyri: ozetAyri, toplam: sayfalar.length + (ozetAyri ? 1 : 0) };
+  }
+
+  /**
+   * Normalleştirilmiş fişten özet nesnesi (ozetBlogu girdisi).
+   *
+   * Liste = fişin ara toplamı (iskontosuz), iskontolu ara = liste − bayi,
+   * net = sunucunun tutarı. KDV "üstüne" bayrağı: net ≈ (ara − ödeme) + KDV
+   * ise WooCommerce vergi motoru KDV'yi toplama EKLEMİŞTİR; aksi hâlde KDV
+   * fiyatların içindedir. İkisi ayrı sorudur ("ne ödeyeceğim" / "içinde ne
+   * kadar vergi var") ve fiş ikisini de açıkça yazar.
+   */
+  function fisOzeti(fis) {
+    fis = fisEmin(fis);
+
+    var oz = kdvOzeti(fis);
+    var liste = kurus(fis.araToplam);
+    var bayi = kurus(fis.bayiIskontoTutar);
+    var ara = kurus(liste - bayi);
+    var odeme = kurus(fis.odemeIskontoTutar);
+    var net = kurus(fis.net);
+    var beklenen = kurus(ara - odeme);
+    var ustune = !fis.kdvIstenmedi && oz.toplam > 0.005 &&
+      Math.abs(net - (beklenen + oz.toplam)) < 0.05 && Math.abs(net - beklenen) > 0.05;
+
+    return {
+      liste: liste,
+      bayiOrani: yuzde(fis.bayiIskontoOrani),
+      bayiTutar: bayi,
+      iskontoluAra: ara,
+      odemeAdi: metin(fis.odeme),
+      odemeOrani: yuzde(fis.odemeIskontoOrani),
+      odemeTutar: odeme,
+      kdv: {
+        tutar: oz.toplam,
+        oran: oz.oran,
+        karisik: oz.karisik,
+        istenmedi: !!fis.kdvIstenmedi,
+        dusulen: kurus(fis.kdvDusulen) || (fis.kdvIstenmedi ? oz.toplam : 0),
+        bilinmiyor: !oz.dolu,
+        ustune: ustune
+      },
+      ekSatirlar: [],
+      net: net
+    };
+  }
+
+  /**
+   * ALTI SABİT SATIR: Liste Fiyatı Ara Toplamı · Bayi İskonto Tutarı ·
+   * İskontolu Ara Toplam · <Yöntem> Sipariş İskontosu · KDV · NET ÖDENECEK.
+   *
+   * Satırlar her fişte VARDIR; olmayan değer "—" ile basılır. Ek satırlar
+   * (kargo, kupon, kapanmayan artık) yalnızca sıfır değilse KDV'den önce
+   * araya girer — kapanmayan bir çıkarma listesi basmak fişi yalancı yapar.
+   *
+   * @param {object} o        fisOzeti() çıktısı ya da aynı biçimde elle kurulmuş nesne.
+   * @param {object} secenek  { paraBirimi }
+   * @returns {string} <table class="toplamlar">…</table>
+   */
+  function ozetBlogu(o, secenek) {
+    o = (o && 'object' === typeof o) ? o : {};
+
+    var s = (secenek && 'object' === typeof secenek) ? secenek : {};
+    var birim = s.paraBirimi === undefined ? PARA_BIRIMI : s.paraBirimi;
+    var kdv = (o.kdv && 'object' === typeof o.kdv) ? o.kdv : {};
+
+    function para(n) {
+      return paraYaz(n, birim);
+    }
+
+    function satir(sinif, etiket, deger) {
+      return '<tr class="' + sinif + '"><td class="etiket">' + etiket + '</td>' +
+        '<td class="deger sayi">' + deger + '</td></tr>';
+    }
+
+    var bayiVar = sayi(o.bayiTutar) > 0.005;
+    var odemeVar = sayi(o.odemeTutar) > 0.005;
+    var odemeAd = tekSatir(o.odemeAdi);
+    var odemeEtiket = odemeAd ? (odemeAd + ' ' + OZET_ETIKET.odeme) : OZET_ETIKET.odemeYok;
+
+    if (sayi(o.odemeOrani) > 0) odemeEtiket += ' (' + oranYazi(o.odemeOrani) + ')';
+
+    var govde = satir('liste', kacis(OZET_ETIKET.liste), kacis(para(o.liste)));
+
+    govde += satir(bayiVar ? 'indirim bayi' : 'bayi bos',
+      kacis(OZET_ETIKET.bayi + (sayi(o.bayiOrani) > 0 ? ' (' + oranYazi(o.bayiOrani) + ')' : '')),
+      bayiVar ? '&minus;' + kacis(para(o.bayiTutar)) : YOK);
+
+    govde += satir('ara', kacis(OZET_ETIKET.ara), kacis(para(o.iskontoluAra)));
+
+    govde += satir(odemeVar ? 'indirim odeme' : 'odeme bos', kacis(odemeEtiket),
+      odemeVar ? '&minus;' + kacis(para(o.odemeTutar)) : YOK);
+
+    (Array.isArray(o.ekSatirlar) ? o.ekSatirlar : []).forEach(function (e) {
+      if (!e || 'object' !== typeof e || Math.abs(sayi(e.tutar)) < 0.005) return;
+
+      govde += satir('ek' + (e.sinif ? ' ' + String(e.sinif) : ''), kacis(e.etiket),
+        (sayi(e.tutar) < 0 ? '&minus;' : '') + kacis(para(Math.abs(sayi(e.tutar)))));
+    });
+
+    if (kdv.istenmedi) {
+      govde += satir('kdv-yok', kacis(OZET_ETIKET.kdv), 'UYGULANMADI');
+    } else if (kdv.bilinmiyor || !(sayi(kdv.tutar) > 0.005 || sayi(kdv.oran) > 0)) {
+      govde += satir('kdv bos', kacis(OZET_ETIKET.kdv), YOK);
+    } else {
+      govde += satir('kdv', kacis(kdvEtiketi({ karisik: !!kdv.karisik, oran: sayi(kdv.oran) })),
+        (kdv.ustune ? '+' : '') + kacis(para(kdv.tutar)) +
+        ' <span class="ince">' + (kdv.ustune ? 'toplama eklenir' : 'fiyatlara dâhil') + '</span>');
+    }
+
+    govde += satir('net', kacis(OZET_ETIKET.net), kacis(para(o.net)));
+
+    return '<table class="toplamlar"><tbody>' + govde + '</tbody></table>';
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  HTML — A4 (sayfalı) ve 80 mm termal
    * ------------------------------------------------------------------ */
 
   function stil(termal) {
@@ -696,12 +914,18 @@
       '.kalemler th { text-align:left; font-size:9.5px; letter-spacing:.5px; color:#64748b; border-bottom:1.5px solid #0f172a; padding:2mm 1.5mm; }',
       '.kalemler th.sayi { text-align:right; }',
       '.kalemler td { padding:1.8mm 1.5mm; border-bottom:1px solid #e2e8f0; }',
-      '.s-ad { overflow-wrap:anywhere; }',
+      /* Ürün adı en çok İKİ satır: satır yüksekliği sınırlı kalsın ki sayfa
+         kapasitesi (sayfalaraBol) kâğıtta da tutsun. */
+      '.s-ad { overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }',
       '.s-sku { color:#64748b; white-space:nowrap; }',
+      '.s-liste { color:#475569; }',
       '.toplamlar td { padding:1.2mm 1.5mm; }',
       '.toplamlar .etiket { text-align:right; color:#475569; }',
       '.toplamlar .indirim .deger { color:#b91c1c; }',
+      '.toplamlar .bos .deger { color:#94a3b8; }',
+      '.toplamlar .ara td { font-weight:700; border-top:1px solid #cbd5e1; }',
       '.toplamlar .kdv .etiket, .toplamlar .kdv .deger { font-weight:700; }',
+      '.toplamlar .ince { font-weight:500; color:#64748b; font-size:.9em; }',
       '.toplamlar .kdv-yok .deger { color:#b45309; font-weight:800; }',
       /* KDV'siz sipariş uyarısı: müşteri fişe bakınca "neden KDV yok?" sorusunu
          sormadan cevabını görmeli. Bu yüzden toplam bloğunun altında, çerçeveli. */
@@ -714,14 +938,24 @@
       '.not { border:1px dashed #94a3b8; border-radius:2mm; padding:3mm; white-space:pre-wrap; overflow-wrap:anywhere; }',
       '.alt { border-top:1px solid #cbd5e1; padding-top:2mm; font-size:9px; color:#64748b; text-align:center; }',
       '.logo { display:block; object-fit:contain; }',
-      '.bos { text-align:center; color:#94a3b8; padding:6mm 0; }'
+      '.bos-kalem { text-align:center; color:#94a3b8; padding:6mm 0; }'
     ];
 
     var a4 = [
       '@page { size: A4; margin: 12mm; }',
       'body { font-family:"Segoe UI", Arial, sans-serif; font-size:11px; color:#0f172a; background:#e8eaee; }',
-      '.sayfa { width:210mm; min-height:297mm; margin:16px auto; padding:12mm; background:#fff; box-shadow:0 10px 40px rgba(0,0,0,.28); }',
+      /*
+       * SAYFA ÖLÇÜSÜ SABİT: 297 mm − 2 × 12 mm kenar = 273 mm içerik. Ekranda
+       * ve kâğıtta aynı yükseklik; taşan içerik GİZLENİR (sayfalaraBol zaten
+       * taşırmaz, bu son emniyettir). Kalem sayısı artınca punto küçülmez,
+       * sayfa sayısı artar.
+       */
+      '.sayfa { position:relative; width:210mm; height:297mm; margin:16px auto; padding:12mm; background:#fff; box-shadow:0 10px 40px rgba(0,0,0,.28); overflow:hidden; }',
+      '.sayfa-no { position:absolute; right:12mm; bottom:5mm; font-size:9px; color:#94a3b8; }',
       '.ust { display:flex; justify-content:space-between; align-items:flex-start; gap:10mm; border-bottom:2px solid #0f172a; padding-bottom:4mm; margin-bottom:5mm; }',
+      '.ust.devam { padding-bottom:2mm; margin-bottom:3mm; border-bottom-width:1px; }',
+      '.ust.devam .fis-turu { font-size:13px; }',
+      '.ust.devam .firma { font-size:12px; }',
       '.marka { display:flex; align-items:center; gap:4mm; min-width:0; }',
       '.logo { max-height:18mm; max-width:60mm; }',
       '.firma { font-size:16px; font-weight:800; overflow-wrap:anywhere; }',
@@ -731,7 +965,13 @@
       '.tarih, .durum { color:#475569; }',
       '.kunye { display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-bottom:5mm; }',
       '.kutu { border:1px solid #cbd5e1; border-radius:2mm; padding:3mm; }',
-      '.toplamlar { margin:4mm 0 0 auto; width:auto; min-width:85mm; }',
+      '.kalemler { table-layout:fixed; }',
+      '.kalemler .s-sku { width:24mm; }',
+      '.kalemler .s-adet { width:24mm; }',
+      '.kalemler .s-liste, .kalemler .s-birim, .kalemler .s-kdvtutar { width:19mm; }',
+      '.kalemler .s-kdv { width:14mm; }',
+      '.kalemler .s-tutar { width:22mm; }',
+      '.toplamlar { margin:4mm 0 0 auto; width:auto; min-width:95mm; }',
       '.toplamlar .net td { font-size:14px; }',
       '.not { margin-top:5mm; }',
       '.alt { margin-top:8mm; }'
@@ -762,13 +1002,17 @@
     ];
 
     /* Fişte etkileşimli öğe yoktur; yazdırmada yalnızca ekran süsü (gölge, gri zemin)
-       kalkar ve satır/kutular sayfa sınırında bölünmez. */
+       kalkar. A4'te her .sayfa bir kâğıt sayfasıdır: sabit 273 mm ve zorunlu
+       sayfa sonu — tarayıcının kendi bölmesine bırakılmaz. */
     var yazdir = [
       '@media print {',
       '  body { background:#fff; }',
-      '  .sayfa { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; }',
+      '  .sayfa { width:auto; margin:0; padding:0; box-shadow:none; }',
+      '  body.a4 .sayfa { height:273mm; page-break-after:always; break-after:page; }',
+      '  body.a4 .sayfa:last-child { page-break-after:auto; break-after:auto; }',
+      '  body.termal .sayfa { height:auto; }',
       '  thead { display:table-header-group; }',
-      '  tr, .kutu, .toplamlar, .not { page-break-inside:avoid; }',
+      '  tr, .kutu, .toplamlar, .not, .kdv-notu { page-break-inside:avoid; }',
       '}'
     ];
 
@@ -776,12 +1020,21 @@
   }
 
   /**
-   * Tam HTML belgesi (satır içi <style>, harici kaynak yok).
-   *
-   * @param {object} fis      normalle() çıktısı (kaynak nesne de kabul edilir)
-   * @param {object} secenek  { kagit: 'a4'|'termal', paraBirimi: 'TL' }
+   * A4 sütun başlıkları — ürün sahibinin sırası, SABİT (KDV künyesi olmasa da
+   * sütun durur, değeri "—"): Ürün Adı · Kod / Barkod · Koli / Adet · Birim
+   * Fiyat · İskontolu Birim Fiyat · KDV Oranı · KDV Tutarı · Satır Tutarı.
    */
-  function html(fis, secenek) {
+  var A4_BASLIK = '<tr><th>Ürün Adı</th><th>Kod / Barkod</th><th class="sayi">Koli / Adet</th>' +
+    '<th class="sayi">Birim Fiyat</th><th class="sayi">İskontolu Birim Fiyat</th>' +
+    '<th class="sayi">KDV Oranı</th><th class="sayi">KDV Tutarı</th><th class="sayi">Satır Tutarı</th></tr>';
+
+  var A4_SUTUN = 8;
+
+  /**
+   * Tam belge. Üçüncü parametre (araç çubuğu) yalnızca pencere() tarafından
+   * verilir; html() SAF kalır — etkileşimli öğe, betik ve harici kaynak yok.
+   */
+  function belgeKur(fis, secenek, arac) {
     fis = fisEmin(fis);
 
     var s = (secenek && 'object' === typeof secenek) ? secenek : {};
@@ -792,6 +1045,8 @@
     var p = fis.plasiyer || {};
     var kalemler = Array.isArray(fis.kalemler) ? fis.kalemler : [];
     var logo = metin(firma.logo);
+    var logoVar = LOGO_SEMASI.test(logo);
+    var oz = kdvOzeti(fis);
 
     function para(n) {
       return paraYaz(n, birim);
@@ -802,100 +1057,110 @@
       return dd ? '<dt>' + dt + '</dt><dd>' + kacis(dd) + '</dd>' : '';
     }
 
-    var bayiKutusu = '<div class="kutu"><h3>Bayi</h3><dl>' +
-      '<dt>Ünvan</dt><dd>' + kacis(m.unvan || '—') + '</dd>' +
-      kunyeSatiri('Yetkili', m.yetkili) +
-      kunyeSatiri('Telefon', m.telefon) +
-      kunyeSatiri('İl', m.il) +
-      kunyeSatiri('Vergi No', m.vergiNo) +
-      '</dl></div>';
-
-    var ozet = sayi(fis.cesit) + ' çeşit · ' + sayiYaz(fis.toplamAdet) + ' adet' +
-      (fis.toplamKoli > 0 ? ' · ' + sayiYaz(fis.toplamKoli) + ' koli' : '');
-
-    var siparisKutusu = '<div class="kutu"><h3>Sipariş</h3><dl>' +
-      kunyeSatiri('Plasiyer', p.ad) +
-      kunyeSatiri('Ödeme', fis.odeme) +
-      '<dt>Kalem</dt><dd>' + kacis(ozet) + '</dd>' +
-      '</dl></div>';
-
-    /*
-     * KDV YERLEŞİMİ — AYNI VERİ, İKİ DÜZEN, TEK KOD.
-     *
-     * A4'te KDV oranı kod/barkodun hemen ardından, KDV tutarı ise tutarın
-     * yanında KENDİ SÜTUNUDUR (ürün sahibinin istediği sıra: ad · kod ·
-     * KDV · koli×adet · birim · KDV tutarı · toplam).
-     *
-     * 80 mm TERMALDE kâğıt tek sütundur: iki sütun daha eklemek ürün adını
-     * üç harfe düşürür. Aynı bilgi kalemin ALTINDA ikinci satır olur
-     * ("KDV %20 · 34,20 TL"). İki ayrı çizici yazmak yerine iki bayrak —
-     * düzen değişir, veri ve kaynak değişmez.
-     */
-    var oz = kdvOzeti(fis);
-    var kdvSutun = oz.dolu && !termal;
-    var kdvAltSatir = oz.dolu && termal;
-    var sutunSayisi = 5 + (kdvSutun ? 2 : 0);
-
     /* Oranı da tutarı da bilinmeyen kalem "%0" yazmaz: %0 KDV gerçek bir
        orandır (bazı gıda/kitap), "bilmiyorum" ile karıştırılamaz. */
     function kdvliMi(k) {
       return k.kdvOrani > 0 || k.kdvTutar > 0;
     }
 
-    var satirlar = kalemler.length
-      ? kalemler.map(function (k) {
-          var altVar = kdvAltSatir && kdvliMi(k);
+    /* --- Başlıklar --- */
+    var markaHtml = '<div class="marka">' +
+      (logoVar ? '<img class="logo" src="' + kacis(logo) + '" alt="">' : '') +
+      (firma.ad ? '<div class="firma">' + kacis(firma.ad) + '</div>' : '') +
+      '</div>';
 
-          var satir = '<tr' + (altVar ? ' class="s-kdvli"' : '') + '>' +
-            '<td class="s-ad">' + kacis(k.ad || '—') + '</td>' +
-            '<td class="s-sku">' + kacis(k.sku || '—') + '</td>' +
-            (kdvSutun ? '<td class="s-kdv sayi">' + kacis(kdvliMi(k) ? oranYazi(k.kdvOrani) : '—') + '</td>' : '') +
-            '<td class="s-adet sayi">' + kacis(koliAdetYazi(k)) + '</td>' +
-            '<td class="s-birim sayi">' + kacis(para(k.birim)) + '</td>' +
-            (kdvSutun ? '<td class="s-kdvtutar sayi">' + kacis(kdvliMi(k) ? para(k.kdvTutar) : '—') + '</td>' : '') +
-            '<td class="s-tutar sayi">' + kacis(para(k.tutar)) + '</td>' +
-            '</tr>';
+    var tamBaslik = '<header class="ust">' + markaHtml +
+      '<div class="baslik">' +
+        '<div class="fis-turu">SİPARİŞ FİŞİ</div>' +
+        '<div class="no">#' + kacis(fis.numara || YOK) + '</div>' +
+        (fis.tarihYazi ? '<div class="tarih">' + kacis(fis.tarihYazi) + '</div>' : '') +
+        (fis.durumEtiketi ? '<div class="durum">' + kacis(fis.durumEtiketi) + '</div>' : '') +
+      '</div></header>';
 
-          if (altVar) {
-            satir += '<tr class="s-kdv-satir"><td class="s-kdv-bilgi" colspan="' + sutunSayisi + '">' +
-              kacis('KDV ' + oranYazi(k.kdvOrani) + ' · ' + para(k.kdvTutar)) + '</td></tr>';
-          }
+    function devamBasligi(no, toplam) {
+      return '<header class="ust devam">' + markaHtml +
+        '<div class="baslik"><div class="fis-turu">SİPARİŞ FİŞİ</div>' +
+        '<div class="no">#' + kacis(fis.numara || YOK) + ' · sayfa ' + no + '/' + toplam + ' · devam</div></div></header>';
+    }
 
-          return satir;
-        }).join('')
-      : '<tr><td class="bos" colspan="' + sutunSayisi + '">Kalem yok</td></tr>';
+    var bayiKutusu = '<div class="kutu"><h3>Bayi</h3><dl>' +
+      '<dt>Ünvan</dt><dd>' + kacis(m.unvan || YOK) + '</dd>' +
+      kunyeSatiri('Yetkili', m.yetkili) +
+      kunyeSatiri('Telefon', m.telefon) +
+      kunyeSatiri('İl', m.il) +
+      kunyeSatiri('Vergi No', m.vergiNo) +
+      '</dl></div>';
 
-    function toplamSatiri(etiket, deger, sinif) {
-      return '<tr' + (sinif ? ' class="' + sinif + '"' : '') + '>' +
-        '<td class="etiket">' + etiket + '</td>' +
-        '<td class="deger sayi">' + deger + '</td>' +
+    var ozetMetni = sayi(fis.cesit) + ' çeşit · ' + sayiYaz(fis.toplamAdet) + ' adet' +
+      (fis.toplamKoli > 0 ? ' · ' + sayiYaz(fis.toplamKoli) + ' koli' : '');
+
+    var siparisKutusu = '<div class="kutu"><h3>Sipariş</h3><dl>' +
+      kunyeSatiri('Plasiyer', p.ad) +
+      kunyeSatiri('Ödeme', fis.odeme) +
+      '<dt>Kalem</dt><dd>' + kacis(ozetMetni) + '</dd>' +
+      '</dl></div>';
+
+    var kunye = '<section class="kunye">' + bayiKutusu + siparisKutusu + '</section>';
+
+    /* --- Kalem satırları --- */
+    function a4Satir(k) {
+      var iskontolu = k.listeBirim > k.birim + 0.004;
+
+      return '<tr>' +
+        '<td class="s-ad">' + kacis(k.ad || YOK) + '</td>' +
+        '<td class="s-sku">' + kacis(k.sku || YOK) + '</td>' +
+        '<td class="s-adet sayi">' + kacis(koliAdetYazi(k)) + '</td>' +
+        '<td class="s-liste sayi">' + kacis(para(k.listeBirim)) + '</td>' +
+        '<td class="s-birim sayi">' + (iskontolu ? kacis(para(k.birim)) : YOK) + '</td>' +
+        '<td class="s-kdv sayi">' + kacis(kdvliMi(k) ? oranYazi(k.kdvOrani) : YOK) + '</td>' +
+        '<td class="s-kdvtutar sayi">' + kacis(kdvliMi(k) ? para(k.kdvTutar) : YOK) + '</td>' +
+        '<td class="s-tutar sayi">' + kacis(para(k.tutar)) + '</td>' +
         '</tr>';
     }
 
-    /* İskonto satırı yalnızca varsa basılır: sıfırlık bir "−0,00" satırı
-       müşteriye "iskonto alamadın" demektir ve yanlış anlaşılır. */
-    var toplamlar = toplamSatiri('Ara toplam', kacis(para(fis.araToplam))) +
-      (fis.bayiIskontoTutar > 0.005 || fis.bayiIskontoOrani > 0
-        ? toplamSatiri('Bayi iskontosu (' + kacis(oranYazi(fis.bayiIskontoOrani)) + ')',
-                       '&minus;' + kacis(para(fis.bayiIskontoTutar)), 'indirim')
-        : '') +
-      (fis.odemeIskontoTutar > 0.005 || fis.odemeIskontoOrani > 0
-        ? toplamSatiri('Ödeme iskontosu (' + kacis(oranYazi(fis.odemeIskontoOrani)) + ')',
-                       '&minus;' + kacis(para(fis.odemeIskontoTutar)), 'indirim')
-        : '') +
-      /*
-       * Σ KDV — müşterinin "kaç KDV'li aldım" sorusunun cevabı. KDV
-       * İSTENMEDİYSE bu satır BASILMAZ: tutar zaten düşüldü, burada göstermek
-       * "ayrıca KDV ödeyeceğim" diye okunurdu; yerine aşağıdaki açık blok çıkar.
-       */
-      (!fis.kdvIstenmedi && oz.toplam > 0.005
-        ? toplamSatiri(kacis(kdvEtiketi(oz)), kacis(para(oz.toplam)), 'kdv')
-        : '') +
-      (fis.kdvIstenmedi ? toplamSatiri('KDV', 'UYGULANMADI', 'kdv-yok') : '') +
-      toplamSatiri('NET ÖDENECEK', kacis(para(fis.net)), 'net');
+    /*
+     * 80 mm TERMALDE kâğıt tek sütundur: sekiz sütun ürün adını üç harfe
+     * düşürür. Aynı bilgi kalemin ALTINDA ikinci satır olur ("KDV %20 ·
+     * 34,20 TL"). İki ayrı çizici yazmak yerine iki bayrak — düzen değişir,
+     * veri ve kaynak değişmez.
+     */
+    var termalSutun = 5;
 
-    /* Sunucu damgası yoksa satır KDV'lerinin toplamı aynı tutardır. */
-    var kdvDusulen = kurus(fis.kdvDusulen) || (fis.kdvIstenmedi ? oz.toplam : 0);
+    function termalSatir(k) {
+      var altVar = oz.dolu && kdvliMi(k);
+
+      var satir = '<tr' + (altVar ? ' class="s-kdvli"' : '') + '>' +
+        '<td class="s-ad">' + kacis(k.ad || YOK) + '</td>' +
+        '<td class="s-sku">' + kacis(k.sku || YOK) + '</td>' +
+        '<td class="s-adet sayi">' + kacis(koliAdetYazi(k)) + '</td>' +
+        '<td class="s-birim sayi">' + kacis(para(k.birim)) + '</td>' +
+        '<td class="s-tutar sayi">' + kacis(para(k.tutar)) + '</td>' +
+        '</tr>';
+
+      if (altVar) {
+        satir += '<tr class="s-kdv-satir"><td class="s-kdv-bilgi" colspan="' + termalSutun + '">' +
+          kacis('KDV ' + oranYazi(k.kdvOrani) + ' · ' + para(k.kdvTutar)) + '</td></tr>';
+      }
+
+      return satir;
+    }
+
+    function tablo(bas, son) {
+      var dilim = kalemler.slice(bas, son);
+      var govde = dilim.length
+        ? dilim.map(termal ? termalSatir : a4Satir).join('')
+        : '<tr><td class="bos-kalem" colspan="' + (termal ? termalSutun : A4_SUTUN) + '">Kalem yok</td></tr>';
+
+      var baslik = termal
+        ? '<tr><th>Ürün</th><th>Kod / Barkod</th><th class="sayi">Koli × Adet</th><th class="sayi">Birim</th><th class="sayi">Tutar</th></tr>'
+        : A4_BASLIK;
+
+      return '<table class="kalemler"><thead>' + baslik + '</thead><tbody>' + govde + '</tbody></table>';
+    }
+
+    /* --- Özet, KDV notu, sipariş notu, alt yazı --- */
+    var ozet = fisOzeti(fis);
+    var kdvDusulen = ozet.kdv.dusulen;
 
     var kdvNotu = fis.kdvIstenmedi
       ? '<section class="kdv-notu">Bu siparişte KDV uygulanmamıştır' +
@@ -903,37 +1168,163 @@
         '. Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.</section>'
       : '';
 
+    var kapanis = ozetBlogu(ozet, { paraBirimi: birim }) + kdvNotu +
+      (fis.not ? '<section class="not"><h3>Sipariş Notu</h3>' + kacis(fis.not) + '</section>' : '') +
+      '<footer class="alt">' + kacis(ALT_YAZI) + '</footer>';
+
+    /* --- Sayfalar --- */
+    var sayfalar;
+
+    if (termal) {
+      sayfalar = '<div class="sayfa">' + tamBaslik + kunye + tablo(0, kalemler.length) + kapanis + '</div>';
+    } else {
+      var bolum = sayfalaraBol(kalemler.length, s.kapasite);
+      var toplam = bolum.toplam;
+
+      sayfalar = bolum.sayfalar.map(function (sf, i) {
+        var no = i + 1;
+        var sonSayfa = (i === bolum.sayfalar.length - 1) && !bolum.ozetAyri;
+
+        return '<div class="sayfa' + (i ? ' devam' : '') + '" data-sayfa="' + no + '">' +
+          (i ? devamBasligi(no, toplam) : tamBaslik + kunye) +
+          tablo(sf.bas, sf.son) +
+          (sonSayfa ? kapanis : '') +
+          '<div class="sayfa-no">Sayfa ' + no + ' / ' + toplam + '</div>' +
+          '</div>';
+      }).join('');
+
+      if (bolum.ozetAyri) {
+        sayfalar += '<div class="sayfa devam ozet-sayfasi" data-sayfa="' + toplam + '">' +
+          devamBasligi(toplam, toplam) + kapanis +
+          '<div class="sayfa-no">Sayfa ' + toplam + ' / ' + toplam + '</div></div>';
+      }
+    }
+
+    var a = (arac && 'object' === typeof arac) ? arac : { stil: '', govde: '', betik: '' };
+
     return '<!DOCTYPE html>\n' +
       '<html lang="tr"><head><meta charset="UTF-8">' +
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<title>Sipariş Fişi #' + kacis(fis.numara) + '</title>' +
-      '<style>\n' + stil(termal) + '\n</style></head>' +
-      '<body class="' + (termal ? 'termal' : 'a4') + '"><div class="sayfa">' +
-      '<header class="ust">' +
-        '<div class="marka">' +
-          (LOGO_SEMASI.test(logo) ? '<img class="logo" src="' + kacis(logo) + '" alt="">' : '') +
-          (firma.ad ? '<div class="firma">' + kacis(firma.ad) + '</div>' : '') +
-        '</div>' +
-        '<div class="baslik">' +
-          '<div class="fis-turu">SİPARİŞ FİŞİ</div>' +
-          '<div class="no">#' + kacis(fis.numara || '—') + '</div>' +
-          (fis.tarihYazi ? '<div class="tarih">' + kacis(fis.tarihYazi) + '</div>' : '') +
-          (fis.durumEtiketi ? '<div class="durum">' + kacis(fis.durumEtiketi) + '</div>' : '') +
-        '</div>' +
-      '</header>' +
-      '<section class="kunye">' + bayiKutusu + siparisKutusu + '</section>' +
-      '<table class="kalemler"><thead><tr>' +
-        '<th>Ürün</th><th>Kod / Barkod</th>' +
-        (kdvSutun ? '<th class="sayi">KDV</th>' : '') +
-        '<th class="sayi">Koli × Adet</th><th class="sayi">Birim</th>' +
-        (kdvSutun ? '<th class="sayi">KDV Tutarı</th>' : '') +
-        '<th class="sayi">Tutar</th>' +
-      '</tr></thead><tbody>' + satirlar + '</tbody></table>' +
-      '<table class="toplamlar"><tbody>' + toplamlar + '</tbody></table>' +
-      kdvNotu +
-      (fis.not ? '<section class="not"><h3>Sipariş Notu</h3>' + kacis(fis.not) + '</section>' : '') +
-      '<footer class="alt">' + kacis(ALT_YAZI) + '</footer>' +
-      '</div></body></html>';
+      '<style>\n' + stil(termal) + (a.stil ? '\n' + a.stil : '') + '\n</style></head>' +
+      '<body class="' + (termal ? 'termal' : 'a4') + '">' + a.govde + sayfalar + a.betik + '</body></html>';
+  }
+
+  /**
+   * Tam HTML belgesi (satır içi <style>, harici kaynak yok, etkileşim yok).
+   *
+   * @param {object} fis      normalle() çıktısı (kaynak nesne de kabul edilir)
+   * @param {object} secenek  { kagit: 'a4'|'termal', paraBirimi: 'TL', kapasite }
+   */
+  function html(fis, secenek) {
+    return belgeKur(fis, secenek, null);
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  ARAÇ ÇUBUĞU + PENCERE — Yazdır · PDF · WhatsApp · Kapat (Faz 14)
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Fiş penceresinin araç çubuğu (kâğıda YANSIMAZ). Depo fişi de aynı
+   * çubuğu basar — iki pencere aynı dört düğmeyle konuşur.
+   *
+   * WhatsApp düğmesi `fis:whatsapp` IPC'sini çağırır: ana süreç fişin
+   * görselini panoya kopyalar ve müşterinin numarasıyla wa.me sohbetini
+   * açar. Telefon yoksa düğme devre dışıdır ve sebebini söyler.
+   *
+   * @param {object} secenek { baslik, dosyaAdi, whatsapp: { tel, metin } }
+   * @returns {{ stil: string, govde: string, betik: string }}
+   */
+  function aracCubugu(secenek) {
+    var s = (secenek && 'object' === typeof secenek) ? secenek : {};
+    var wa = (s.whatsapp && 'object' === typeof s.whatsapp) ? s.whatsapp : {};
+    var tel = waTelefon(wa.tel);
+
+    var stilSatirlari = [
+      '.arac { position:sticky; top:0; z-index:10; display:flex; gap:10px; align-items:center; padding:8px 12px; background:#0f172a; box-shadow:0 1px 2px rgba(0,0,0,.25); font-family:"Segoe UI", Arial, sans-serif; }',
+      '.arac .baslik { color:#cbd5e1; font-size:12.5px; font-weight:600; margin-right:auto; white-space:normal; text-align:left; }',
+      '.arac button { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; padding:8px 14px; border:0; border-radius:6px; color:#fff; cursor:pointer; transition:filter .15s, transform .1s; }',
+      '.arac button:hover { filter:brightness(1.12); }',
+      '.arac button:active { transform:scale(.96); }',
+      '.arac button[disabled] { opacity:.45; cursor:not-allowed; filter:none; transform:none; }',
+      '.b-yazdir { background:#2563eb; }',
+      '.b-pdf { background:#334155; }',
+      '.b-wa { background:#16a34a; }',
+      '.b-kapat { background:#334155; }',
+      '.fis-toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); max-width:640px; padding:10px 16px; border-radius:8px; background:#0f172a; color:#fff; font:600 13px "Segoe UI", Arial, sans-serif; box-shadow:0 8px 24px rgba(0,0,0,.35); z-index:20; }',
+      '.fis-toast.ok { background:#166534; }',
+      '.fis-toast.hata { background:#991b1b; }',
+      '@media print { .yazdirma-yok { display:none !important; } }'
+    ];
+
+    var govde = '<div class="arac yazdirma-yok">' +
+      '<div class="baslik">' + kacis(s.baslik || '') + '</div>' +
+      '<button class="b-yazdir" id="btnYazdir" type="button">🖨️ YAZDIR</button>' +
+      '<button class="b-pdf" id="btnPdf" type="button">📄 PDF OLARAK KAYDET</button>' +
+      '<button class="b-wa" id="btnWa" type="button"' +
+        (tel ? '' : ' disabled title="Müşterinin kayıtlı telefon numarası yok"') +
+        '>📲 WHATSAPP\'TAN GÖNDER</button>' +
+      '<button class="b-kapat" id="btnKapat" type="button">✕ KAPAT</button>' +
+      '</div>' +
+      '<div id="fisToast" class="fis-toast yazdirma-yok" hidden></div>';
+
+    /* JSON içindeki "<" kaçışlanır: gömülü betikte "</script" dizisi belgeyi
+       erken kapatırdı (ürün adları serbest metindir). */
+    var veri = JSON.stringify({
+      dosyaAdi: metin(s.dosyaAdi) || 'Fis',
+      baslik: metin(s.baslik),
+      tel: tel,
+      metin: metin(wa.metin)
+    }).replace(/</g, '\\u003c');
+
+    var betik = '<script>(function () {' +
+      'var ipc = require("electron").ipcRenderer;' +
+      'var V = ' + veri + ';' +
+      'function el(id) { return document.getElementById(id); }' +
+      'var zaman = 0;' +
+      'function toast(m, tur) { var t = el("fisToast"); if (!t) return; t.textContent = m; t.className = "fis-toast yazdirma-yok " + (tur || ""); t.hidden = false; clearTimeout(zaman); zaman = setTimeout(function () { t.hidden = true; }, 7000); }' +
+      'el("btnYazdir").addEventListener("click", function () { ipc.invoke("fis:yazdir"); });' +
+      'el("btnPdf").addEventListener("click", function () {' +
+        'ipc.invoke("fis:pdf", { dosyaAdi: V.dosyaAdi, baslik: V.baslik }).then(function (c) {' +
+          'if (c && c.ok) toast("PDF kaydedildi: " + (c.yol || ""), "ok");' +
+          'else if (c && !c.iptal) toast((c && c.hata) || "PDF oluşturulamadı.", "hata");' +
+        '});' +
+      '});' +
+      'var wa = el("btnWa");' +
+      'if (wa && !wa.disabled) wa.addEventListener("click", function () {' +
+        'wa.disabled = true; toast("Fiş görseli hazırlanıyor…");' +
+        'ipc.invoke("fis:whatsapp", { tel: V.tel, metin: V.metin, dosyaAdi: V.dosyaAdi }).then(function (c) {' +
+          'wa.disabled = false;' +
+          'if (c && c.ok) toast(c.mesaj || "Fiş görseli panoya kopyalandı. Açılan WhatsApp sohbetinde Ctrl+V ile yapıştırıp gönderin.", "ok");' +
+          'else toast((c && c.hata) || "WhatsApp açılamadı.", "hata");' +
+        '});' +
+      '});' +
+      'el("btnKapat").addEventListener("click", function () { ipc.invoke("fis:kapat"); });' +
+      'document.addEventListener("keydown", function (o) {' +
+        'if (o.key === "Escape") ipc.invoke("fis:kapat");' +
+        'if ((o.ctrlKey || o.metaKey) && o.key.toLowerCase() === "p") { o.preventDefault(); ipc.invoke("fis:yazdir"); }' +
+      '});' +
+      '})();<\/script>';
+
+    return { stil: stilSatirlari.join('\n'), govde: govde, betik: betik, tel: tel };
+  }
+
+  /**
+   * Araç çubuklu fiş penceresi (fis:onizleme'ye giden belge).
+   * html() saf kalır; etkileşim yalnızca burada eklenir.
+   */
+  function pencere(fis, secenek) {
+    fis = fisEmin(fis);
+
+    var s = (secenek && 'object' === typeof secenek) ? secenek : {};
+    var arac = aracCubugu({
+      baslik: 'Sipariş Fişi #' + (fis.numara || YOK) + ' · ' + sayi(fis.cesit) + ' kalem' +
+        (metin(fis.musteri && fis.musteri.unvan) ? ' · ' + metin(fis.musteri.unvan) : ''),
+      dosyaAdi: 'Siparis-Fisi-' + String(fis.numara || 'fis').replace(/[^0-9A-Za-z_-]+/g, '_'),
+      whatsapp: { tel: fis.musteri && fis.musteri.telefon, metin: whatsappMetni(fis, s) }
+    });
+
+    return belgeKur(fis, s, arac);
   }
 
   /* ------------------------------------------------------------------ *
@@ -972,14 +1363,26 @@
     if (fis.durumEtiketi) bas.push('*Durum:* ' + tekSatir(fis.durumEtiketi));
     if (fis.odeme) bas.push('*Ödeme:* ' + tekSatir(fis.odeme));
 
-    var son = ['*Ara toplam:* ' + para(fis.araToplam)];
+    /*
+     * Toplam satırları fişteki ALTI SATIRLA aynı sözcükleri kullanır (iki
+     * kanal ayrışamaz). Farkı: WhatsApp 1800 karakterle sınırlı; iskonto
+     * yoksa "—" satırı basılmaz, yalnızca dolu satırlar gider.
+     */
+    var oz0 = fisOzeti(fis);
+    var son = ['*' + OZET_ETIKET.liste + ':* ' + para(oz0.liste)];
+    var iskontoVar = false;
 
-    if (fis.bayiIskontoTutar > 0.005 || fis.bayiIskontoOrani > 0) {
-      son.push('*Bayi iskontosu (' + oranYazi(fis.bayiIskontoOrani) + '):* −' + para(fis.bayiIskontoTutar));
+    if (oz0.bayiTutar > 0.005 || oz0.bayiOrani > 0) {
+      iskontoVar = true;
+      son.push('*' + OZET_ETIKET.bayi + ' (' + oranYazi(oz0.bayiOrani) + '):* −' + para(oz0.bayiTutar));
     }
 
-    if (fis.odemeIskontoTutar > 0.005 || fis.odemeIskontoOrani > 0) {
-      son.push('*Ödeme iskontosu (' + oranYazi(fis.odemeIskontoOrani) + '):* −' + para(fis.odemeIskontoTutar));
+    if (oz0.odemeTutar > 0.005 || oz0.odemeOrani > 0) {
+      if (iskontoVar) son.push('*' + OZET_ETIKET.ara + ':* ' + para(oz0.iskontoluAra));
+
+      iskontoVar = true;
+      son.push('*' + (oz0.odemeAdi ? oz0.odemeAdi + ' ' + OZET_ETIKET.odeme : OZET_ETIKET.odemeYok) +
+        ' (' + oranYazi(oz0.odemeOrani) + '):* −' + para(oz0.odemeTutar));
     }
 
     /*
@@ -997,7 +1400,7 @@
       son.push('*' + kdvEtiketi(waOz) + ':* ' + para(waOz.toplam));
     }
 
-    son.push('*NET ÖDENECEK: ' + para(fis.net) + '*');
+    son.push('*' + OZET_ETIKET.net + ': ' + para(fis.net) + '*');
 
     if (p.ad) son.push('_Plasiyer: ' + tekSatir(p.ad) + '_');
 
@@ -1077,16 +1480,24 @@
   var SiparisFisi = {
     normalle: normalle,
     html: html,
+    pencere: pencere,
     whatsappMetni: whatsappMetni,
     waTelefon: waTelefon,
     waAdresi: waAdresi,
     paraYaz: paraYaz,
     kacis: kacis,
+    /* Faz 14 — iki fişin ortak parçaları */
+    fisOzeti: fisOzeti,
+    ozetBlogu: ozetBlogu,
+    sayfalaraBol: sayfalaraBol,
+    aracCubugu: aracCubugu,
     /* sabitler */
     PARA_BIRIMI: PARA_BIRIMI,
     WA_EN_COK_KALEM: WA_EN_COK_KALEM,
     WA_EN_COK_KARAKTER: WA_EN_COK_KARAKTER,
-    ALT_YAZI: ALT_YAZI
+    ALT_YAZI: ALT_YAZI,
+    OZET_ETIKET: OZET_ETIKET,
+    SAYFA_KAPASITESI: SAYFA_KAPASITESI
   };
 
   if (typeof module !== 'undefined' && module.exports && typeof window === 'undefined') module.exports = SiparisFisi;

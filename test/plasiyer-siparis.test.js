@@ -769,3 +769,150 @@ test('siparisGovdesi: yerelKimlik uretilir (cift gonderim korumasi) ve iki oran 
   assert.equal(g1.iskontoOrani, 10, 'sunucunun okudugu alan bayi orani (geriye uyum)');
   assert.equal(g1.toplamlar.genelToplam, 171, '200 × 0,9 × 0,95');
 });
+
+/* =========================================================================
+ * 8. KDV KİPİ (Faz 14) — "KDV istemiyorum" matematiği MOTORDA
+ *
+ * Ürün sahibinin tuzağı: 100 TL, %10 KDV → KDV hariç 90 DEĞİL 90,91'dir
+ * (KDV fiyatın İÇİNDEDİR: net = brüt / 1,10). 90 yazan bir sistem "90'a %10
+ * ekle → 99" ile kendi kendini yalanlar. Aynı yanlış, iskontoların KDV'li
+ * matrahtan hesaplanmasıyla da üretilir: sunucu satırları ÖNCE netleştirir,
+ * iskontoları SONRA uygular (class-b2b-rest-plasiyer.php, sıra kritik);
+ * panelin tahmini de aynı sırayı izlemek zorundadır.
+ * ====================================================================== */
+
+/** KDV oranı bilinen ürün. */
+function uk(id, ad, fiyat, koli, kdv) {
+  const x = u(id, ad, fiyat, koli);
+  x.kdv_orani = kdv;
+  return x;
+}
+
+test('kalemKdv: KDV fiyatın İÇİNDEDİR — 100 TL %10 → net 90,91 / KDV 9,09 (90 DEĞİL)', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, uk(1, 'A', 100, 1, 10), 1);
+
+  const k = M.kalemKdv(s.satirlar[0]);
+
+  assert.equal(k.brut, 100);
+  assert.equal(k.net, 90.91);
+  assert.equal(k.kdv, 9.09);
+  assert.equal(k.oran, 10);
+  assert.equal(k.bilinmiyor, false);
+  assert.notEqual(k.net, 90, 'yuzde CIKARMA degil, BOLME');
+
+  /* Ters işlem kendini doğrular: 90,91 × 1,10 ≈ 100 */
+  assert.ok(Math.abs(k.net * 1.1 - 100) < 0.02);
+});
+
+test('kalemKdv: oranı bilinmeyen satırda SAYI UYDURULMAZ — net = brüt, kdv 0, bilinmiyor', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, u(2, 'B', 40, 1), 2);   // kdv_orani yok
+
+  const k = M.kalemKdv(s.satirlar[0]);
+
+  assert.equal(k.brut, 80);
+  assert.equal(k.net, 80);
+  assert.equal(k.kdv, 0);
+  assert.equal(k.oran, 0);
+  assert.equal(k.bilinmiyor, true);
+});
+
+test('toplamlar KDV DAHİL (varsayılan): tutarlar değişmez, kdv künyesi bilgi olarak gelir', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, uk(1, 'A', 100, 1, 10), 1);
+
+  const g = M.toplamlar(s, 0);
+
+  assert.equal(g.kdvDahil, true, 'alan tanımsızken KDV dahil');
+  assert.equal(g.araToplam, 100);
+  assert.equal(g.brutAraToplam, 100);
+  assert.equal(g.genelToplam, 100);
+  assert.equal(g.kdv.dahil, true);
+  assert.equal(g.kdv.tutar, 9.09, 'fiyatın içindeki KDV');
+  assert.equal(g.kdv.oran, 10);
+  assert.equal(g.kdv.karisik, false);
+  assert.equal(g.kdv.dusulen, 0, 'dahil kipte düşüm yok');
+});
+
+test('toplamlar KDV HARİÇ: satırlar netleşir, genel toplam düşer, düşülen KDV yazılır', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, uk(1, 'A', 100, 1, 10), 1);
+  s.kdvDahil = false;
+
+  const g = M.toplamlar(s, 0);
+
+  assert.equal(g.kdvDahil, false);
+  assert.equal(g.brutAraToplam, 100, 'brüt liste hâlâ 100');
+  assert.equal(g.araToplam, 90.91, 'ara toplam KDV hariç');
+  assert.equal(g.genelToplam, 90.91);
+  assert.equal(g.kdv.dahil, false);
+  assert.equal(g.kdv.dusulen, 9.09);
+  assert.equal(g.kdv.tutar, 9.09);
+});
+
+test('toplamlar KDV HARİÇ + bileşik iskonto: iskontolar NET matrah üzerinden (sunucuyla aynı sıra)', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, uk(1, 'A', 100, 1, 20), 1);   // net 83,33 · KDV 16,67
+  M.ekle(s, uk(2, 'B', 50, 1, 10), 1);    // net 45,45 · KDV  4,55
+  M.musteriIskontosuUygula(s, MUSTERI, 20);   // bayi %10
+  M.odemeSec(s, 'nakit');                     // ödeme %5
+  s.kdvDahil = false;
+
+  const g = M.toplamlar(s, 20);
+
+  assert.equal(g.brutAraToplam, 150);
+  assert.equal(g.araToplam, 128.78, '83,33 + 45,45');
+  assert.equal(g.indirim, 12.88, '128,78 × %10');
+  assert.equal(g.bayiSonrasi, 115.9);
+  assert.equal(g.odemeIndirim, 5.8, '115,90 × %5 = 5,795 → 5,80');
+  assert.equal(g.genelToplam, 110.1);
+  assert.equal(g.kdv.dusulen, 21.22, '16,67 + 4,55');
+  assert.equal(g.kdv.karisik, true, 'iki farklı oran');
+  assert.equal(g.kdv.oran, 0, 'karışıkta tek oran yazılmaz');
+
+  /* YANLIŞ yol (KDV'li matrahtan iskonto, sonra KDV düş) farklı sayı verirdi:
+     150 × 0,9 × 0,95 = 128,25 − 21,22 = 107,03 ≠ 110,10 */
+  assert.notEqual(g.genelToplam, 107.03);
+
+  /* Aynı sepet KDV dahil kipte eski değerini verir (kip yalnızca sipariş başına). */
+  s.kdvDahil = true;
+  const d = M.toplamlar(s, 20);
+  assert.equal(d.araToplam, 150);
+  assert.equal(d.genelToplam, 128.25);
+  assert.equal(d.kdv.tutar, 21.22, 'dahil kipte de KDV künyesi bilgi olarak var');
+});
+
+test('toplamlar KDV HARİÇ: oranı bilinmeyen satır DOKUNULMADAN kalır ve sayılır', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, uk(1, 'A', 100, 1, 10), 1);
+  M.ekle(s, u(2, 'B', 40, 1), 1);          // oran yok
+  s.kdvDahil = false;
+
+  const g = M.toplamlar(s, 0);
+
+  assert.equal(g.araToplam, 130.91, '90,91 + 40 (bilinmeyen satır brüt kalır)');
+  assert.equal(g.kdv.bilinmeyen, 1);
+  assert.equal(g.kdv.hicYok, false);
+  assert.equal(g.kdv.dusulen, 9.09, 'yalnızca bilinen satırın KDV si düşer');
+
+  const s2 = M.sepetKur();
+  M.ekle(s2, u(3, 'C', 10, 1), 1);
+  s2.kdvDahil = false;
+  const g2 = M.toplamlar(s2, 0);
+  assert.equal(g2.kdv.hicYok, true);
+  assert.equal(g2.araToplam, 10, 'hiçbir oran yoksa hiçbir şey düşülmez');
+});
+
+test('siparisGovdesi: KDV hariç kipte gövdedeki toplamlar da NET — sunucuyla aynı resmi taşır', (t) => {
+  const s = M.sepetKur();
+  M.ekle(s, uk(1, 'A', 100, 1, 10), 2);
+  s.kdvDahil = false;
+
+  const g = M.siparisGovdesi(s, { id: 7 }, 10);
+
+  assert.equal(g.kdvDahil, false);
+  assert.equal(g.toplamlar.genelToplam, 181.82, '200 / 1,10');
+  assert.equal(g.toplamlar.kdv.dusulen, 18.18);
+  assert.equal(g.kalemler[0].price, 100, 'satır fiyatı BRÜT gider; netleştirmeyi sunucu yapar');
+});

@@ -290,17 +290,69 @@
    * Alan adları Faz 2 ile geriye uyumlu: `indirim`/`iskontoOrani` bayi
    * katmanıdır, `genelToplam` her iki katmandan sonraki nettir.
    */
+  /**
+   * Bir sepet satırının KDV künyesi (Faz 14).
+   *
+   * KDV FİYATIN İÇİNDEDİR (sistemin sözleşmesi: fiyatlar KDV dâhil girilir).
+   * Bu yüzden net = brüt / (1 + oran/100), KDV = brüt − net. 100 TL'lik %10
+   * KDV'li ürünün KDV hariç fiyatı 90 DEĞİL 90,91'dir; yüzde ÇIKARARAK
+   * (100 × 0,90) hesaplayan bir sistem "90'a %10 ekle → 99" ile kendi
+   * kendini yalanlar. Sunucu da aynı bölmeyi yapar
+   * (B2B_Order_Revision::apply_vat_mode: subtotal / factor).
+   *
+   * Oranı bilinmeyen satır için SAYI UYDURULMAZ: net = brüt, kdv 0 ve
+   * `bilinmiyor: true` — plasiyer müşteriye yanlış fiyat söylemesin; kesin
+   * tutar sunucuda ürünün kendi oranıyla hesaplanır.
+   */
+  function kalemKdv(satir) {
+    var adet = adediOturt(satir, satir.adet);
+    var brut = kurus((Number(satir.price) || 0) * adet);
+    var oran = kdvOrani(satir);
+
+    if (oran <= 0) {
+      return { adet: adet, brut: brut, net: brut, kdv: 0, oran: 0, bilinmiyor: true };
+    }
+
+    var net = kurus(brut / (1 + oran / 100));
+
+    return { adet: adet, brut: brut, net: net, kdv: kurus(brut - net), oran: oran, bilinmiyor: false };
+  }
+
   function toplamlar(sepet, tavan) {
     var araToplam = 0;
+    var brutAra = 0;
+    var kdvToplam = 0;
     var kalem = 0;
     var koli = 0;
+    var oranlar = [];
+    var bilinmeyen = 0;
+
+    /*
+     * KDV KİPİ SİPARİŞ BAŞINADIR (`sepet.kdvDahil`). Alan tanımsızsa KDV
+     * DÂHİL sayılır: kuyrukta bekleyen eski siparişler ve bu alanı hiç
+     * bilmeyen çağıranlar sessizce KDV'siz hesaba düşmesin.
+     *
+     * SIRA SUNUCUYLA AYNI: önce satırlar netleşir (KDV düşülür), iskontolar
+     * SONRA ve NET matrah üzerinden uygulanır. Ters sıra (KDV'li matrahtan
+     * iskonto, sonra KDV düş) hem sunucudan farklı bir sayı üretir hem de
+     * müşteriye fazladan indirim yazar — Registry §0 madde 1 sınıfı hata.
+     */
+    var dahil = false !== sepet.kdvDahil;
 
     sepet.satirlar.forEach(function (s) {
-      var adet = adediOturt(s, s.adet);
+      var k = kalemKdv(s);
 
-      araToplam += (Number(s.price) || 0) * adet;
-      kalem += adet;
-      koli += koliSayisi(s, adet);
+      brutAra += k.brut;
+      kdvToplam += k.kdv;
+      araToplam += dahil ? k.brut : k.net;
+      kalem += k.adet;
+      koli += koliSayisi(s, k.adet);
+
+      if (k.bilinmiyor) {
+        bilinmeyen++;
+      } else if (-1 === oranlar.indexOf(k.oran)) {
+        oranlar.push(k.oran);
+      }
     });
 
     var oran = uygulanabilirIskonto(sepet.iskonto, tavan);
@@ -315,12 +367,25 @@
       kalem: kalem,
       koli: koli,
       araToplam: kurus(araToplam),
+      /* Brüt liste (KDV dâhil) her kipte aynıdır: özet "Liste (KDV dâhil)"
+         satırını ve düşüm farkını bundan kurar. */
+      brutAraToplam: kurus(brutAra),
+      kdvDahil: dahil,
       iskontoOrani: oran,
       indirim: indirim,
       bayiSonrasi: bayiSonrasi,
       odemeIskontoOrani: odemeOrani,
       odemeIndirim: odemeIndirim,
-      genelToplam: kurus(bayiSonrasi - odemeIndirim)
+      genelToplam: kurus(bayiSonrasi - odemeIndirim),
+      kdv: {
+        dahil: dahil,
+        tutar: kurus(kdvToplam),
+        dusulen: dahil ? 0 : kurus(kdvToplam),
+        oran: 1 === oranlar.length ? oranlar[0] : 0,
+        karisik: oranlar.length > 1,
+        bilinmeyen: bilinmeyen,
+        hicYok: 0 === oranlar.length
+      }
     };
   }
 
@@ -708,6 +773,7 @@
     bosalt: bosalt,
     satirBul: satirBul,
     toplamlar: toplamlar,
+    kalemKdv: kalemKdv,
     /* bileşik iskonto (Faz 9) */
     netFiyat: netFiyat,
     odemeIskontosu: odemeIskontosu,

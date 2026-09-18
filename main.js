@@ -18,7 +18,7 @@
  *      Releases yayın akışı). Yalnızca paketlenmiş (kurulmuş) sürümde çalışır.
  * ==========================================================================*/
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, session, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, session, net, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -776,9 +776,10 @@ ipcMain.handle('fis:pdf', async (olay, veri) => {
   let masaustu;
   try { masaustu = app.getPath('desktop'); } catch (e) { masaustu = app.getPath('documents'); }
 
+  /* Başlık fişe göre: depo fişi de sipariş fişi de aynı kanalı kullanır (Faz 14). */
   const secim = await dialog.showSaveDialog(pencere, {
-    title: 'Depo Fişini PDF Olarak Kaydet',
-    defaultPath: path.join(masaustu, (veri.dosyaAdi || 'Depo-Fisi') + '.pdf'),
+    title: (veri.baslik ? String(veri.baslik) : 'Fişi') + ' — PDF Olarak Kaydet',
+    defaultPath: path.join(masaustu, (veri.dosyaAdi || 'Fis') + '.pdf'),
     filters: [{ name: 'PDF Dosyası', extensions: ['pdf'] }],
     buttonLabel: 'Kaydet'
   });
@@ -807,6 +808,93 @@ ipcMain.handle('fis:kapat', (olay) => {
   const pencere = BrowserWindow.fromWebContents(olay.sender);
   if (pencere) pencere.close();
   return { ok: true };
+});
+
+/**
+ * WHATSAPP'TAN GÖNDER (Faz 14) — fişin GÖRSELİNİ panoya kopyalar, müşterinin
+ * numarasıyla wa.me sohbetini açar.
+ *
+ * DÜRÜST SINIR: WhatsApp Web/Desktop dışarıdan dosya EKLETMEZ; wa.me yalnızca
+ * metin taşır. Yapılabilen en yakın şey: fiş PNG olarak panoya konur, sohbet
+ * açılır, kullanıcı Ctrl+V ile yapıştırıp gönderir (toast bunu söyler).
+ *
+ * Görsel GİZLİ bir offscreen pencerede üretilir: aynı geçici HTML yüklenir,
+ * araç çubuğu gizlenir, belge yüksekliği ölçülür, pencere o boyuta getirilip
+ * tek karede yakalanır. Fiş penceresinin kendisi yakalanmaz — ekranda görünen
+ * kısım yalnızca ilk sayfa olurdu; çok sayfalı fiş eksik giderdi.
+ */
+ipcMain.handle('fis:whatsapp', async (olay, veri) => {
+  veri = veri || {};
+
+  const kaynakPencere = BrowserWindow.fromWebContents(olay.sender);
+  const yol = kaynakPencere ? gecikoDosyalar.get(kaynakPencere.id) : null;
+  const tel = String(veri.tel || '').replace(/[^0-9]/g, '');
+
+  if (tel.length < 11 || tel.length > 15) {
+    return { ok: false, hata: 'Müşterinin kayıtlı telefon numarası yok ya da geçersiz.' };
+  }
+
+  if (!yol || !fs.existsSync(yol)) {
+    return { ok: false, hata: 'Fiş belgesi bulunamadı; pencereyi kapatıp yeniden açın.' };
+  }
+
+  let gizli = null;
+  let panoda = false;
+
+  try {
+    gizli = new BrowserWindow({
+      show: false,
+      width: 900,
+      height: 1200,
+      webPreferences: { offscreen: true, nodeIntegration: true, contextIsolation: false, spellcheck: false }
+    });
+
+    await gizli.loadFile(yol);
+    await gizli.webContents.insertCSS(
+      '.yazdirma-yok{display:none !important} body{background:#fff !important}' +
+      ' .sayfa{box-shadow:none !important; margin:0 auto 6mm !important}'
+    );
+
+    const olcu = await gizli.webContents.executeJavaScript(
+      '({ w: Math.ceil(document.documentElement.scrollWidth), h: Math.ceil(document.documentElement.scrollHeight) })',
+      true
+    );
+
+    /* Yükseklik tavanı: 16.000 px ≈ 14 A4 sayfası. Daha uzun fiş için PDF yolu var. */
+    const genislik = Math.min(1200, Math.max(400, Number(olcu && olcu.w) || 900));
+    const yukseklik = Math.min(16000, Math.max(300, Number(olcu && olcu.h) || 1200));
+
+    gizli.setContentSize(genislik, yukseklik);
+    await new Promise(function (r) { setTimeout(r, 400); });   // yeniden yerleşim + boyama
+
+    const gorsel = await gizli.webContents.capturePage();
+
+    if (gorsel && !gorsel.isEmpty()) {
+      clipboard.writeImage(gorsel);
+      panoda = true;
+    }
+  } catch (e) {
+    panoda = false;
+  } finally {
+    if (gizli && !gizli.isDestroyed()) gizli.destroy();
+  }
+
+  const adres = 'https://wa.me/' + tel + (veri.metin ? '?text=' + encodeURIComponent(String(veri.metin)) : '');
+
+  try {
+    await shell.openExternal(adres);
+  } catch (e) {
+    return { ok: false, panoda: panoda, hata: 'WhatsApp açılamadı: ' + e.message };
+  }
+
+  return {
+    ok: true,
+    panoda: panoda,
+    adres: adres,
+    mesaj: panoda
+      ? 'Fiş görseli panoya kopyalandı. Açılan WhatsApp sohbetinde Ctrl+V ile yapıştırıp gönderin.'
+      : 'WhatsApp sohbeti metin özetiyle açıldı. Fiş görseli hazırlanamadı; "PDF OLARAK KAYDET" ile dosyayı sohbete ekleyebilirsiniz.'
+  };
 });
 
 /* ==========================================================================
@@ -1281,6 +1369,53 @@ ipcMain.handle('plasiyer:get-orders', async function (olay, veri) {
   }
 
   return { ok: true, veri: cevap.veri };
+});
+
+/**
+ * SAHA SİPARİŞİ İPTAL / SİL (Faz 14) — kimlik ve jeton OTURUMDAN; arayüz
+ * yalnızca sipariş kimliğini söyler. Sunucu siparişin bu plasiyerin
+ * damgasını taşıdığını ayrıca doğrular (başkasının siparişi → 403), iptal
+ * yalnızca kargoya çıkmamış siparişte (409), silme yalnızca iptal edilmiş
+ * siparişte (409) mümkündür — son söz sunucuda.
+ */
+ipcMain.handle('plasiyer:siparis-iptal', async function (olay, veri) {
+  veri = veri || {};
+
+  if (!plasiyerOturumuGecerliMi()) {
+    plasiyerOturumu = null;
+    return { ok: false, durum: 401, hata: 'Oturum süresi doldu. Tekrar PIN ile giriş yapın.' };
+  }
+
+  const siparisId = Number(veri.siparisId) || 0;
+
+  if (!siparisId) return { ok: false, hata: 'Sipariş kimliği yok.' };
+
+  return plasiyerIstek('/plasiyer/siparis-iptal', {
+    plasiyerId: plasiyerOturumu.id,     // arayüzden DEĞİL, oturumdan
+    token: plasiyerOturumu.token,
+    siparisId: siparisId,
+    sebep: String(veri.sebep || ''),
+    bildir: !!veri.bildir
+  });
+});
+
+ipcMain.handle('plasiyer:siparis-sil', async function (olay, veri) {
+  veri = veri || {};
+
+  if (!plasiyerOturumuGecerliMi()) {
+    plasiyerOturumu = null;
+    return { ok: false, durum: 401, hata: 'Oturum süresi doldu. Tekrar PIN ile giriş yapın.' };
+  }
+
+  const siparisId = Number(veri.siparisId) || 0;
+
+  if (!siparisId) return { ok: false, hata: 'Sipariş kimliği yok.' };
+
+  return plasiyerIstek('/plasiyer/siparis-sil', {
+    plasiyerId: plasiyerOturumu.id,     // arayüzden DEĞİL, oturumdan
+    token: plasiyerOturumu.token,
+    siparisId: siparisId
+  });
 });
 
 /**

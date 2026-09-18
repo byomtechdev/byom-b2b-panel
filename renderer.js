@@ -3118,8 +3118,10 @@ async function siparisFisiAc(id, kagit) {
   baglam.plasiyerId = Number(s.plasiyerId) || 0;
 
   const fis = window.SiparisFisi.normalle(s, baglam);
+  /* pencere(): belge + araç çubuğu (Yazdır · PDF · WhatsApp · Kapat). html()
+     saf belgedir; araç çubuğu yalnızca fiş penceresinde anlamlıdır. */
   const cevap = await ipcRenderer.invoke('fis:onizleme', {
-    html: window.SiparisFisi.html(fis, { kagit: baglam.kagit }),
+    html: window.SiparisFisi.pencere(fis, { kagit: baglam.kagit }),
     baslik: 'Sipariş Fişi #' + fis.numara
   });
 
@@ -3479,9 +3481,15 @@ function revizeSatirlariOku() {
     const ham = girdi ? girdi.value : '';
     const adet = Math.max(0, Math.floor(Number(ham)));
 
+    /* KALDIRILACAK satır (Faz 14): elde olmayan ürün siparişten tamamen
+       çıkar; fişlerde görünmez. Adet 0 DEĞİLDİR — 0 adet satırı korur,
+       kaldırma satırı siler ve stoğu iade eder (sunucu: items[].remove). */
+    const kaldir = satir.dataset.kaldir === '1';
+
     return {
       kalemId: Number(satir.dataset.revizeSatir),
-      adet: isNaN(adet) ? 0 : adet,
+      adet: kaldir ? 0 : (isNaN(adet) ? 0 : adet),
+      kaldir: kaldir,
       eskiAdet: Number(satir.dataset.eskiAdet || 0),
       birim: Number(satir.dataset.birim || 0),
       birimAra: Number(satir.dataset.birimAra || 0),
@@ -3535,10 +3543,14 @@ function revizeToplamiTazele() {
 
   let toplam = 0;
   let degisen = 0;
+  let kaldirilan = 0;
   let adetToplam = 0;
   let kdvToplam = 0;
 
   satirlar.forEach(function (r) {
+    /* Kaldırılan satır hiçbir toplama girmez — fişte de olmayacak. */
+    if (r.kaldir) { kaldirilan++; return; }
+
     const brut = r.birim * r.adet;
 
     /* Ters işlem: net = brüt / (1 + oran/100). Oranı 0 olan ürün etkilenmez. */
@@ -3556,13 +3568,13 @@ function revizeToplamiTazele() {
     const net = (!kdvDahil && r.kdvOrani > 0) ? (brut / (1 + r.kdvOrani / 100)) : brut;
 
     const hucre = document.querySelector('[data-revize-satir="' + r.kalemId + '"] [data-revize-tutar]');
-    if (hucre) hucre.textContent = para(brut);
+    if (hucre) hucre.textContent = r.kaldir ? 'KALDIRILACAK' : para(brut);
 
     /* KDV hariç modda: yeni BİRİM fiyat ve KDV'siz SATIR toplamı. */
     const netKutu = document.querySelector('[data-revize-satir="' + r.kalemId + '"] [data-revize-net]');
 
     if (netKutu) {
-      const goster = !kdvDahil && r.kdvOrani > 0 && r.adet > 0;
+      const goster = !r.kaldir && !kdvDahil && r.kdvOrani > 0 && r.adet > 0;
 
       netKutu.classList.toggle('hidden', !goster);
 
@@ -3574,10 +3586,24 @@ function revizeToplamiTazele() {
     const satir = document.querySelector('[data-revize-satir="' + r.kalemId + '"]');
     if (!satir) return;
 
-    /* Değişen satır vurgulanır; 0 adet olan satır soluklaşır. */
-    satir.classList.toggle('bg-amber-50', r.adet !== r.eskiAdet && r.adet > 0);
-    satir.classList.toggle('dark:bg-amber-500/10', r.adet !== r.eskiAdet && r.adet > 0);
-    satir.classList.toggle('opacity-50', r.adet === 0);
+    /* Kaldırılacak satır: adet kutusu ve ± düğmeleri kilitlenir, [Geri Al]
+       görünür; satır soluk + üstü çizili. Değişen satır vurgulanır; 0 adet
+       olan satır soluklaşır. */
+    satir.classList.toggle('kaldirilacak', r.kaldir);
+    satir.classList.toggle('line-through', r.kaldir);
+    satir.querySelectorAll('[data-revize-adet], [data-revize-eksi], [data-revize-arti]').forEach(function (el) {
+      el.disabled = r.kaldir;
+    });
+    const kaldirBtn = satir.querySelector('[data-revize-kaldir]');
+    const geriBtn = satir.querySelector('[data-revize-geri]');
+    if (kaldirBtn) kaldirBtn.classList.toggle('hidden', r.kaldir);
+    if (geriBtn) geriBtn.classList.toggle('hidden', !r.kaldir);
+
+    satir.classList.toggle('bg-amber-50', !r.kaldir && r.adet !== r.eskiAdet && r.adet > 0);
+    satir.classList.toggle('dark:bg-amber-500/10', !r.kaldir && r.adet !== r.eskiAdet && r.adet > 0);
+    satir.classList.toggle('bg-red-50', r.kaldir);
+    satir.classList.toggle('dark:bg-red-500/10', r.kaldir);
+    satir.classList.toggle('opacity-50', r.kaldir || r.adet === 0);
   });
 
   revizeKdvAnahtariCiz();
@@ -3591,6 +3617,11 @@ function revizeToplamiTazele() {
         'Değişen satır: <span class="' + (degisen ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100') +
         ' font-black">' + degisen + '</span>' +
       '</span>' +
+      (kaldirilan
+        ? '<span class="text-lg font-bold text-red-600 dark:text-red-400" data-revize-kaldirilan>' +
+            'Kaldırılacak ürün: <span class="font-black">' + kaldirilan + '</span>' +
+          '</span>'
+        : '') +
       (kdvDahil
         ? ''
         : '<span class="text-lg font-bold text-amber-600 dark:text-amber-400">' +
@@ -3656,12 +3687,14 @@ function revizeModaliAc(id) {
             '<th class="p-3 font-black text-center whitespace-nowrap">İSTENEN</th>' +
             '<th class="p-3 font-black text-center whitespace-nowrap">KOLİYE KONULAN</th>' +
             '<th class="p-3 font-black text-right whitespace-nowrap">TUTAR</th>' +
+            '<th class="p-3 font-black text-center whitespace-nowrap">KALDIR</th>' +
           '</tr>' +
         '</thead>' +
         '<tbody>' +
           s.kalemler.map(function (k) {
             return '' +
             '<tr data-revize-satir="' + k.kalemId + '" ' +
+                'data-kaldir="0" ' +
                 'data-eski-adet="' + k.adet + '" ' +
                 'data-birim="' + k.birim + '" ' +
                 'data-birim-ara="' + (k.adet > 0 ? (k.araToplam / k.adet) : k.birim) + '" ' +
@@ -3716,6 +3749,25 @@ function revizeModaliAc(id) {
                 '<div class="hidden mt-1 text-base font-bold text-amber-600 dark:text-amber-400" data-revize-net></div>' +
               '</td>' +
 
+              /* KALDIR (Faz 14): elde olmayan ürün siparişten çıkarılır — 0 adet
+                 satırı korur, kaldırma satırı siler ve fişlerde görünmez. */
+              '<td class="p-3 text-center whitespace-nowrap">' +
+                '<button type="button" data-revize-kaldir="' + k.kalemId + '" tabindex="-1" ' +
+                        'title="Bu ürünü siparişten çıkar (elde yok / temin edilemiyor)" ' +
+                        'class="h-12 px-3 rounded-xl text-base font-extrabold border-2 border-red-300 dark:border-red-500/40 ' +
+                               'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 ' +
+                               'hover:bg-red-100 dark:hover:bg-red-500/20 transition active:scale-95">' +
+                  ikon('cop') + ' KALDIR' +
+                '</button>' +
+                '<button type="button" data-revize-geri="' + k.kalemId + '" tabindex="-1" ' +
+                        'title="Kaldırmadan vazgeç" ' +
+                        'class="hidden h-12 px-3 rounded-xl text-base font-extrabold border-2 border-emerald-300 dark:border-emerald-500/40 ' +
+                               'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ' +
+                               'hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition active:scale-95">' +
+                  '↩ GERİ AL' +
+                '</button>' +
+              '</td>' +
+
             '</tr>';
           }).join('') +
         '</tbody>' +
@@ -3730,7 +3782,10 @@ function revizeModaliAc(id) {
   if (kdvAnahtar) kdvAnahtar.setAttribute('aria-checked', s.kdvHaric ? 'false' : 'true');
 
   $('#revizeBildir').checked = durum.ayarlar.durumEpostasi !== false;
-  $('#revizeHazirYap').checked = true;
+  /* "Sipariş Hazır" kutusu KAPALI başlar (Faz 14, ürün sahibi): revize etmek
+     ile hazırlamak ayrı kararlardır; durum yalnızca depocu kutuyu işaretlerse
+     değişir. Sunucu da boş/gelmeyen status'ü "dokunma" sayar (2.20.0). */
+  $('#revizeHazirYap').checked = false;
   $('#revizeUyari').classList.add('hidden');
 
   revizeToplamiTazele();
@@ -3749,7 +3804,18 @@ async function revizeyiOnayla(buton) {
   if (!s) return;
 
   const satirlar = revizeSatirlariOku();
-  const degisenler = satirlar.filter(function (r) { return r.adet !== r.eskiAdet; });
+  const degisenler = satirlar.filter(function (r) { return r.kaldir || r.adet !== r.eskiAdet; });
+  const kaldirilanlar = satirlar.filter(function (r) { return r.kaldir; });
+
+  /* Tüm satırlar kaldırılamaz: boş sipariş yerine iptal kullanılır (sunucu
+     da 400 b2b_revision_all_removed döner; burada erken ve açık söylenir). */
+  if (kaldirilanlar.length && kaldirilanlar.length === satirlar.length) {
+    const uyari = $('#revizeUyari');
+    uyari.textContent = 'Siparişteki bütün ürünleri kaldıramazsınız.\n' +
+                        'Sipariş tamamen iptal edilecekse "SİPARİŞİ İPTAL ET" düğmesini kullanın.';
+    uyari.classList.remove('hidden');
+    return;
+  }
 
   const hazirYap = !!$('#revizeHazirYap').checked;
   const not = $('#revizeNot').value.trim();
@@ -3797,6 +3863,13 @@ async function revizeyiOnayla(buton) {
     satirlar.forEach(function (r) {
       [s, kaynak].forEach(function (hedef) {
         if (!hedef || !hedef.kalemler) return;
+
+        /* Kaldırılan satır demo siparişinden de düşer (fişte görünmesin). */
+        if (r.kaldir) {
+          hedef.kalemler = hedef.kalemler.filter(function (x) { return x.kalemId !== r.kalemId; });
+          return;
+        }
+
         const k = hedef.kalemler.filter(function (x) { return x.kalemId === r.kalemId; })[0];
         if (!k) return;
         k.adet = r.adet;
@@ -3849,8 +3922,12 @@ async function revizeyiOnayla(buton) {
       metod: 'POST',
       sureAsimi: 45000,
       govde: {
+        /* Kaldırılan satır `remove:true` ile gider (eklenti 2.20.0): sunucu
+           satırı siler, stoğu iade eder, deftere "KALDIRILDI" yazar. */
         items: satirlar.map(function (r) {
-          return { id: r.kalemId, quantity: r.adet };
+          return r.kaldir
+            ? { id: r.kalemId, quantity: 0, remove: true }
+            : { id: r.kalemId, quantity: r.adet };
         }),
         status: hedefDurum,
         note: not,
@@ -3944,10 +4021,18 @@ async function revizeyiOnayla(buton) {
     siparisleriCiz();
   }
 
+  /* Kaldırılan ürünler ayrı söylenir: "3 satırın adedi güncellendi" bir
+     ürünün siparişten ÇIKTIĞINI anlatmaz. */
+  const kaldirilanSayisi = yanit.changes
+    ? yanit.changes.filter(function (c) { return c && c.removed; }).length
+    : kaldirilanlar.length;
+  const adetDegisenSayisi = (yanit.changes ? yanit.changes.length : degisenler.length) - kaldirilanSayisi;
+
   bildir('#' + s.numara + ' işlendi.\n' +
          (adetDegisti
-           ? (yanit.changes ? yanit.changes.length : degisenler.length) +
-             ' satırın adedi güncellendi; tutar ve KDV yeniden hesaplandı.'
+           ? (adetDegisenSayisi > 0 ? adetDegisenSayisi + ' satırın adedi güncellendi; ' : '') +
+             (kaldirilanSayisi > 0 ? kaldirilanSayisi + ' ürün siparişten kaldırıldı; ' : '') +
+             'tutar ve KDV yeniden hesaplandı.'
            : 'Adetlerde değişiklik yok.') +
          (gercekDurum ? '\nDurum: ' + durumBilgisi(gercekDurum).etiket : '') +
          (durumDegisti && bildirilsinMi ? '\nBayiye bilgilendirme e-postası gönderildi.' : ''),
@@ -6689,7 +6774,25 @@ function fisOranYazi(oran) {
   return '%' + String(yuvarlak).replace('.', ',');
 }
 
+/**
+ * Depo fişi sayfa kapasiteleri (satır).
+ *
+ * SAYFA ÖLÇÜSÜ SABİTTİR (Faz 14): kalem sayısı artınca görsel/punto
+ * KÜÇÜLMEZ, sayfa sayısı artar. Eski `.orta/.sik` yoğunluk kademeleri
+ * 35 kalemi tek A4'e sığdırmak için görseli 19 px'e indiriyordu — depocu
+ * ürünü tanıyamıyordu. Kapasiteler temkinli: iki satıra sarmış ürün adı ve
+ * özet bloğu + imza şeridi için pay bırakır (A4, 8 mm kenar = 281 mm içerik;
+ * satır ≈ 9,8 mm).
+ */
+const DEPO_SAYFA_KAPASITESI = { ilk: 22, devam: 24, ozet: 9 };
+
 function depoFisiHtml(s) {
+  const F = window.SiparisFisi;
+
+  /* Özet bloğu, sayfalama ve araç çubuğu ORTAK motordan gelir; ikinci bir
+     kopya yazmak iki fişi zamanla ayrıştırırdı (bir bilgi için iki depo). */
+  if (!F) return '';
+
   const cesit = s.kalemler.length;
   const toplamAdet = s.kalemler.reduce(function (t, k) { return t + k.adet; }, 0);
   const ozet = siparisFinansOzeti(s);
@@ -6703,12 +6806,7 @@ function depoFisiHtml(s) {
      fiş de aynı anda değişsin (kaynak tek: markaLogosu). */
   const logo = markaLogosu();
 
-  /* Yoğunluk kademesi: kalem sayısı arttıkça görsel ve punto otomatik küçülür,
-     böylece 30-35 satırlık siparişler de TEK A4 sayfasında kalır.
-     Sütun sayısı 7'den 8'e çıktığı için eşikler bir tık aşağı çekildi. */
-  const yogunluk = cesit > 22 ? ' sik' : (cesit > 16 ? ' orta' : '');
-
-  const satirlar = s.kalemler.map(function (k) {
+  const satirHtml = function (k) {
     const f = kalemFiyatKunyesi(k);
     const indirimliMi = f.indirim > 0.005;
 
@@ -6719,7 +6817,7 @@ function depoFisiHtml(s) {
                'onerror="this.onerror=null;this.src=\'' + YEDEK_GORSEL + '\'" />' +
         '</td>' +
         '<td class="s-tik"><span class="tik-kutu"></span></td>' +
-        '<td class="s-ad">' + kacis(k.ad) + '</td>' +
+        '<td class="s-ad"><span class="s-ad-metin">' + kacis(k.ad) + '</span></td>' +
         '<td class="s-kod">' + kacis(k.kod) + '</td>' +
         '<td class="s-adet">' + k.adet + '</td>' +
         /* Liste birim fiyatı iskonto varsa ÜSTÜ ÇİZİLİ basılır: depocu hangi
@@ -6727,123 +6825,210 @@ function depoFisiHtml(s) {
         '<td class="s-liste' + (indirimliMi ? ' cizili' : '') + '">' +
           kacis(paraSade(f.birimListe)) +
         '</td>' +
-        '<td class="s-birim">' + kacis(paraSade(f.birimBayi)) + '</td>' +
-        /* Müşteri her kalemin KDV'sini görsün: oran + tutar. */
-        '<td class="s-kdvo">' + (f.kdvOrani > 0 ? fisOranYazi(f.kdvOrani) : '—') + '</td>' +
-        '<td class="s-kdvt">' + (f.kdvTutar > 0.004 ? kacis(paraSade(f.kdvTutar)) : '—') + '</td>' +
+        /* İskonto yoksa iskontolu birim "—": aynı fiyatı iki kez yazmak bilgi
+           değil gürültüdür (ürün sahibi: "olmazsa (-) şeklinde gözüksün"). */
+        '<td class="s-birim">' + (indirimliMi ? kacis(paraSade(f.birimBayi)) : '&mdash;') + '</td>' +
+        '<td class="s-kdvo">' + (f.kdvOrani > 0 ? fisOranYazi(f.kdvOrani) : '&mdash;') + '</td>' +
+        '<td class="s-kdvt">' + (f.kdvTutar > 0.004 ? kacis(paraSade(f.kdvTutar)) : '&mdash;') + '</td>' +
         '<td class="s-toplam">' + kacis(paraSade(f.satirToplam)) + '</td>' +
       '</tr>';
-  }).join('');
-
-  /* --- Finansal özet satırları --- */
-  function ozetSatiri(etiket, deger, sinif) {
-    return '<tr' + (sinif ? ' class="' + sinif + '"' : '') + '>' +
-             '<td colspan="8" class="etiket">' + etiket + '</td>' +
-             '<td colspan="2" class="deger">' + deger + '</td>' +
-           '</tr>';
-  }
+  };
 
   /*
-   * MUHASEBE DÖKÜMÜ
+   * MUHASEBE DÖKÜMÜ — ALTI SABİT SATIR, ORTAK ÇİZİCİ (SiparisFisi.ozetBlogu)
    * ---------------------------------------------------------------------
-   * Satırlar BİRBİRİNİ ÇIKARIR ve kuruşu kuruşuna kapanır:
-   *
    *   1. LİSTE FİYATI ARA TOPLAMI     birim liste fiyatı × GÜNCEL adet
-   *   2. (varsa) BAYİ İSKONTO TUTARI  oran siparişten okunur
-   *   3. (KÖPRÜ) İSKONTOLU ARA TOPLAM yalnızca İKİ indirim de varken
-   *   4. (varsa) {YÖNTEM} İSKONTOSU   tutar ve oran ücret satırından okunur
-   *   5. GENEL ÖDENECEK TUTAR
-   *
-   * KÖPRÜ SATIRI NEDEN KOŞULLU
-   * --------------------------
-   * Ödeme indirimi, bayi indirimli tutar üzerinden alınır. İki indirim arka
-   * arkaya basıldığında ikincisinin hangi matrahtan hesaplandığı dışarıdan
-   * görünmüyor, hesap kopuk algılanıyordu. Köprü satırı o matrahı gösterir.
-   *
-   * Tek indirim varken ya da hiç indirim yokken satır GİZLENİR: göstermek,
-   * bir üstteki (ya da liste) satırının aynısını ikinci kez yazmak olurdu -
-   * eklenen bilgi sıfır, okunan satır sayısı iki katı.
+   *   2. BAYİ İSKONTO TUTARI          oran siparişten okunur ("—" yoksa)
+   *   3. İSKONTOLU ARA TOPLAM         liste − bayi (HER fişte)
+   *   4. {YÖNTEM} SİPARİŞ İSKONTOSU   ücret satırından okunur ("—" yoksa)
+   *   5. KDV                          bilgi satırı: "fiyatlara dâhil" ya da
+   *                                   vergi motoru açıksa "toplama eklenir";
+   *                                   KDV hariç siparişte UYGULANMADI
+   *   6. NET ÖDENECEK TUTAR
    *
    * ÜÇ REGRESYON KORUMASI (asla geri alınmayacak):
+   *   · Adet değişimi iskonto DEĞİLDİR (1. satır güncel adetle çarpılır).
+   *   · Bayi oranı SABİT DEĞİLDİR (siparişin kendi kaydından: ozet.bayiOrani).
+   *   · Ödeme oranı SABİT DEĞİLDİR (ücret satırından: ozet.odemeOrani/odemeAdi).
    *
-   *   · Adet değişimi iskonto DEĞİLDİR. 1. satır güncel adetle çarpılarak
-   *     hesaplanır; düşen adet farkı iskonto satırına karışamaz. Bu yüzden
-   *     ayrı bir "revizyon farkı" satırına da gerek kalmadı - liste tutarı
-   *     zaten revize adetleri yansıtıyor.
-   *   · Bayi oranı SABİT DEĞİLDİR. Siparişin kendi kaydından gelir
-   *     (pricing.order_rate / _byom_dealer_discount_rate). Oran ve tutar
-   *     sıfırsa satır HİÇ basılmaz.
-   *   · Ödeme oranı SABİT DEĞİLDİR. Siparişin ücret satırından gelir.
-   *     İndirim yoksa satır HİÇ basılmaz.
-   *
-   * KDV çıkarma işleminin İÇİNDE DEĞİLDİR; toplamın altında tek satırlık
-   * gri künyede yazar. Kargo, kupon ve kapanmayan artık yalnızca SIFIR
-   * DEĞİLSE araya girer - kapanmayan bir çıkarma listesi basmak fişi
-   * yalancı yapardı.
+   * Kargo, kupon ve kapanmayan artık yalnızca SIFIR DEĞİLSE araya girer.
+   * KDV ÇIKARMA İŞLEMİNİN İÇİNDE DEĞİLDİR: satır bilgi verir, toplamdan
+   * düşülmez; vergi motoru KDV'yi toplama eklediyse (fark ≈ KDV) "+" ile
+   * ve "toplama eklenir" notuyla yazılır — o zaman zaten toplamın parçasıdır.
    */
+  const kdvUstune = Math.abs(ozet.fark) > 0.005 && Math.abs(ozet.fark - ozet.kdv) < 0.05;
 
-  /*
-   * KDV KÜNYESİ — toplam kutusunun hemen altında tek satır.
-   *
-   * KDV yukarıdaki çıkarma işleminin DIŞINDADIR: "tahsil edilecek tutar" ile
-   * "o tutarın içindeki vergi" ayrı sorulardır. İkisini aynı sütunda çıkarma
-   * kalemi gibi göstermek hem depocuyu hem muhasebeciyi yanıltıyordu.
-   */
-  const kdvKunyesi = ozet.kdvHaricMi
-    ? '(KDV dâhil edilmemiştir &middot; KDV: ' + kacis(para(0)) + ')'
-    : '(Tahsil edilecek tutara dâhil KDV: ' + kacis(para(ozet.kdv)) +
-      (ozet.karisikOran ? ' &middot; karma oran' : ' &middot; ' + fisOranYazi(ozet.kdvOrani)) + ')';
+  const ekSatirlar = [];
 
-  const kdvKunyeSatiri =
-    '<tr class="kdv-kunye"><td colspan="10">' + kdvKunyesi + '</td></tr>';
+  if (ozet.ekIndirim > 0.005) {
+    ekSatirlar.push({ etiket: 'EK İNDİRİM (kupon / sipariş indirimi)', tutar: -ozet.ekIndirim, sinif: 'indirim' });
+  }
 
-  const ozetSatirlari = '' +
-    ozetSatiri('LİSTE FİYATI ARA TOPLAMI <span class="ince">(iskontosuz brüt · güncel adetler)</span>',
-               kacis(para(ozet.brutListe))) +
+  if (ozet.kargo > 0.005) {
+    ekSatirlar.push({ etiket: (s.sevkiyatEtiketi ? s.sevkiyatEtiketi.toLocaleUpperCase('tr-TR') : 'KARGO / NAVLUN'), tutar: ozet.kargo });
+  }
 
-    (ozet.iskonto > 0.005 && ozet.bayiOrani > 0
-      ? ozetSatiri('BAYİ İSKONTO TUTARI <span class="ince">(oran: ' +
-                     fisOranYazi(ozet.bayiOrani) + ')</span>',
-                   '&minus;' + kacis(para(ozet.iskonto)), 'indirim')
-      : '') +
+  if (!kdvUstune && Math.abs(ozet.fark) > 0.005) {
+    ekSatirlar.push({ etiket: 'KAPANMAYAN FARK (yuvarlama / diğer)', tutar: ozet.fark });
+  }
 
-    /*
-     * KÖPRÜ: yalnızca İKİ indirim de varken. Tek indirimde bu satır bir
-     * üstteki sonucun tekrarı olurdu; hiç indirim yokken de liste satırının.
-     */
-    (ozet.ciftIskonto
-      ? ozetSatiri('İSKONTOLU ARA TOPLAM <span class="ince">(ödeme iskontosu bu tutar üzerinden)</span>',
-                   kacis(para(ozet.iskontoluAra)), 'ara')
-      : '') +
+  const ozetGirdisi = {
+    liste: ozet.brutListe,
+    bayiOrani: ozet.bayiOrani,
+    bayiTutar: ozet.iskonto,
+    iskontoluAra: ozet.iskontoluAra,
+    odemeAdi: ozet.odemeAdi,
+    odemeOrani: ozet.odemeOrani,
+    odemeTutar: ozet.odemeIndirim,
+    kdv: {
+      tutar: ozet.kdv,
+      oran: ozet.kdvOrani,
+      karisik: ozet.karisikOran,
+      istenmedi: ozet.kdvHaricMi,
+      dusulen: Number(s.kdvDusulen) || 0,
+      bilinmiyor: false,
+      ustune: kdvUstune
+    },
+    ekSatirlar: ekSatirlar,
+    net: ozet.genelToplam
+  };
 
-    (ozet.odemeIndirim > 0.005
-      ? ozetSatiri(kacis((ozet.odemeAdi || 'ÖDEME YÖNTEMİ').toLocaleUpperCase('tr-TR')) +
-                     ' İSKONTOSU' +
-                     (ozet.odemeOrani > 0
-                       ? ' <span class="ince">(oran: ' + fisOranYazi(ozet.odemeOrani) + ')</span>'
-                       : ''),
-                   '&minus;' + kacis(para(ozet.odemeIndirim)), 'indirim')
-      : '') +
+  const ozetHtml = F.ozetBlogu(ozetGirdisi);
 
-    /* --- Yalnızca sıfır değilse: kupon, kargo ve kapanmayan artık --- */
-    (ozet.ekIndirim > 0.005
-      ? ozetSatiri('EK İNDİRİM <span class="ince">(kupon / sipariş indirimi)</span>',
-                   '&minus;' + kacis(para(ozet.ekIndirim)), 'indirim')
-      : '') +
+  const kdvNotu = ozet.kdvHaricMi
+    ? '<div class="kdv-notu">Bu siparişte KDV uygulanmamıştır' +
+      (Number(s.kdvDusulen) > 0.005 ? ' (düşülen KDV: ' + kacis(para(s.kdvDusulen)) + ')' : '') +
+      '. Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.</div>'
+    : '';
 
-    (ozet.kargo > 0.005
-      ? ozetSatiri((s.sevkiyatEtiketi ? kacis(s.sevkiyatEtiketi.toLocaleUpperCase('tr-TR')) : 'KARGO / NAVLUN'),
-                   kacis(para(ozet.kargo)))
-      : '') +
+  /* ---- Araç çubuğu: ORTAK (Yazdır · PDF · WhatsApp · Kapat) ---- */
+  const arac = F.aracCubugu({
+    baslik: 'Depo Toplama Fişi · Sipariş #' + s.numara + ' · ' + cesit + ' kalem',
+    dosyaAdi: 'Depo-Fisi-' + String(s.numara).replace(/[^0-9A-Za-z_-]+/g, '_'),
+    whatsapp: { tel: s.telefon, metin: F.whatsappMetni(F.normalle(s, siparisFisiBaglami())) }
+  });
 
-    (Math.abs(ozet.fark) > 0.005
-      ? ozetSatiri('KDV <span class="ince">(fiyatlara dâhil değil · toplama eklenir)</span>',
-                   (ozet.fark < 0 ? '&minus;' : '') + kacis(para(Math.abs(ozet.fark))))
-      : '') +
+  /* ---- Sayfalama: sabit kapasite, özet bölünmez ---- */
+  const bolum = F.sayfalaraBol(cesit, DEPO_SAYFA_KAPASITESI);
+  const sayfaToplam = bolum.toplam;
 
-    ozetSatiri('GENEL ÖDENECEK TUTAR', kacis(para(ozet.genelToplam)), 'genel') +
+  const tamBaslik = '' +
+  /* ---- Tek şerit, 2 sütunlu mini başlık: solda firma, sağda sipariş/tarih/bayi ---- */
+  '  <div class="ust">' +
+  '    <div class="ust-sol">' +
+  '      <div class="logo">' +
+         (logo
+           ? '<img src="' + kacis(logo) + '" alt="" ' +
+             'onerror="this.onerror=null;this.parentNode.innerHTML=\'\';" />'
+           : fisIkonu(FIS_IKONLARI.paket, 16)) +
+  '      </div>' +
+  '      <div>' +
+  '        <div class="firma">' + kacis(durum.ayarlar.firmaAdi || 'FİRMA ADI') + '</div>' +
+  '        <div class="fis-turu">DEPO &amp; SEVK FİŞİ &nbsp;·&nbsp; ' +
+           (aliciKod === 'corporate' ? 'KURUMSAL BAYİ' : 'BİREYSEL MÜŞTERİ') + '</div>' +
+  '      </div>' +
+  '    </div>' +
+  '    <div class="ust-sag">' +
+  '      <div><span class="etiket">SİPARİŞ NO:</span> <span class="no">' + kacis(s.numara) + '</span>' +
+  '           &nbsp;·&nbsp; <span class="etiket">TARİH:</span> ' + kacis(tarihYaz(s.tarih, true)) + '</div>' +
+  '      <div><span class="alici-rozet ' + aliciKod + '">' + kacis(aliciBilgi.etiket) + '</span>' +
+  '           <span class="bayi">' + kacis(aliciAdi) + '</span></div>' +
+  '    </div>' +
+  '  </div>' +
 
-    kdvKunyeSatiri;
+  /* ---- Bilgi şeridi: solda ALICI KÜNYESİ (tipe göre değişir), sağda sipariş özeti ---- */
+  '  <div class="bilgi">' +
+  '    <div>' + fisKunyesiHtml(s) + '</div>' +
+  '    <div>' +
+  '      <div><span class="etiket">Çeşit:</span> <span class="vurgu">' + cesit + '</span>' +
+  '           &nbsp;·&nbsp; <span class="etiket">Toplam Adet:</span> <span class="vurgu">' + toplamAdet + '</span>' +
+  '           &nbsp;·&nbsp; <span class="etiket">Sayfa:</span> <span class="vurgu">' + sayfaToplam + '</span></div>' +
+  '      <div><span class="etiket">Durum:</span> <span class="vurgu">' +
+         kacis((s.durumEtiketi || durumBilgisi(s.durum).etiket).toLocaleUpperCase('tr-TR')) + '</span></div>' +
+  /* Sevkiyat satırı: kargo firması, takip numarası ve serbest ambar notu.
+     Üçü de isteğe bağlıdır; hangileri doluysa yalnızca onlar basılır ve
+     hiçbiri yoksa satır hiç görünmez (boş "Kargo: —" satırı yer kaybıydı). */
+  ((s.kargo || s.takip || s.sevkiyatNotu)
+    ? '      <div><span class="etiket">Sevkiyat:</span> ' +
+      [
+        s.kargo ? kacis(s.kargo) : '',
+        s.takip ? '<span class="etiket">Takip:</span> ' + kacis(s.takip) : '',
+        s.sevkiyatNotu ? kacis(s.sevkiyatNotu) : ''
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ') + '</div>'
+    : '') +
+  '    </div>' +
+  '  </div>';
+
+  const devamBasligi = function (no) {
+    return '<div class="ust devam">' +
+      '<div class="ust-sol"><div><div class="firma">' + kacis(durum.ayarlar.firmaAdi || 'FİRMA ADI') + '</div>' +
+      '<div class="fis-turu">DEPO &amp; SEVK FİŞİ &nbsp;·&nbsp; DEVAM</div></div></div>' +
+      '<div class="ust-sag"><div><span class="etiket">SİPARİŞ NO:</span> <span class="no">' + kacis(s.numara) + '</span>' +
+      ' &nbsp;·&nbsp; <span class="etiket">SAYFA:</span> ' + no + ' / ' + sayfaToplam +
+      ' &nbsp;·&nbsp; <span class="bayi">' + kacis(aliciAdi) + '</span></div></div>' +
+      '</div>';
+  };
+
+  const tabloBaslik = '' +
+  '    <thead><tr>' +
+  '      <th class="s-gorsel">GÖRSEL</th>' +
+  '      <th class="s-tik">TİK</th>' +
+  '      <th class="s-ad">ÜRÜN ADI</th>' +
+  '      <th class="s-kod">SKU / BARKOD</th>' +
+  '      <th class="s-adet">ADET</th>' +
+  '      <th class="s-liste">LİSTE BİRİM FİYATI</th>' +
+  '      <th class="s-birim">İSKONTOLU BİRİM FİYATI</th>' +
+  '      <th class="s-kdvo">KDV ORANI</th>' +
+  '      <th class="s-kdvt">KDV TUTARI</th>' +
+  '      <th class="s-toplam">SATIR TOPLAMI</th>' +
+  '    </tr></thead>';
+
+  const tablo = function (bas, son) {
+    const dilim = s.kalemler.slice(bas, son);
+
+    return '<table>' + tabloBaslik + '<tbody>' +
+      (dilim.length ? dilim.map(satirHtml).join('') : '<tr><td class="bos-kalem" colspan="10">Kalem yok</td></tr>') +
+      '</tbody></table>';
+  };
+
+  /* Özet + not/imza şeridi + alt bilgi: yalnızca SON sayfada, bölünmez. */
+  const kapanis = '' +
+  '  <div class="kapanis">' +
+       ozetHtml + kdvNotu +
+  '    <div class="alt">' +
+  '      <div class="not"><span class="etiket">SİPARİŞ NOTU:</span> ' + kacis(s.notlar || '—') + '</div>' +
+  '      <div class="imzalar">' +
+  '        <div class="imza"><div class="cizgi"></div><div class="etiket">HAZIRLAYAN (Depo)</div></div>' +
+  '        <div class="imza"><div class="cizgi"></div><div class="etiket">KONTROL EDEN</div></div>' +
+  '        <div class="imza"><div class="cizgi"></div><div class="etiket">TESLİM ALAN</div></div>' +
+  '      </div>' +
+  '    </div>' +
+  '  </div>';
+
+  const altbilgi = function (no) {
+    return '<div class="altbilgi">' +
+      '<span>' + kacis(durum.ayarlar.firmaAdi || '') + '</span>' +
+      '<span>Tutarlar ₺ (Türk Lirası) cinsindendir.</span>' +
+      '<span>Sayfa ' + no + ' / ' + sayfaToplam + ' &nbsp;·&nbsp; Yazdırma: ' + kacis(tarihYaz(new Date().toISOString(), true)) + '</span>' +
+      '</div>';
+  };
+
+  let sayfalar = bolum.sayfalar.map(function (sf, i) {
+    const no = i + 1;
+    const sonSayfa = (i === bolum.sayfalar.length - 1) && !bolum.ozetAyri;
+
+    return '<div class="sayfa' + (i ? ' devam' : '') + '" data-sayfa="' + no + '">' +
+      (i ? devamBasligi(no) : tamBaslik) +
+      tablo(sf.bas, sf.son) +
+      (sonSayfa ? kapanis : '') +
+      altbilgi(no) +
+      '</div>';
+  }).join('');
+
+  if (bolum.ozetAyri) {
+    sayfalar += '<div class="sayfa devam ozet-sayfasi" data-sayfa="' + sayfaToplam + '">' +
+      devamBasligi(sayfaToplam) + kapanis + altbilgi(sayfaToplam) + '</div>';
+  }
 
   return '<!DOCTYPE html>\n' +
 '<html lang="tr"><head><meta charset="UTF-8">' +
@@ -6854,35 +7039,19 @@ function depoFisiHtml(s) {
 '  html, body { margin:0; padding:0; }' +
 '  body { font-family: "Segoe UI", Arial, sans-serif; background:#e8eaee; color:#0f172a; }' +
 
-'  /* ---- Üst araç çubuğu (kağıda YANSIMAZ) ---- */' +
-'  .arac { position: sticky; top:0; z-index:10; display:flex; gap:10px; align-items:center;' +
-'          padding:8px 12px; background:#0f172a; box-shadow:0 1px 2px rgba(0,0,0,.25); }' +
-'  .arac .baslik { color:#cbd5e1; font-size:12.5px; font-weight:600; margin-right:auto; }' +
-'  .arac button { display:inline-flex; align-items:center; gap:6px;' +
-'                 font-size:13px; font-weight:600; padding:8px 14px; border:0; border-radius:6px;' +
-'                 color:#fff; cursor:pointer; transition:filter .15s, transform .1s; }' +
-'  .arac button:hover { filter:brightness(1.12); }' +
-'  .arac button:active { transform:scale(.96); }' +
-'  .b-yazdir { background:#2563eb; }' +
-'  .b-pdf { background:#334155; }' +
-'  .b-kapat { background:#334155; }' +
+arac.stil +
 
-'  /* ---- A4 sayfa ----' +
-'     Ölçüler değişkenle veriliyor: kalem sayısı arttıkça .orta / .sik kademesi' +
-'     devreye girer ve uzun siparişler de tek sayfada kalır. ---- */' +
-'  .sayfa { width:210mm; min-height:297mm; margin:16px auto; padding:8mm; background:#fff;' +
-'           box-shadow:0 10px 40px rgba(0,0,0,.28);' +
-'           --gorsel:30px; --yazi:10.5px; --imza:11mm; }' +
-'  .sayfa.orta { --gorsel:23px; --yazi:10px;   --imza:8mm; }' +
-'  .sayfa.sik  { --gorsel:19px; --yazi:9.5px;  --imza:5mm; }' +
-'  /* En sık kademede satır yüksekliğini yalnızca görsel hücresi belirler;' +
-'     o hücrenin (metni olmayan) boşluğu kısılarak 35 satır tek sayfada tutulur. */' +
-'  .sayfa.sik tbody .s-gorsel { padding:1px 4px; }' +
-'  .sayfa.sik .bilgi > div { line-height:1.3; }' +
+'  /* ---- A4 sayfa: SABİT ÖLÇÜ ----' +
+'     297 mm − 2 × 8 mm kenar = 281 mm içerik. Ekranda ve kâğıtta aynı; kalem' +
+'     sayısı artınca punto/görsel KÜÇÜLMEZ, sayfa sayısı artar (sayfalaraBol).' +
+'     Taşan içerik gizlenir — son emniyet, kapasite zaten taşırmaz. ---- */' +
+'  .sayfa { position:relative; width:210mm; height:297mm; margin:16px auto; padding:8mm 8mm 12mm; background:#fff;' +
+'           box-shadow:0 10px 40px rgba(0,0,0,.28); overflow:hidden; }' +
 
 '  /* ---- Üst şerit: tek satırda 2 sütunlu mini başlık ---- */' +
 '  .ust { display:flex; align-items:center; justify-content:space-between; gap:10px;' +
 '         border:1px solid #e2e8f0; border-radius:3px; padding:3px 6px; margin-bottom:4px; }' +
+'  .ust.devam { background:#f8fafc; }' +
 '  .ust-sol { display:flex; align-items:center; gap:7px; min-width:0; }' +
 '  .logo { flex:0 0 auto; height:26px; min-width:26px; max-width:120px; border:1px solid #e2e8f0;' +
 '          border-radius:4px; background:#f8fafc; color:#475569;' +
@@ -6909,67 +7078,64 @@ function depoFisiHtml(s) {
 '  .bilgi .etiket { color:#64748b; font-weight:700; }' +
 '  .bilgi .vurgu { font-weight:800; }' +
 
-'  /* ---- Kompakt ürün tablosu ---- */' +
+'  /* ---- Ürün tablosu: SABİT satır ölçüsü (görsel 30 px, yazı 10,5 px) ---- */' +
 '  table { width:100%; border-collapse:collapse; table-layout:fixed; }' +
 '  thead th { background:#f1f5f9; border:1px solid #e2e8f0; padding:3px 5px;' +
 '             font-size:8.5px; font-weight:800; letter-spacing:.2px; text-align:left; color:#334155; }' +
 '  tbody td { border:1px solid #e2e8f0; padding:3px 5px; vertical-align:middle; }' +
 '  tbody tr:nth-child(even) td { background:#f8fafc; }' +
+'  .bos-kalem { text-align:center; color:#94a3b8; padding:6mm 0; }' +
 
 '  /* ---- Sütun genişlikleri (hem başlık hem hücre) ---- */' +
 '  .s-gorsel { width:10mm; text-align:center; }' +
 '  .s-tik    { width:7mm;  text-align:center; }' +
 '  .s-kod    { width:24mm; }' +
 '  .s-adet   { width:11mm; text-align:center; }' +
-'  .s-liste  { width:18mm; text-align:right; }' +
-'  .s-birim  { width:18mm; text-align:right; }' +
-'  .s-kdvo   { width:11mm; text-align:right; }' +
+'  .s-liste  { width:19mm; text-align:right; }' +
+'  .s-birim  { width:20mm; text-align:right; }' +
+'  .s-kdvo   { width:12mm; text-align:right; }' +
 '  .s-kdvt   { width:17mm; text-align:right; }' +
 '  .s-toplam { width:20mm; text-align:right; }' +
 
-'  /* Mikro ürün görseli — üst sınır 30x30px */' +
-'  .urun-gorsel { width:var(--gorsel); height:var(--gorsel); max-width:30px; max-height:30px;' +
-'                 object-fit:cover; border:1px solid #e2e8f0; border-radius:2px;' +
+'  /* Ürün görseli — sabit 30 × 30 px, küçülmez */' +
+'  .urun-gorsel { width:30px; height:30px; object-fit:cover; border:1px solid #e2e8f0; border-radius:2px;' +
 '                 background:#f8fafc; display:block; margin:0 auto; }' +
 '  /* display:block — satır altına yazı tabanı boşluğu eklemesin (yer kaybı olmasın) */' +
 '  .tik-kutu { display:block; width:12px; height:12px; margin:0 auto; border:1px solid #94a3b8;' +
 '              border-radius:2px; background:#fff; }' +
 
-'  tbody .s-ad     { font-size:var(--yazi); font-weight:700; line-height:1.25; word-wrap:break-word; }' +
+'  tbody .s-ad     { font-size:10.5px; font-weight:700; line-height:1.25; }' +
+'  /* Ürün adı en çok İKİ satır: satır yüksekliği sınırlı kalsın ki sayfa' +
+'     kapasitesi kâğıtta da tutsun. */' +
+'  .s-ad-metin { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }' +
 '  tbody .s-kod    { font-size:9.5px; font-weight:600; font-family:Consolas,"Courier New",monospace;' +
 '                    color:#334155; word-wrap:break-word; }' +
-'  tbody .s-adet   { font-size:var(--yazi); font-weight:900; }' +
+'  tbody .s-adet   { font-size:10.5px; font-weight:900; }' +
 '  /* Liste fiyatı: iskonto varsa üstü çizili ve soluk — indirimli fiyatla' +
 '     karışmasın, renksiz yazıcıda da ayrışsın. */' +
 '  tbody .s-liste  { font-size:9.5px; font-weight:600; color:#64748b; }' +
 '  tbody .s-liste.cizili { text-decoration:line-through; }' +
-'  tbody .s-birim  { font-size:var(--yazi); font-weight:800; }' +
+'  tbody .s-birim  { font-size:10.5px; font-weight:800; }' +
 '  tbody .s-kdvo   { font-size:9.5px; font-weight:700; color:#475569; }' +
 '  tbody .s-kdvt   { font-size:9.5px; font-weight:700; color:#475569; }' +
-'  tbody .s-toplam { font-size:var(--yazi); font-weight:800; }' +
+'  tbody .s-toplam { font-size:10.5px; font-weight:800; }' +
 
-'  tfoot td { padding:3px 6px; font-size:var(--yazi); font-weight:800;' +
-'             border:1px solid #e2e8f0; background:#f8fafc; }' +
-'  tfoot .etiket { text-align:right; color:#334155; }' +
-'  tfoot .deger { text-align:right; white-space:nowrap; }' +
-'  tfoot .ince { font-weight:600; color:#64748b; }' +
-'  tfoot .indirim td { color:#b91c1c; }' +
-'  tfoot .indirim .ince { color:#b91c1c; }' +
-
+'  /* ---- Kapanış: özet bloğu (ORTAK çizici) + not/imza ---- */' +
+'  .kapanis { margin-top:4px; }' +
+'  .toplamlar { width:auto; min-width:110mm; margin:0 0 0 auto; table-layout:auto; border-collapse:collapse; }' +
+'  .toplamlar td { padding:3px 6px; font-size:10.5px; font-weight:800; border:1px solid #e2e8f0; background:#f8fafc; }' +
+'  .toplamlar .etiket { text-align:right; color:#334155; }' +
+'  .toplamlar .deger { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }' +
+'  .toplamlar .ince { font-weight:600; color:#64748b; font-size:9px; }' +
+'  .toplamlar .indirim td { color:#b91c1c; }' +
+'  .toplamlar .bos .deger { color:#94a3b8; }' +
 '  /* ---- Köprü satırı: bir ARA TOPLAMDIR, indirim değil ---- */' +
-'  /* Kırmızı eksi gösterimden ayrılsın diye koyu lacivert ve üstten ince' +
-'     bir çizgi; gözle de "burada bir ara sonuç var" denmiş olur. */' +
-'  tfoot .ara td { color:#0f172a; background:#f1f5f9; border-top:1px solid #cbd5e1; }' +
-'  tfoot .ara .ince { color:#64748b; font-weight:600; }' +
-'  tfoot .genel td { font-size:12px; font-weight:900; background:#eef2f7;' +
-'                    border-top:2px solid #94a3b8; }' +
-
-'  /* ---- KDV künyesi: toplamın HEMEN ALTINDA tek satır, küçük ve gri ---- */' +
-'  /* Çıkarma listesinin bir kalemi DEĞİLDİR: kenarlığı ve zemini yok,' +
-'     sağa yaslı ve ince yazılır ki gözle de bir dipnot olduğu anlaşılsın. */' +
-'  tfoot .kdv-kunye td { padding:2px 6px 0; border:0; background:transparent;' +
-'                        text-align:right; font-size:9px; font-weight:600;' +
-'                        color:#64748b; letter-spacing:0.1px; }' +
+'  .toplamlar .ara td { color:#0f172a; background:#f1f5f9; border-top:1px solid #cbd5e1; }' +
+'  .toplamlar .kdv td { color:#475569; }' +
+'  .toplamlar .kdv-yok .deger { color:#b45309; font-weight:900; }' +
+'  .toplamlar .net td { font-size:12px; font-weight:900; background:#eef2f7; border-top:2px solid #94a3b8; }' +
+'  .kdv-notu { margin-top:4px; border:1.5px solid #b45309; border-radius:3px; padding:4px 6px; font-size:9.5px;' +
+'              color:#7c2d12; background:#fffbeb; font-weight:600; }' +
 
 '  /* ---- Alt bant: sipariş notu ve imzalar YAN YANA (dikeyde yer kazanır) ---- */' +
 '  .alt { display:flex; gap:4px; margin-top:4px; align-items:stretch; }' +
@@ -6978,136 +7144,34 @@ function depoFisiHtml(s) {
 '  .not .etiket { color:#64748b; font-weight:700; }' +
 '  .imzalar { flex:3; display:flex; gap:4px; }' +
 '  .imza { flex:1; border:1px solid #e2e8f0; border-radius:3px; padding:3px 6px 2px; }' +
-'  .imza .cizgi { height:var(--imza); border-bottom:1px solid #e2e8f0; }' +
+'  .imza .cizgi { height:11mm; border-bottom:1px solid #e2e8f0; }' +
 '  .imza .etiket { margin-top:2px; font-size:9px; font-weight:700; text-align:center; color:#64748b; }' +
 
-'  .altbilgi { margin-top:3px; border-top:1px solid #e2e8f0; padding-top:2px;' +
+'  .altbilgi { position:absolute; left:8mm; right:8mm; bottom:4mm; border-top:1px solid #e2e8f0; padding-top:2px;' +
 '              font-size:8px; display:flex; justify-content:space-between; color:#64748b; }' +
 
-'  /* ---- YAZDIRMA ---- */' +
+'  /* ---- YAZDIRMA: her .sayfa bir kâğıt sayfasıdır ---- */' +
 '  @media print {' +
 '    body { background:#fff; }' +
-'    .yazdirma-yok { display:none !important; }' +
-'    .sayfa { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; }' +
+'    .sayfa { width:auto; height:281mm; margin:0; padding:0 0 4mm; box-shadow:none;' +
+'             page-break-after:always; break-after:page; }' +
+'    .sayfa:last-child { page-break-after:auto; break-after:auto; }' +
+'    .altbilgi { left:0; right:0; bottom:0; }' +
 '    thead { display:table-header-group; }' +
-'    tfoot { display:table-footer-group; }' +
 '    tr { page-break-inside:avoid; }' +
-'    .alt { page-break-inside:avoid; }' +
-'    /* Dört satırlık döküm ve altındaki KDV künyesi A4"te BÖLÜNMEZ:' +
-'       çıkarma listesinin yarısı bir sayfada, toplamı ötekinde kalırsa' +
-'       fiş okunamaz hale gelir. */' +
-'    tfoot tr { page-break-inside:avoid; }' +
-'    tfoot .genel, tfoot .kdv-kunye, tfoot .ara { page-break-before:avoid; }' +
-'    /* Köprü satırının zemini baskıda da görünsün: beyaz kâğıtta ara' +
-'       toplamı indirim satırlarından ayıran tek işaret odur. */' +
-'    tfoot .ara td { background:#f1f5f9 !important; -webkit-print-color-adjust:exact;' +
-'                    print-color-adjust:exact; }' +
-'    tfoot .kdv-kunye td { color:#475569 !important; -webkit-print-color-adjust:exact;' +
-'                          print-color-adjust:exact; }' +
+'    /* Özet bloğu, KDV notu ve imza şeridi BÖLÜNMEZ: çıkarma listesinin' +
+'       yarısı bir sayfada, toplamı ötekinde kalırsa fiş okunamaz olur. */' +
+'    .kapanis, .toplamlar, .alt, .kdv-notu { page-break-inside:avoid; }' +
+'    /* Köprü ve KDV satırlarının zemini baskıda da görünsün. */' +
+'    .toplamlar .ara td { background:#f1f5f9 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }' +
+'    .toplamlar .net td { background:#eef2f7 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }' +
 '  }' +
 '</style></head><body>' +
 
-'<div class="arac yazdirma-yok">' +
-'  <div class="baslik">' + fisIkonu(FIS_IKONLARI.belge) + ' Depo Toplama Fişi &nbsp;·&nbsp; Sipariş #' + kacis(s.numara) +
-'    &nbsp;·&nbsp; ' + cesit + ' kalem</div>' +
-'  <button class="b-yazdir" id="btnYazdir">' + fisIkonu(FIS_IKONLARI.yazici) + ' YAZDIR</button>' +
-'  <button class="b-pdf" id="btnPdf">' + fisIkonu(FIS_IKONLARI.belge) + ' PDF OLARAK KAYDET</button>' +
-'  <button class="b-kapat" id="btnKapat">' + fisIkonu(FIS_IKONLARI.carpi) + ' KAPAT</button>' +
-'</div>' +
-
-'<div class="sayfa' + yogunluk + '">' +
-
-/* ---- Tek şerit, 2 sütunlu mini başlık: solda firma, sağda sipariş/tarih/bayi ---- */
-'  <div class="ust">' +
-'    <div class="ust-sol">' +
-'      <div class="logo">' +
-       (logo
-         ? '<img src="' + kacis(logo) + '" alt="" ' +
-           'onerror="this.onerror=null;this.parentNode.innerHTML=\'\';" />'
-         : fisIkonu(FIS_IKONLARI.paket, 16)) +
-'      </div>' +
-'      <div>' +
-'        <div class="firma">' + kacis(durum.ayarlar.firmaAdi || 'FİRMA ADI') + '</div>' +
-'        <div class="fis-turu">DEPO &amp; SEVK FİŞİ &nbsp;·&nbsp; ' +
-         (aliciKod === 'corporate' ? 'KURUMSAL BAYİ' : 'BİREYSEL MÜŞTERİ') + '</div>' +
-'      </div>' +
-'    </div>' +
-'    <div class="ust-sag">' +
-'      <div><span class="etiket">SİPARİŞ NO:</span> <span class="no">' + kacis(s.numara) + '</span>' +
-'           &nbsp;·&nbsp; <span class="etiket">TARİH:</span> ' + kacis(tarihYaz(s.tarih, true)) + '</div>' +
-'      <div><span class="alici-rozet ' + aliciKod + '">' + kacis(aliciBilgi.etiket) + '</span>' +
-'           <span class="bayi">' + kacis(aliciAdi) + '</span></div>' +
-'    </div>' +
-'  </div>' +
-
-/* ---- Bilgi şeridi: solda ALICI KÜNYESİ (tipe göre değişir), sağda sipariş özeti ---- */
-'  <div class="bilgi">' +
-'    <div>' + fisKunyesiHtml(s) + '</div>' +
-'    <div>' +
-'      <div><span class="etiket">Çeşit:</span> <span class="vurgu">' + cesit + '</span>' +
-'           &nbsp;·&nbsp; <span class="etiket">Toplam Adet:</span> <span class="vurgu">' + toplamAdet + '</span></div>' +
-'      <div><span class="etiket">Durum:</span> <span class="vurgu">' +
-       kacis((s.durumEtiketi || durumBilgisi(s.durum).etiket).toLocaleUpperCase('tr-TR')) + '</span></div>' +
-/* Sevkiyat satırı: kargo firması, takip numarası ve serbest ambar notu.
-   Üçü de isteğe bağlıdır; hangileri doluysa yalnızca onlar basılır ve
-   hiçbiri yoksa satır hiç görünmez (boş "Kargo: —" satırı yer kaybıydı). */
-((s.kargo || s.takip || s.sevkiyatNotu)
-  ? '      <div><span class="etiket">Sevkiyat:</span> ' +
-    [
-      s.kargo ? kacis(s.kargo) : '',
-      s.takip ? '<span class="etiket">Takip:</span> ' + kacis(s.takip) : '',
-      s.sevkiyatNotu ? kacis(s.sevkiyatNotu) : ''
-    ].filter(Boolean).join(' &nbsp;·&nbsp; ') + '</div>'
-  : '') +
-'    </div>' +
-'  </div>' +
-
-'  <table>' +
-'    <thead><tr>' +
-'      <th class="s-gorsel">GÖRSEL</th>' +
-'      <th class="s-tik">TİK</th>' +
-'      <th class="s-ad">ÜRÜN ADI</th>' +
-'      <th class="s-kod">SKU / BARKOD</th>' +
-'      <th class="s-adet">MİKTAR</th>' +
-'      <th class="s-liste">LİSTE BİRİM</th>' +
-'      <th class="s-birim">İSKONTOLU BİRİM</th>' +
-'      <th class="s-kdvo">KDV %</th>' +
-'      <th class="s-kdvt">KDV TUTARI</th>' +
-'      <th class="s-toplam">SATIR TOPLAMI</th>' +
-'    </tr></thead>' +
-'    <tbody>' + satirlar + '</tbody>' +
-'    <tfoot>' + ozetSatirlari + '</tfoot>' +
-'  </table>' +
-
-'  <div class="alt">' +
-'    <div class="not"><span class="etiket">SİPARİŞ NOTU:</span> ' + kacis(s.notlar || '—') + '</div>' +
-'    <div class="imzalar">' +
-'      <div class="imza"><div class="cizgi"></div><div class="etiket">HAZIRLAYAN (Depo)</div></div>' +
-'      <div class="imza"><div class="cizgi"></div><div class="etiket">KONTROL EDEN</div></div>' +
-'      <div class="imza"><div class="cizgi"></div><div class="etiket">TESLİM ALAN</div></div>' +
-'    </div>' +
-'  </div>' +
-
-'  <div class="altbilgi">' +
-'    <span>' + kacis(durum.ayarlar.firmaAdi || '') + '</span>' +
-'    <span>Tutarlar ₺ (Türk Lirası) cinsindendir.</span>' +
-'    <span>Yazdırma: ' + kacis(tarihYaz(new Date().toISOString(), true)) + '</span>' +
-'  </div>' +
-
-'</div>' +
-
-'<script>' +
-'  const { ipcRenderer } = require("electron");' +
-'  document.getElementById("btnYazdir").addEventListener("click", function(){ ipcRenderer.invoke("fis:yazdir"); });' +
-'  document.getElementById("btnPdf").addEventListener("click", function(){' +
-'    ipcRenderer.invoke("fis:pdf", { dosyaAdi: "Depo-Fisi-' + kacis(s.numara) + '" });' +
-'  });' +
-'  document.getElementById("btnKapat").addEventListener("click", function(){ ipcRenderer.invoke("fis:kapat"); });' +
-'  document.addEventListener("keydown", function(o){' +
-'    if (o.key === "Escape") ipcRenderer.invoke("fis:kapat");' +
-'    if ((o.ctrlKey || o.metaKey) && o.key.toLowerCase() === "p") { o.preventDefault(); ipcRenderer.invoke("fis:yazdir"); }' +
-'  });' +
-'<\/script></body></html>';
+arac.govde +
+sayfalar +
+arac.betik +
+'</body></html>';
 }
 
 /** Siparişi hem ana listede hem bayi kartı listesinde arar. */
@@ -7124,6 +7188,11 @@ async function depoFisiAc(id) {
   const s = siparisBul(id);
   if (!s) {
     bildir('Sipariş bulunamadı. Listeyi yenileyip tekrar deneyin.', 'uyari');
+    return;
+  }
+
+  if (!window.SiparisFisi) {
+    bildir('Fiş motoru yüklenemedi (siparis-fisi.js); depo fişi açılamıyor.', 'hata');
     return;
   }
 
@@ -8064,6 +8133,21 @@ function olaylariBagla() {
     const simdi = Math.max(0, Math.floor(Number(girdi.value) || 0));
     girdi.value = eksi ? Math.max(0, simdi - 1) : simdi + 1;
 
+    revizeToplamiTazele();
+  });
+
+  /* [KALDIR] / [GERİ AL] (Faz 14): satır işareti veri özniteliğinde taşınır;
+     revizeSatirlariOku onu okur, canlı toplam kaldırılan satırı saymaz. */
+  $('#revizeGovde').addEventListener('click', function (o) {
+    const kaldir = o.target.closest('[data-revize-kaldir]');
+    const geri = o.target.closest('[data-revize-geri]');
+    if (!kaldir && !geri) return;
+
+    const kalemId = (kaldir || geri).dataset[kaldir ? 'revizeKaldir' : 'revizeGeri'];
+    const satir = document.querySelector('[data-revize-satir="' + kalemId + '"]');
+    if (!satir) return;
+
+    satir.dataset.kaldir = kaldir ? '1' : '0';
     revizeToplamiTazele();
   });
 
