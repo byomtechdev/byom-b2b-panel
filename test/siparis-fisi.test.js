@@ -498,7 +498,7 @@ test('paraYaz vektörleri: tr-TR gruplama, iki ondalık, işaret, bozuk girdi', 
 
 test('dışa verme: işlevler + kacis + sabitler; window yokken module.exports; motor DOM/ağ kullanmaz', () => {
   ['normalle', 'html', 'pencere', 'whatsappMetni', 'waTelefon', 'waAdresi', 'paraYaz', 'kacis',
-   'fisOzeti', 'ozetBlogu', 'kdvDipnotu', 'sayfalaraBol', 'sayfalayiciBetigi', 'aracCubugu'].forEach((ad) => {
+   'fisOzeti', 'ozetBlogu', 'kdvDipnotu', 'odemeKisaAd', 'sayfalaraBol', 'sayfalayiciBetigi', 'aracCubugu'].forEach((ad) => {
     assert.equal(typeof F[ad], 'function', ad);
   });
   assert.equal(F.PARA_BIRIMI, 'TL');
@@ -1066,47 +1066,100 @@ test('KDV türetmesi: tutar HİÇ gelmediyse orandan — KDV dahil fiyattan AYRI
  *  Sayfa ölçüsü SABİT, sayfa sayısı değişkendir; özet bloğu bölünmez.
  * ------------------------------------------------------------------ */
 
-test('sayfalaraBol: DENGELİ dağıtım — özet tek başına sayfaya atılmaz, sayfa sayısı en az, hiçbir kalem kayıp/çift değil', () => {
-  /* Ürün sahibi: "ikinci sayfada sadece iskonto tablosu olmasın; sırf onun
-     için sayfa basılmaz, denge olsun". Birim önemsiz: sayı → her kalem 1. */
+test('sayfalaraBol: SIRALI doldurma — ilk sayfa DOLAR, özete en az ÜÇ kalem eşlik eder, özet yalnız sayfaya atılmaz, kalem kayıp/çift değil', () => {
+  /* Ürün sahibi (14-C): "20 ürünü 10 + 10 bölmek mantıklı değil; ilk sayfanın
+     yarısı bembeyaz kalıyor, kâğıt israfı" → sayfalar SIRAYLA dolar. Önceki
+     kural (14-B) da geçerli: "sırf özet için sayfa basılmaz" → özet tek başına
+     kalmaz, en az 3 kalem eşlik eder (dizgideki dul/yetim satır kuralı).
+     Birim önemsiz: sayı → her kalem 1. */
   const kap = { ilk: 20, devam: 26, ozet: 9 };
   const dag = (n, k) => F.sayfalaraBol(n, k || kap).sayfalar.map((s) => s.son - s.bas);
 
   assert.deepEqual(dag(5), [5], '5 kalem + özet tek sayfa');
   assert.deepEqual(dag(11), [11], '11 kalem + 9 özet = 20 → tek sayfa (sınır)');
-  assert.deepEqual(dag(12), [6, 6], 'özet sığmayınca sayfa AÇILIR ama kalemler DENGELİ bölünür');
-  assert.deepEqual(dag(20), [10, 10], '20 kalem → 20 + boş sayfada özet DEĞİL');
-  assert.deepEqual(dag(23), [12, 11]);
-  assert.deepEqual(dag(37), [20, 17], 'son sayfa özetle dolar (17 + 9 = 26), ilk sayfa doldurulur');
-  assert.deepEqual(dag(50), [17, 17, 16], 'üç sayfa, dengeli');
+  assert.deepEqual(dag(12), [9, 3], 'özet sığmayınca sayfa AÇILIR; ilk sayfa dolu kalır, özete 3 kalem eşlik eder');
+  assert.deepEqual(dag(17), [14, 3], 'ilk sayfaya 17 sığar ama özet sığmaz → 14 + (3 + özet)');
+  assert.deepEqual(dag(20), [17, 3], '20 kalem → 10 + 10 DEĞİL: ilk sayfa DOLDURULUR');
+  assert.deepEqual(dag(21), [18, 3], 'sıralı 20 + 1 olurdu; yetim kalem için öncekinden 2 kalem çekilir');
+  assert.deepEqual(dag(23), [20, 3], 'son sayfada 3 kalem + özet zaten sığıyor: dokunulmaz');
+  assert.deepEqual(dag(37), [20, 17], 'son sayfa özetle tam dolar (17 + 9 = 26)');
+  assert.deepEqual(dag(50), [20, 26, 4], 'üç sayfa; ilk ikisi TAM dolu');
   assert.equal(F.sayfalaraBol(50, kap).toplam, 3);
   assert.equal(F.sayfalaraBol(20, kap).ozetAyri, false, 'özet yalnız sayfaya GİTMEZ');
 
-  /* Hiçbir kalem iki sayfada birden değil, hiçbiri kayıp değil. */
+  /* Eşlik sayısı ayarlanabilir; 1 → salt sıralı doldurma. */
+  assert.deepEqual(dag(21, { ilk: 20, devam: 26, ozet: 9, enAz: 1 }), [20, 1]);
+  assert.deepEqual(dag(21, { ilk: 20, devam: 26, ozet: 9, enAz: 5 }), [16, 5]);
+
+  /* Hiçbir kalem iki sayfada birden değil, hiçbiri kayıp değil, sıra korunur. */
   const cok = F.sayfalaraBol(50, kap);
   const gorulen = [];
   cok.sayfalar.forEach((s) => { for (let i = s.bas; i < s.son; i++) gorulen.push(i); });
   assert.deepEqual(gorulen, Array.from({ length: 50 }, (_, i) => i));
 
-  /* Ölçülmüş yükseklikler (px): farklı satırlar farklı ağırlık. */
+  /* Ölçülmüş yükseklikler (px): farklı satırlar farklı ağırlık; hiçbir sayfa
+     taşmaz; eşlik için çekilen kalem özetle birlikte sığmıyorsa çekilmez. */
   const px = F.sayfalaraBol([40, 40, 80, 40, 40, 120, 40, 40], { ilk: 200, devam: 220, ozet: 150 });
   assert.equal(px.sayfalar.reduce((t, s) => t + (s.son - s.bas), 0), 8, 'kalem sayısı korunur');
   px.sayfalar.forEach((s, i) => {
     const kapasite = (i === 0 ? 200 : 220) - (i === px.sayfalar.length - 1 ? 150 : 0);
     assert.ok(s.agirlik <= kapasite, 'sayfa ' + (i + 1) + ' taşmaz: ' + s.agirlik + ' ≤ ' + kapasite);
   });
+  assert.deepEqual(px.sayfalar.map((s) => s.son - s.bas), [4, 3, 1], '40 + 40 + 150 = 230 > 220: eşlik kalemi çekilmez, taşma yok');
   assert.equal(px.ozetAyri, false);
 
-  /* Özet tek başına bir sayfadan büyükse (istisna) ayrı sayfa. */
+  /* Özet tek bir kalemle bile sayfaya sığmıyorsa (istisna) ayrı sayfa. */
   const dev = F.sayfalaraBol(3, { ilk: 10, devam: 10, ozet: 12 });
   assert.equal(dev.ozetAyri, true);
   assert.equal(dev.toplam, 2);
+
+  /* İlk sayfa hiç boşaltılmaz: 1 dev kalem + sığmayan özet → kalem ilk sayfada, özet ayrı. */
+  const tek = F.sayfalaraBol([9], { ilk: 10, devam: 10, ozet: 5 });
+  assert.deepEqual(tek.sayfalar, [{ bas: 0, son: 1, agirlik: 9 }]);
+  assert.equal(tek.ozetAyri, true);
 
   /* Sıfır kalem: tek sayfa, özet o sayfada. Bozuk girdi çökmez. */
   assert.deepEqual(F.sayfalaraBol(0, kap).sayfalar, [{ bas: 0, son: 0, agirlik: 0 }]);
   assert.equal(F.sayfalaraBol('abc').sayfalar.length, 1);
   assert.equal(F.sayfalaraBol(-4).sayfalar[0].son, 0);
   assert.equal(F.sayfalaraBol([1, 'x', null, 2], { ilk: 10 }).sayfalar[0].agirlik, 3, 'bozuk ağırlık 0 sayılır');
+});
+test('14-C: A4 tablolar ÇİZGİLİ (satır + sütun), özet SABİT iki sütun (etiket sol / tutar sağ), yöntem adı tekrarsız ("Nakit Sipariş Sipariş" YOK), yuvarlama satırı YOK', () => {
+  const h = F.html(F.normalle({
+    numara: '81', tutar: 855, kalemler: [{ ad: 'Çivi', adet: 10, tutar: 1000 }],
+    odeme: 'Nakit Sipariş', odemeIskontoOrani: 5, odemeIskontoTutar: 45, bayiIskontoOrani: 10, bayiIskontoTutar: 100
+  }, { firmaAdi: 'X' }));
+
+  /* Çizgili tablo: başlık koyu, gövde açık gri; her hücrede DÖRT kenar. */
+  assert.ok(h.includes('.kalemler th { border:1px solid #222; }'), 'başlık hücresi çerçeveli');
+  assert.ok(h.includes('.kalemler td { border:1px solid #c9c9c9; }'), 'gövde hücresi çerçeveli (ince gri)');
+
+  /* Özet: sabit genişlik, sabit etiket sütunu, etiket SOLA, tutar SAĞA, hücreler çerçeveli. */
+  assert.ok(h.includes('.toplamlar { margin:3mm 0 0 auto; width:104mm; table-layout:fixed; }'));
+  assert.ok(h.includes('.toplamlar td { border:1px solid #c9c9c9; padding:1.4mm 2mm; }'));
+  assert.ok(h.includes('.toplamlar .etiket { text-align:left; color:#222; }'));
+  assert.ok(h.includes('.toplamlar .etiket { width:66mm; }'));
+  assert.ok(h.includes('.dipnot { width:104mm; margin-left:auto; }'), 'dipnot özet tablosuyla aynı hizada');
+  assert.ok(!/text-align:right; color:#333; }/.test(h.slice(h.indexOf('.toplamlar .etiket'))), 'etiket artık sağa dayalı DEĞİL');
+
+  /* Yöntem adı: eklentinin tam etiketi "Nakit Sipariş" → satır "Nakit Sipariş İskontosu (%5)". */
+  assert.ok(h.includes('<td class="etiket">Nakit Sipariş İskontosu (%5)</td>'));
+  assert.ok(!h.includes('Sipariş Sipariş'), 'iki kez "Sipariş" yazılmaz');
+  assert.equal(F.odemeKisaAd('Nakit Sipariş'), 'Nakit');
+  assert.equal(F.odemeKisaAd('NAKİT SİPARİŞ'), 'Nakit', 'Türkçe büyük İ');
+  assert.equal(F.odemeKisaAd('Vadeli Sipariş'), 'Vade');
+  assert.equal(F.odemeKisaAd('Kredi Kartı Sipariş'), 'Kredi Kartı');
+  assert.equal(F.odemeKisaAd('kart'), 'Kredi Kartı', 'saha anahtarı da etikete iner');
+  assert.equal(F.odemeKisaAd('Çek Siparişi'), 'Çek', 'tanınmayan yöntemde sondaki "Sipariş(i)" düşer');
+  assert.equal(F.odemeKisaAd('Açık Hesap / Cari Ödeme'), 'Açık Hesap / Cari Ödeme', 'başka sözcük düşmez');
+  assert.equal(F.odemeKisaAd(''), '');
+  assert.ok(F.whatsappMetni(F.normalle({ numara: '1', tutar: 1, odeme: 'Nakit Sipariş', odemeIskontoTutar: 5, kalemler: [{ ad: 'A', adet: 1, tutar: 100 }] }, {}))
+    .includes('*Nakit Sipariş İskontosu'), 'WhatsApp aynı sözcük');
+
+  /* Yuvarlama / kapanmayan fark satırı YOK: özet altı satır + gerçek ek kalemler. */
+  const oz = F.ozetBlogu({ liste: 100, iskontoluAra: 100, net: 100.01, kdv: { tutar: 16.67, oran: 20 } });
+  assert.ok(!/yuvarla|Yuvarla|Kapanmayan/.test(oz), 'yuvarlama satırı basılmaz');
+  assert.equal((oz.match(/<tr /g) || []).length, 6, 'altı sabit satır');
 });
 test('html A4: belge AKIŞ iskeletiyle basılır (sayfalama pencerede ölçülerek yapılır); sabit ölçü, ad kırpılmaz, yoğunluk kademesi YOK', () => {
   const kalemler = [];

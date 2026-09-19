@@ -70,7 +70,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | Dosya | Sorumluluk | İç bölüm haritası (satır) |
 |---|---|---|
 | `index.html` (233 KB) | Tüm işaretleme + Tailwind yapılandırması + 4 satır içi betik. **Betik yükleme sırası dosyanın sonundadır ve kritiktir** (→ §2). **Faz 13:** saha perdeleri (`#satisPerde`/`#ziyaretPerde`/`#urunPerde`) `<body>` altındaki `#sahaPerdeleri` kapsayıcısında — **asla bir `.sekme-govde` içine konmaz** (→ §4.17.1); `--logo-height` değişkeni ve `header.h-20 { min-height }` | — |
-| `renderer.js` (330 KB) | **Arayüz çekirdeği.** **Faz 14:** depo fişi sabit ölçü + sayfalama + ortak özet (`depoFisiHtml` → `SiparisFisi.sayfalaraBol/ozetBlogu/aracCubugu`, `DEPO_SAYFA_KAPASITESI`), revize penceresi `[KALDIR]`/`[GERİ AL]` (`data-kaldir`, gövde `remove:true`), `#revizeHazirYap` KAPALI başlar, `siparisFisiAc` → `pencere()` (→ §4.18). **Faz 13:** `logoGenisligiUygula` `--logo-height` DE yazar (dönüş değeri hâlâ genişlik), Üye Onayları `UYE_ALT_SEKMELER` üç sekme + `sahaMusterileriYukle`/`uyeIletisimHtml` (→ §4.17.6/§4.17.9). Diğer tüm dosyalar buradaki `durum`, `$`, `bildir`, `api/woo/b2b`, `sekmeAc`, `kacis`, `ikon` yardımcılarını kullanır | `1` yardımcılar **14** · `2` demo veri **337** · `3` durum/sabitler **555** · `4` REST köprüsü **1214** · `5` üst çubuk **2083** · `6` sekme yönetimi **2293** · `7` siparişler **2343** (revize **2944**) · `8` ürün & stok **3644** · `9` üye onayları **4613** · `10` depo fişi **5558** · `11` ayarlar **6377** · `12` tema/zoom **7033** · `13` olay bağlama + başlangıç **7096** |
+| `renderer.js` (330 KB) | **Arayüz çekirdeği.** **Faz 14:** depo fişi sabit ölçü + sayfalama + ortak özet (`depoFisiHtml` → ortak iskelet + `SiparisFisi.sayfalayiciBetigi/ozetBlogu/kdvDipnotu/aracCubugu`; 14-C çizgili tablo + sabit özet, "Kapanmayan Fark" satırı yok), revize penceresi `[KALDIR]`/`[GERİ AL]` (`data-kaldir`, gövde `remove:true`), `#revizeHazirYap` KAPALI başlar, `siparisFisiAc` → `pencere()` (→ §4.18). **Faz 13:** `logoGenisligiUygula` `--logo-height` DE yazar (dönüş değeri hâlâ genişlik), Üye Onayları `UYE_ALT_SEKMELER` üç sekme + `sahaMusterileriYukle`/`uyeIletisimHtml` (→ §4.17.6/§4.17.9). Diğer tüm dosyalar buradaki `durum`, `$`, `bildir`, `api/woo/b2b`, `sekmeAc`, `kacis`, `ikon` yardımcılarını kullanır | `1` yardımcılar **14** · `2` demo veri **337** · `3` durum/sabitler **555** · `4` REST köprüsü **1214** · `5` üst çubuk **2083** · `6` sekme yönetimi **2293** · `7` siparişler **2343** (revize **2944**) · `8` ürün & stok **3644** · `9` üye onayları **4613** · `10` depo fişi **5558** · `11` ayarlar **6377** · `12` tema/zoom **7033** · `13` olay bağlama + başlangıç **7096** |
 | `renderer-ek.js` (136 KB) | Ek modül — `renderer.js`'ten **SONRA** yüklenir, onun fonksiyonlarını sarar | `0` yardımcılar **23** · `A` ödeme matrisi **100** (kalıcılık **274**, min. sipariş **977**) · `B` sipariş rozeti **1103** · `C` ürün düzenle **1160** · `D` sürükle-bırak sıralama **1956** · `E` ürün silme **2832** · `F` sipariş iptali **2903** · `F2` kalıcı silme **3193** · `G` bayi silme **3272** · `H` olay bağlama **3351** |
 | `renderer-izgara.js` (115 KB) | Excel tipi ürün veri ızgarası. `renderer.js` + `renderer-ek.js`'e bağımlı | `0` durum **32** · `A` sanallaştırılmış ızgara **224** · `B` hücre içi düzenleme **663** · `C` kısmi güncelleme **845** · `D` seçim/toplu işlem **958** · `E` kategori ağacı **1725** · `F` görünüm + olay bağlama **2062** · `G` mevcut akışlara bağlanma **2270** · `H` yapışkan haplar/kısayollar **2329** · `I` domino sıralama + 60 FPS **2472** |
 | `renderer-excel.js` (41 KB) | Excel dökümü + sütun eşleştirmeli içe aktarma. Izgaranın `izgOlaylariBagla`'sını sarar → ondan **SONRA** | `0` durum **30** · `A` dışa aktarma **90** · `B` eşleştirme sihirbazı **198** · `C` içe aktarma motoru **592** · `D` olay bağlama **1050** · `E` mevcut akışa bağlanma **1125** |
@@ -1530,11 +1530,23 @@ kök `CLAUDE.md §10 Faz 14`.
     değiştirir, `body[data-sayfali]` yazar. `document.fonts.ready` beklenir; ölçüm 0 ise
     (yerleşim yok) akış kalır ve tarayıcı böler (`thead` tekrar, `tr/.kapanis` bölünmez).
     Termalde çalışmaz. WhatsApp görseli aynı geçici HTML'i yüklediği için o da sayfalıdır.
-  - `sayfalaraBol(agirliklar, {ilk, devam, ozet})` saf ve **dengeli**: en az sayfa (sıralı
-    doldurma), özet sığmıyorsa bir sayfa daha ama kalemler dengeli (12 → 6/6, 20 → 10/10,
-    50 → 17/17/16); her sayfa hedefe en yakın yerde kapanır, "kalan kalemler SIRALI sığar mı"
-    sınamasıyla dolum garantisi; özet yalnızca tek başına sayfadan büyükse ayrı sayfa.
-    Sayı verilirse her kalem 1 ağırlık (testler). `SAYFA_KAPASITESI` / `DEPO_SAYFA_KAPASITESI` **kalktı**.
+  - `sayfalaraBol(agirliklar, {ilk, devam, ozet, enAz})` saf, **14-C: SIRALI doldurma + eşlik**
+    (14-B'nin dengeli bölmesi 20 kalemi 10 + 10 yapıp ilk sayfayı yarı boş bırakıyordu —
+    ürün sahibi: kâğıt israfı). İlk sayfa dolmadan ikincisi açılmaz; özet son sayfaya
+    sığmıyorsa bir sayfa daha açılır ve önceki sayfanın kuyruğundan **en az `enAz` (3)**
+    kalem özetle birlikte iner (dul/yetim satır kuralı); özet sığıyor ama yanında 3'ten az
+    kalem varsa yine öncekinden çekilir; çekilen kalem özetle sığmalı; hiçbir sayfa
+    boşaltılmaz. Kap 20/26/9: 12 → 9/3, 20 → 17/3, 21 → 18/3, 50 → 20/26/4. Özet tek
+    kalemle bile sığmıyorsa (istisna) `ozetAyri`. Sayı verilirse her kalem 1 ağırlık
+    (testler). `SAYFA_KAPASITESI` / `DEPO_SAYFA_KAPASITESI` **kalktı**.
+  - **14-C çizgili tablo + nizami özet:** A4 `table.kalemler` her hücrede dört kenar
+    (`th` `#222`, `td` `#c9c9c9`) — rakam sütunları alt alta kaymış görünmez; özet
+    tablosu sabit 104 mm (depo 108 mm), etiket sütunu 66 / 68 mm **sola**, tutar sağa,
+    çerçeveli, sağa yaslı; dipnot aynı genişlikte. Termal değişmedi. A4 geometrisi:
+    sipariş fişi `@page 12mm` → 186 × 273 mm, depo `@page 8mm` → 194 × 281 mm; ekranda
+    `.sayfa` 297 mm + iç boşluk, kâğıtta iç boşluk 0 + içerik yüksekliği; ölçüm aynı
+    genişlikte yapıldığı için sarma birebir. `print()` `marginType:'none'`, `printToPDF`
+    `preferCSSPageSize` + 0 kenar: boşluğu yalnızca CSS `@page` belirler.
   - **Resmî belge dili:** tek yazı ailesi, siyah metin, ince gri çizgiler, kalın önemli alanlar
     (belge türü, No, ünvan, NET çift çizgili); renkli rozet/kutu/çizgili zemin YOK; KDV
     açıklaması toplamın altında küçük **dipnot** (`kdvDipnotu`: dâhil / tutara eklendi /
@@ -1548,7 +1560,11 @@ kök `CLAUDE.md §10 Faz 14`.
   NET ÖDENECEK TUTAR. Değer yoksa "—"; KDV satırı YALIN ("KDV (%20) · 358,67 TL",
   hariçte `UYGULANMADI`), açıklaması `kdvDipnotu()` ile toplamın altında küçük dipnot
   (dâhil / tutara eklendi / uygulanmadı — tablo içine not, renkli kutu girmez); ek
-  satırlar (kargo, kupon, kapanmayan fark) yalnızca sıfır değilse. **Depo fişi aynı
+  satırlar (kargo, kupon) yalnızca sıfır değilse; **yuvarlama / kapanmayan fark satırı
+  BASILMAZ** (14-C — motor `fark`ı KDV "üstüne" kararı için hesaplamaya devam eder).
+  Yöntem adı `odemeKisaAd()`dan geçer: "Nakit Sipariş" → "Nakit" ("Sipariş Sipariş"
+  tekrarı yok; Türkçe İ→i indirgemesi; tanınmayan etikette sondaki "Sipariş(i)" düşer).
+  **Depo fişi aynı
   çiziciyi ve aynı dipnotu çağırır** (`ozetGirdisi` → `F.ozetBlogu` / `F.kdvDipnotu`);
   `siparisFinansOzeti` motoru değişmedi.
 - **`aracCubugu()` + `pencere()`:** Yazdır · PDF Olarak Kaydet · WhatsApp'tan Gönder ·
@@ -1603,7 +1619,7 @@ kök `CLAUDE.md §10 Faz 14`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**767 test**: panel 323 + kök 444).
+İkisini birden `../scripts/check-all.js` koşar (**769 test**: panel 324 + kök 445).
 
 ```bash
 # Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
@@ -1619,7 +1635,7 @@ node --test test/harita-notlar.test.js      # 46 — 81 il kutugu, TR il kodlari
                                             #      harita-yollar.js (81 gercek sinir, Natural Earth)
 node --test test/cihaz-kilidi.test.js       # 52 — Master PIN hash/kilit, cihaz tahsisi, PIN SIFIRLAMA, KAYNAK denetimi
 node --test test/rest-adres.test.js         # 13 — restYoluKur, tabanAdresiTemizle, sorgu korunmasi
-node --test test/siparis-fisi.test.js       # 40 — kurumsal fis motoru: normalle (3 kaynak), A4/termal HTML, WhatsApp metni,
+node --test test/siparis-fisi.test.js       # 41 — kurumsal fis motoru: normalle (3 kaynak), A4/termal HTML, WhatsApp metni,
                                             #      Faz 14: sayfalaraBol, ozetBlogu (6 sabit satir), fisOzeti, pencere/aracCubugu
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
 ```
@@ -1656,7 +1672,7 @@ node --test scripts/tests/yonetici-arayuz.dom.test.js # 18 — Faz 11-13: sipari
 node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki rol iki harita, renk/il formu, saha kısayolları, bayi profili kapısı
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/fis-pencere.test.js         # 4  — Faz 14 (kaynak): fis:whatsapp offscreen+pano, plasiyer:siparis-* kimlik oturumdan, pencere()
-node --test scripts/tests/fis-sayfalayici.dom.test.js # 5  — Faz 14-B: sayfalayıcı betiği jsdom'da (offsetHeight taklidi) — 50 kalem 16/18/16, kapanış yalnızca sonda, termalde çalışmaz
+node --test scripts/tests/fis-sayfalayici.dom.test.js # 5  — Faz 14-B/C: sayfalayıcı betiği jsdom'da (offsetHeight taklidi) — 50 kalem 16/22/12 (sırayla dolu), 12 → 9+3, kapanış yalnızca sonda, termalde çalışmaz
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
 node --test scripts/tests/registry-parity.test.js     # 3 registry kopyası eşit mi
@@ -1667,7 +1683,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (767 test)
+# Bitirirken: üç katmanın tamamı (769 test)
 node scripts/check-all.js
 ```
 
@@ -1746,7 +1762,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 185 php / 103 js / 767 test
+cd .. && node scripts/check-all.js     # 0 hata / 185 php / 103 js / 769 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

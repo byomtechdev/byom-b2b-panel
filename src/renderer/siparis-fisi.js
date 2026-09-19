@@ -53,8 +53,12 @@
  *      Tutarı · İskontolu Ara Toplam · <Yöntem> Sipariş İskontosu · KDV ·
  *      NET ÖDENECEK TUTAR). Depo fişi (renderer.js → depoFisiHtml) de bu
  *      çiziciyi kullanır — iki fiş aynı sözcük ve sırayla kapanır.
- *    · sayfalaraBol(): sayfa ÖLÇÜSÜ sabit, sayfa SAYISI değişken; özet bloğu
- *      bölünmez, yer yoksa tek başına son sayfaya geçer.
+ *    · sayfalaraBol(): sayfa ÖLÇÜSÜ sabit, sayfa SAYISI değişken; sayfalar
+ *      SIRAYLA dolar (ilk sayfa dolmadan ikincisi açılmaz), özet bloğu
+ *      bölünmez ve son sayfada en az ÜÇ kalemle birlikte basılır (14-C).
+ *    · A4 tablolar ÇİZGİLİDİR (ince satır + sütun çizgisi): rakam sütunları
+ *      alt alta gelince kaymış görünmez. Özet tablosu sabit iki sütun:
+ *      etiket solda, tutar sağda, çerçeveli (14-C).
  *    · aracCubugu() + pencere(): Yazdır · PDF · WhatsApp'tan Gönder · Kapat
  *      araç çubuğu ve gömülü IPC betiği (yalnızca fiş penceresinde). html()
  *      saf kalır; testin "DOM/ağ/require yok" sözü motorun kendisi içindir.
@@ -221,6 +225,29 @@
     var m = metin(x);
 
     return ODEME_ETIKET[m.toLowerCase()] || m;
+  }
+
+  /**
+   * Özet satırındaki YÖNTEM adı: "<Yöntem> Sipariş İskontosu".
+   *
+   * Eklenti ödeme tipini "Nakit Sipariş" / "Vadeli Sipariş" gibi tam ETİKETLE
+   * verir (b2b-discount-functions.php → label); olduğu gibi eklenince satır
+   * "Nakit Sipariş Sipariş İskontosu" oluyordu (ürün sahibi: "iki kez
+   * sipariş yazmaya gerek yok"). Bilinen üç yöntem kısa adına iner
+   * (short_label ile aynı sözcükler), tanınmayan etiketin sondaki
+   * "Sipariş(i)" sözcüğü düşer. Türkçe İ/ı için toLowerCase yetmez;
+   * karşılaştırma öncesi İ→i indirgenir.
+   */
+  function odemeKisaAd(x) {
+    var m = tekSatir(odemeEtiketi(x));
+    var k = m.replace(/İ/g, 'i').toLowerCase();
+
+    if (!m) return '';
+    if (/nak[iı]t|havale|eft/.test(k)) return 'Nakit';
+    if (/vade/.test(k)) return 'Vade';
+    if (/kred[iı]|kart/.test(k)) return 'Kredi Kartı';
+
+    return m.replace(/\s*sipari[şs]i?\s*$/i, '').trim() || m;
   }
 
   /* ------------------------------------------------------------------ *
@@ -739,17 +766,24 @@
   var YOK = '—';
 
   /* ------------------------------------------------------------------ *
-   *  SAYFALAMA — ÖLÇÜLMÜŞ AĞIRLIKLARLA DENGELİ DAĞITIM (Faz 14-B)
+   *  SAYFALAMA — SIRALI DOLDURMA, ÖZETE EN AZ ÜÇ KALEM EŞLİK EDER (Faz 14-C)
    *
    *  Satır yükseklikleri fiş penceresinde ÖLÇÜLÜR (ürün adı kaç satıra
    *  sardıysa o kadar yer kaplar; ad ASLA kırpılmaz), sonra bu saf fonksiyon
    *  kalemleri sayfalara böler. Kural üç maddedir:
-   *    1) Sayfa sayısı en az olsun (sıralı doldurmada mümkün olan en az).
-   *    2) Özet bloğu (toplamlar + notlar + imza) BÖLÜNMEZ ve TEK BAŞINA bir
-   *       sayfaya ATILMAZ: özet için yer yoksa bir sayfa daha açılır ama
-   *       kalemler sayfalara DENGELİ dağıtılır — 22 kalem + boş sayfada
-   *       yalnız özet DEĞİL, 11 + 11 kalem ve özet son sayfada.
-   *    3) Özet tek başına bir sayfadan büyükse (istisna) ayrı sayfaya gider.
+   *    1) SAYFALAR SIRAYLA DOLDURULUR — ilk sayfa dolmadan ikincisi açılmaz.
+   *       (14-B'nin "dengeli" dağıtımı 20 kalemi 10 + 10 bölüyor, ilk
+   *       sayfanın yarısı bembeyaz kalıyordu: kâğıt israfı. Ürün sahibi
+   *       reddetti.)
+   *    2) Özet bloğu (toplamlar + dipnot + not + imza) BÖLÜNMEZ ve son
+   *       sayfaya kalemlerle BİRLİKTE gider. Son sayfaya sığmıyorsa bir
+   *       sayfa daha açılır ama özet TEK BAŞINA basılmaz: önceki sayfanın
+   *       kuyruğundan en az `enAz` (3) kalem özete eşlik eder — dizgideki
+   *       dul/yetim satır kuralı. Özet sığıyor ama son sayfada 3'ten az
+   *       kalem varsa yine önceki sayfadan kalem çekilir.
+   *    3) Özet tek bir kalemle bile bir sayfaya sığmıyorsa (istisna) ayrı
+   *       sayfaya gider (`ozetAyri`).
+   *  Hiçbir sayfa boşaltılmaz, sıra değişmez, kalem kaybolmaz.
    *
    *  Birim önemsizdir (px, mm ya da "satır"): sayı verilirse her kalem 1
    *  ağırlık sayılır (testler ve tahminler için).
@@ -757,8 +791,9 @@
 
   /**
    * @param {number[]|number} agirliklar  Kalem yükseklikleri (ya da kalem sayısı).
-   * @param {object} kap  { ilk, devam, ozet } — ilk sayfa, devam sayfası
-   *                      kapasitesi ve özet bloğunun ağırlığı (aynı birim).
+   * @param {object} kap  { ilk, devam, ozet, enAz } — ilk sayfa ve devam sayfası
+   *                      kapasitesi, özet bloğunun ağırlığı (aynı birim) ve özete
+   *                      eşlik edecek en az kalem sayısı (varsayılan 3).
    * @returns {{ sayfalar: Array<{bas:number, son:number, agirlik:number}>, ozetAyri: boolean, toplam: number }}
    */
   function sayfalaraBol(agirliklar, kap) {
@@ -779,111 +814,86 @@
     var ilk = Number(k.ilk);
     var devam = Number(k.devam);
     var ozet = Number(k.ozet);
+    var enAz = Number(k.enAz);
 
     if (!isFinite(ilk) || ilk <= 0) ilk = 20;
     if (!isFinite(devam) || devam <= 0) devam = ilk;
     if (!isFinite(ozet) || ozet < 0) ozet = 0;
+    /* Varsayılan sabit burada yazılır: fonksiyon toString ile fiş penceresine
+       gömülür, dış değişken orada yoktur. */
+    if (!isFinite(enAz) || enAz < 1) enAz = 3;
 
     var adet = w.length;
-    var toplamAgirlik = 0;
 
-    for (i = 0; i < adet; i++) toplamAgirlik += w[i];
-
-    /* 1) Sıralı açgözlü doldurma → en az sayfa sayısı. Bir kalem tek başına
-       sayfadan büyükse yine bir sayfaya konur (taşma, kırpma değil). */
-    var sayfaSayisi = 1;
-    var dolu = 0;
+    /* 1) SIRALI DOLDURMA: sayfa dolmadan yenisi açılmaz. Tek başına sayfadan
+       büyük bir kalem yine bir sayfaya konur (taşma, kırpma değil). */
+    var sayfalar = [];
+    var bas = 0;
+    var agirlik = 0;
     var kapasite = ilk;
 
     for (i = 0; i < adet; i++) {
-      if (dolu > 0 && dolu + w[i] > kapasite) {
-        sayfaSayisi++;
+      if (i > bas && agirlik + w[i] > kapasite) {
+        sayfalar.push({ bas: bas, son: i, agirlik: agirlik });
+        bas = i;
+        agirlik = 0;
         kapasite = devam;
-        dolu = 0;
       }
 
-      dolu += w[i];
+      agirlik += w[i];
     }
 
-    /* 2) Özet son sayfaya sığmıyorsa: kalem varsa bir sayfa daha (dengeli
-       dağıtılacak); özet tek başına bir sayfadan büyükse ayrı sayfa. */
+    sayfalar.push({ bas: bas, son: adet, agirlik: agirlik });
+
+    /* Kaynak sayfanın SON kalemini hedef sayfanın BAŞINA taşır (sıra korunur). */
+    function kuyruktanTasi(kaynak, hedef) {
+      var j = kaynak.son - 1;
+
+      hedef.bas = j;
+      hedef.agirlik += w[j];
+      kaynak.son = j;
+      kaynak.agirlik -= w[j];
+    }
+
     var ozetAyri = false;
-    var sonKapasite = 1 === sayfaSayisi ? ilk : devam;
+    var sonIdx = sayfalar.length - 1;
+    var son = sayfalar[sonIdx];
 
-    if (dolu + ozet > sonKapasite) {
-      if (ozet > devam) {
-        ozetAyri = true;          // özet tek başına bir sayfadan büyük (istisna)
-      } else if (adet > 0) {
-        sayfaSayisi++;            // bir sayfa daha: kalemler DENGELİ dağıtılır
-      }
-      /* Kalemsiz belge: tek sayfa, özet o sayfada (taşarsa taşar; kırpılmaz). */
-    }
+    if (adet > 0 && son.agirlik + ozet > (0 === sonIdx ? ilk : devam)) {
+      /* 2a) Özet son sayfaya sığmıyor: bir sayfa daha açılır ve son kalem
+         özetle birlikte oraya iner (eşlik kuralı aşağıda tamamlar). İlk
+         sayfa hiç boşaltılmaz (başlık tek başına kalmasın); boşalan devam
+         sayfası düşer. Son kalem bile özetle sığmıyorsa özet ayrı sayfadır. */
+      var yeni = { bas: son.son, son: son.son, agirlik: 0 };
+      var taban = sonIdx > 0 ? 0 : 1;
 
-    /* 3) Dengeli dağıtım: her sayfanın hedefi kalan ağırlığın kalan sayfaya
-       bölümü; sayfa hedefe EN YAKIN olduğu yerde kapanır. Ama kapanmadan önce
-       "kalan kalemler SIRALI olarak sonraki sayfalara sığar mı" sınanır
-       (toplam kapasiteye bakmak yetmez — kalemler bölünemez, sıra değişemez);
-       sığmıyorsa sayfa dolmaya devam eder. Sıralı doldurmanın bulduğu sayfa
-       sayısı böyle bir dağıtımın var olduğunu garanti eder. */
-    var kapasiteler = [];
+      if (son.son - son.bas > taban && w[son.son - 1] + ozet <= devam) {
+        kuyruktanTasi(son, yeni);
 
-    for (i = 0; i < sayfaSayisi; i++) {
-      kapasiteler.push((0 === i ? ilk : devam) - ((i === sayfaSayisi - 1 && !ozetAyri) ? ozet : 0));
-    }
+        if (son.son === son.bas) sayfalar.splice(sonIdx, 1);
 
-    /** w[bas..] kalemleri p+1..son sayfalara sırayla sığar mı? */
-    function sigarMi(bas, p) {
-      var sayfa = p + 1;
-      var doluluk = 0;
-
-      for (var j = bas; j < adet; j++) {
-        if (sayfa >= sayfaSayisi) return false;
-
-        if (doluluk > 0 && doluluk + w[j] > kapasiteler[sayfa]) {
-          sayfa++;
-          doluluk = 0;
-
-          if (sayfa >= sayfaSayisi) return false;
-        }
-
-        doluluk += w[j];
-      }
-
-      return true;
-    }
-
-    var sayfalar = [];
-    var bas = 0;
-    var kalanAgirlik = toplamAgirlik;
-
-    for (var p = 0; p < sayfaSayisi; p++) {
-      var hedef = kalanAgirlik / (sayfaSayisi - p);
-      var son = bas;
-      var agirlik = 0;
-
-      if (p === sayfaSayisi - 1) {
-        son = adet;
-        agirlik = kalanAgirlik;
+        sayfalar.push(yeni);
       } else {
-        while (son < adet) {
-          var sonraki = w[son];
-          var sigar = (agirlik + sonraki <= kapasiteler[p]) || 0 === agirlik;
-
-          if (!sigar) break;
-
-          var gerekli = !sigarMi(son, p);
-          var yakin = Math.abs(agirlik + sonraki - hedef) <= Math.abs(agirlik - hedef);
-
-          if (!gerekli && !yakin) break;
-
-          agirlik += sonraki;
-          son++;
-        }
+        ozetAyri = true;
       }
+    }
 
-      sayfalar.push({ bas: bas, son: son, agirlik: agirlik });
-      kalanAgirlik -= agirlik;
-      bas = son;
+    /* 2b) EŞLİK KURALI: son sayfada özetin yanında en az `enAz` kalem
+       bulunmalı (kalem yeterse). Azsa önceki sayfanın kuyruğundan çekilir —
+       önceki sayfa dolu kalır (en az bir kalem), son sayfa yetim görünmez.
+       Çekilen kalem özetle birlikte sığmalıdır. */
+    sonIdx = sayfalar.length - 1;
+    son = sayfalar[sonIdx];
+
+    if (!ozetAyri && sonIdx > 0) {
+      var onceki = sayfalar[sonIdx - 1];
+      var eslik = Math.min(enAz, adet);
+
+      while (son.son - son.bas < eslik && onceki.son - onceki.bas > 1) {
+        if (son.agirlik + w[onceki.son - 1] + ozet > devam) break;
+
+        kuyruktanTasi(onceki, son);
+      }
     }
 
     return { sayfalar: sayfalar, ozetAyri: ozetAyri, toplam: sayfalar.length + (ozetAyri ? 1 : 0) };
@@ -944,6 +954,12 @@
    * uygulanmadı mı — açıklaması kdvDipnotu() ile toplamın ALTINDA küçük
    * puntoda durur (resmî belgede tablo içine renkli kutu girmez).
    *
+   * DÜZEN (14-C, ürün sahibi: "kimisi sağdan kimisi soldan, nizami olsun"):
+   * iki sabit sütun — etiket SOLA, tutar SAĞA dayalı, her hücre çerçeveli,
+   * tablo sabit genişlikte ve sağa yaslı. Yuvarlama / kapanmayan fark
+   * satırı BASILMAZ (ürün sahibi istemedi); kargo ve kupon gibi gerçek
+   * kalemler ekSatirlar ile girer.
+   *
    * @param {object} o        fisOzeti() çıktısı ya da aynı biçimde elle kurulmuş nesne.
    * @param {object} secenek  { paraBirimi }
    * @returns {string} <table class="toplamlar">…</table>
@@ -966,7 +982,7 @@
 
     var bayiVar = sayi(o.bayiTutar) > 0.005;
     var odemeVar = sayi(o.odemeTutar) > 0.005;
-    var odemeAd = tekSatir(o.odemeAdi);
+    var odemeAd = odemeKisaAd(o.odemeAdi);   // "Nakit Sipariş" → "Nakit" ("Sipariş Sipariş" tekrarı olmaz)
     var odemeEtiket = odemeAd ? (odemeAd + ' ' + OZET_ETIKET.odeme) : OZET_ETIKET.odemeYok;
 
     if (sayi(o.odemeOrani) > 0) odemeEtiket += ' (' + oranYazi(o.odemeOrani) + ')';
@@ -1066,7 +1082,8 @@
       '.s-sku { color:#444; white-space:nowrap; font-family:Consolas, "Courier New", monospace; font-size:.92em; }',
       '.s-liste { color:#444; }',
       '.toplamlar td { padding:1.1mm 1.5mm; border-bottom:1px solid #e3e3e3; }',
-      '.toplamlar .etiket { text-align:right; color:#333; }',
+      /* Etiket SOLA, tutar SAĞA (14-C): iki sabit sütun, karışık hiza yok. */
+      '.toplamlar .etiket { text-align:left; color:#222; }',
       '.toplamlar .bos .deger { color:#888; }',
       '.toplamlar .ara td { font-weight:700; }',
       '.toplamlar .kdv-yok .deger { font-weight:700; }',
@@ -1117,8 +1134,17 @@
       '.kalemler .s-kdv { width:11mm; }',
       '.kalemler .s-kdvtutar { width:16mm; }',
       '.kalemler .s-tutar { width:19mm; }',
-      '.toplamlar { margin:3mm 0 0 auto; width:auto; min-width:96mm; }',
+      /* ÇİZGİLİ TABLO (14-C): ince satır VE sütun çizgileri — birim fiyat /
+         iskontolu birim fiyat alt alta gelince kaymış görünmesin. Başlık
+         satırı koyu çerçeveli, gövde açık gri. Termalde yok (rulo). */
+      '.kalemler th { border:1px solid #222; }',
+      '.kalemler td { border:1px solid #c9c9c9; }',
+      /* Özet tablosu: SABİT ölçü (104 mm), etiket sütunu 66 mm, çerçeveli, sağa yaslı. */
+      '.toplamlar { margin:3mm 0 0 auto; width:104mm; table-layout:fixed; }',
+      '.toplamlar td { border:1px solid #c9c9c9; padding:1.4mm 2mm; }',
+      '.toplamlar .etiket { width:66mm; }',
       '.toplamlar .net td { font-size:13px; }',
+      '.dipnot { width:104mm; margin-left:auto; }',
       '.not { margin-top:4mm; }',
       '.alt { margin-top:6mm; }'
     ];
@@ -1352,7 +1378,7 @@
   }
 
   /* ------------------------------------------------------------------ *
-   *  SAYFALAYICI BETİĞİ — fiş penceresinde ÖLÇ, DENGELİ BÖL, YAPRAKLARA DİZ
+   *  SAYFALAYICI BETİĞİ — fiş penceresinde ÖLÇ, SIRAYLA DOLDUR, YAPRAKLARA DİZ
    *
    *  Neden pencerede: satır yüksekliği ürün adının kaç satıra sardığına,
    *  fonta ve sütun genişliğine bağlıdır; bunu HTML üretirken tahmin etmek
@@ -1577,7 +1603,7 @@
       if (iskontoVar) son.push('*' + OZET_ETIKET.ara + ':* ' + para(oz0.iskontoluAra));
 
       iskontoVar = true;
-      son.push('*' + (oz0.odemeAdi ? oz0.odemeAdi + ' ' + OZET_ETIKET.odeme : OZET_ETIKET.odemeYok) +
+      son.push('*' + (odemeKisaAd(oz0.odemeAdi) ? odemeKisaAd(oz0.odemeAdi) + ' ' + OZET_ETIKET.odeme : OZET_ETIKET.odemeYok) +
         ' (' + oranYazi(oz0.odemeOrani) + '):* −' + para(oz0.odemeTutar));
     }
 
@@ -1686,6 +1712,7 @@
     fisOzeti: fisOzeti,
     ozetBlogu: ozetBlogu,
     kdvDipnotu: kdvDipnotu,
+    odemeKisaAd: odemeKisaAd,
     sayfalaraBol: sayfalaraBol,
     sayfalayiciBetigi: sayfalayiciBetigi,
     aracCubugu: aracCubugu,

@@ -6784,8 +6784,10 @@ function fisOranYazi(oran) {
  *
  * SAYFALAMA: sayfa ölçüsü SABİTTİR (kalem artınca görsel/punto küçülmez),
  * satır yükseklikleri fiş penceresinde ÖLÇÜLÜR ve `SiparisFisi.sayfalaraBol`
- * kalemleri sayfalara DENGELİ dağıtır: özet bloğu (toplamlar + not + imza)
- * bölünmez ve tek başına bir sayfaya atılmaz. Belge iskeleti sipariş
+ * sayfaları SIRAYLA doldurur (ilk sayfa dolmadan ikincisi açılmaz — 14-B'nin
+ * yarı yarıya bölmesi ilk sayfayı yarı boş bırakıyordu): özet bloğu
+ * (toplamlar + not + imza) bölünmez ve son sayfada en az ÜÇ kalemle birlikte
+ * basılır; tek başına sayfaya atılmaz. Belge iskeleti sipariş
  * fişiyle AYNI sözleşmedir (.belge-bas / .belge-devam / table.kalemler /
  * .kapanis / .sayfa-alt); betik `SiparisFisi.sayfalayiciBetigi()`.
  */
@@ -6856,10 +6858,12 @@ function depoFisiHtml(s) {
    *   · Bayi oranı SABİT DEĞİLDİR (siparişin kendi kaydından: ozet.bayiOrani).
    *   · Ödeme oranı SABİT DEĞİLDİR (ücret satırından: ozet.odemeOrani/odemeAdi).
    *
-   * Kargo, kupon ve kapanmayan artık yalnızca SIFIR DEĞİLSE araya girer.
-   * KDV ÇIKARMA İŞLEMİNİN İÇİNDE DEĞİLDİR: vergi motoru KDV'yi toplama
-   * eklediyse (fark ≈ KDV) o zaman zaten toplamın parçasıdır ve dipnot bunu
-   * söyler.
+   * Kargo ve kupon yalnızca SIFIR DEĞİLSE araya girer. Kapanmayan artık
+   * (yuvarlama) FİŞE BASILMAZ (14-C, ürün sahibi: "yuvarlanan tutarı
+   * yazmana gerek yok"); motor `fark`ı yine hesaplar (KDV "üstüne" kararı
+   * ondan çıkar). KDV ÇIKARMA İŞLEMİNİN İÇİNDE DEĞİLDİR: vergi motoru KDV'yi
+   * toplama eklediyse (fark ≈ KDV) o zaman zaten toplamın parçasıdır ve
+   * dipnot bunu söyler.
    */
   const kdvUstune = Math.abs(ozet.fark) > 0.005 && Math.abs(ozet.fark - ozet.kdv) < 0.05;
 
@@ -6871,10 +6875,6 @@ function depoFisiHtml(s) {
 
   if (ozet.kargo > 0.005) {
     ekSatirlar.push({ etiket: (s.sevkiyatEtiketi ? String(s.sevkiyatEtiketi) : 'Kargo / Navlun'), tutar: ozet.kargo });
-  }
-
-  if (!kdvUstune && Math.abs(ozet.fark) > 0.005) {
-    ekSatirlar.push({ etiket: 'Kapanmayan Fark (yuvarlama / diğer)', tutar: ozet.fark });
   }
 
   const ozetGirdisi = {
@@ -7050,9 +7050,10 @@ arac.stil +
 
 '  /* ---- Ürün tablosu: sabit ölçü (görsel 30 px, punto 10 px), ad SARAR ---- */' +
 '  table.kalemler { width:100%; border-collapse:collapse; table-layout:fixed; }' +
-'  .kalemler th { border-top:1px solid #222; border-bottom:1px solid #222; padding:1.6mm 1.2mm;' +
+'  /* ÇİZGİLİ TABLO (14-C): ince satır VE sütun çizgisi — rakam sütunları alt alta kaymış görünmesin. */' +
+'  .kalemler th { border:1px solid #222; padding:1.6mm 1.2mm;' +
 '                 font-size:8px; font-weight:700; letter-spacing:.2px; text-align:left; color:#222; }' +
-'  .kalemler td { border-bottom:1px solid #d9d9d9; padding:1.4mm 1.2mm; vertical-align:middle; }' +
+'  .kalemler td { border:1px solid #c9c9c9; padding:1.4mm 1.2mm; vertical-align:middle; }' +
 '  .bos-kalem { text-align:center; color:#777; padding:6mm 0; }' +
 
 '  /* ---- Sütun genişlikleri (hem başlık hem hücre) — ürün adı kalanı alır ---- */' +
@@ -7080,15 +7081,16 @@ arac.stil +
 
 '  /* ---- Kapanış: özet (ORTAK çizici), dipnot, not + imza ---- */' +
 '  .kapanis { margin-top:3mm; }' +
-'  .toplamlar { width:auto; min-width:105mm; margin:0 0 0 auto; border-collapse:collapse; }' +
-'  .toplamlar td { padding:1.1mm 1.6mm; font-size:10px; border-bottom:1px solid #e3e3e3; }' +
-'  .toplamlar .etiket { text-align:right; color:#333; }' +
+'  /* Özet: SABİT ölçü (108 mm), etiket SOLA (68 mm) tutar SAĞA, her hücre çerçeveli (14-C: "nizami"). */' +
+'  .toplamlar { width:108mm; margin:0 0 0 auto; border-collapse:collapse; table-layout:fixed; }' +
+'  .toplamlar td { padding:1.3mm 2mm; font-size:10px; border:1px solid #c9c9c9; }' +
+'  .toplamlar .etiket { width:68mm; text-align:left; color:#222; }' +
 '  .toplamlar .deger { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }' +
 '  .toplamlar .bos .deger { color:#888; }' +
 '  .toplamlar .ara td { font-weight:700; }' +
 '  .toplamlar .kdv-yok .deger { font-weight:700; }' +
 '  .toplamlar .net td { font-size:12px; font-weight:800; border-top:2px solid #222; border-bottom:2px double #222; padding-top:1.8mm; padding-bottom:1.8mm; }' +
-'  .dipnot { margin-top:1.5mm; font-size:8px; line-height:1.4; color:#444; text-align:right; }' +
+'  .dipnot { width:108mm; margin:1.5mm 0 0 auto; font-size:8px; line-height:1.4; color:#444; text-align:left; }' +
 
 '  .alt-serit { display:flex; gap:3mm; margin-top:3mm; align-items:stretch; }' +
 '  .not { flex:2; min-width:0; border:1px solid #bbb; padding:2mm 2.5mm; font-size:9.5px; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; }' +
