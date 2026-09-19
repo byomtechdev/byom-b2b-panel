@@ -6775,17 +6775,20 @@ function fisOranYazi(oran) {
 }
 
 /**
- * Depo fişi sayfa kapasiteleri (satır).
+ * DEPO / SEVK FİŞİ — resmî belge dili, ölçülmüş sayfalama (Faz 14-B)
  *
- * SAYFA ÖLÇÜSÜ SABİTTİR (Faz 14): kalem sayısı artınca görsel/punto
- * KÜÇÜLMEZ, sayfa sayısı artar. Eski `.orta/.sik` yoğunluk kademeleri
- * 35 kalemi tek A4'e sığdırmak için görseli 19 px'e indiriyordu — depocu
- * ürünü tanıyamıyordu. Kapasiteler temkinli: iki satıra sarmış ürün adı ve
- * özet bloğu + imza şeridi için pay bırakır (A4, 8 mm kenar = 281 mm içerik;
- * satır ≈ 9,8 mm).
+ * TASARIM DİLİ (ürün sahibi): resmî fiş/fatura gibi — tek yazı ailesi,
+ * siyah metin, ince gri çizgiler, önemli alanlar kalın; renkli rozet,
+ * sarı/turuncu bilgi kutusu ve çizgili satır zemini YOK. KDV ve benzeri
+ * açıklamalar toplamın altında küçük puntoda dipnottur.
+ *
+ * SAYFALAMA: sayfa ölçüsü SABİTTİR (kalem artınca görsel/punto küçülmez),
+ * satır yükseklikleri fiş penceresinde ÖLÇÜLÜR ve `SiparisFisi.sayfalaraBol`
+ * kalemleri sayfalara DENGELİ dağıtır: özet bloğu (toplamlar + not + imza)
+ * bölünmez ve tek başına bir sayfaya atılmaz. Belge iskeleti sipariş
+ * fişiyle AYNI sözleşmedir (.belge-bas / .belge-devam / table.kalemler /
+ * .kapanis / .sayfa-alt); betik `SiparisFisi.sayfalayiciBetigi()`.
  */
-const DEPO_SAYFA_KAPASITESI = { ilk: 22, devam: 24, ozet: 9 };
-
 function depoFisiHtml(s) {
   const F = window.SiparisFisi;
 
@@ -6801,6 +6804,7 @@ function depoFisiHtml(s) {
   const aliciKod = aliciTipiKodu(s);
   const aliciBilgi = ALICI_TIPLERI[aliciKod] || ALICI_TIPLERI.individual;
   const aliciAdi = aliciKod === 'corporate' ? (s.firma || s.musteri) : s.musteri;
+  const firmaAdi = durum.ayarlar.firmaAdi || 'FİRMA ADI';
 
   /* Firma logosu fişe de basılır: ayarlardan logo değiştirildiğinde yazdırılan
      fiş de aynı anda değişsin (kaynak tek: markaLogosu). */
@@ -6817,7 +6821,8 @@ function depoFisiHtml(s) {
                'onerror="this.onerror=null;this.src=\'' + YEDEK_GORSEL + '\'" />' +
         '</td>' +
         '<td class="s-tik"><span class="tik-kutu"></span></td>' +
-        '<td class="s-ad"><span class="s-ad-metin">' + kacis(k.ad) + '</span></td>' +
+        /* Ürün adı TAM yazılır — kırpma yok; yükseklik sayfalamada ölçülür. */
+        '<td class="s-ad">' + kacis(k.ad) + '</td>' +
         '<td class="s-kod">' + kacis(k.kod) + '</td>' +
         '<td class="s-adet">' + k.adet + '</td>' +
         /* Liste birim fiyatı iskonto varsa ÜSTÜ ÇİZİLİ basılır: depocu hangi
@@ -6841,9 +6846,9 @@ function depoFisiHtml(s) {
    *   2. BAYİ İSKONTO TUTARI          oran siparişten okunur ("—" yoksa)
    *   3. İSKONTOLU ARA TOPLAM         liste − bayi (HER fişte)
    *   4. {YÖNTEM} SİPARİŞ İSKONTOSU   ücret satırından okunur ("—" yoksa)
-   *   5. KDV                          bilgi satırı: "fiyatlara dâhil" ya da
-   *                                   vergi motoru açıksa "toplama eklenir";
-   *                                   KDV hariç siparişte UYGULANMADI
+   *   5. KDV                          yalın satır; açıklaması DİPNOTTA
+   *                                   (fiyatlara dâhil / toplama eklendi /
+   *                                   uygulanmadı)
    *   6. NET ÖDENECEK TUTAR
    *
    * ÜÇ REGRESYON KORUMASI (asla geri alınmayacak):
@@ -6852,24 +6857,24 @@ function depoFisiHtml(s) {
    *   · Ödeme oranı SABİT DEĞİLDİR (ücret satırından: ozet.odemeOrani/odemeAdi).
    *
    * Kargo, kupon ve kapanmayan artık yalnızca SIFIR DEĞİLSE araya girer.
-   * KDV ÇIKARMA İŞLEMİNİN İÇİNDE DEĞİLDİR: satır bilgi verir, toplamdan
-   * düşülmez; vergi motoru KDV'yi toplama eklediyse (fark ≈ KDV) "+" ile
-   * ve "toplama eklenir" notuyla yazılır — o zaman zaten toplamın parçasıdır.
+   * KDV ÇIKARMA İŞLEMİNİN İÇİNDE DEĞİLDİR: vergi motoru KDV'yi toplama
+   * eklediyse (fark ≈ KDV) o zaman zaten toplamın parçasıdır ve dipnot bunu
+   * söyler.
    */
   const kdvUstune = Math.abs(ozet.fark) > 0.005 && Math.abs(ozet.fark - ozet.kdv) < 0.05;
 
   const ekSatirlar = [];
 
   if (ozet.ekIndirim > 0.005) {
-    ekSatirlar.push({ etiket: 'EK İNDİRİM (kupon / sipariş indirimi)', tutar: -ozet.ekIndirim, sinif: 'indirim' });
+    ekSatirlar.push({ etiket: 'Ek İndirim (kupon / sipariş indirimi)', tutar: -ozet.ekIndirim, sinif: 'indirim' });
   }
 
   if (ozet.kargo > 0.005) {
-    ekSatirlar.push({ etiket: (s.sevkiyatEtiketi ? s.sevkiyatEtiketi.toLocaleUpperCase('tr-TR') : 'KARGO / NAVLUN'), tutar: ozet.kargo });
+    ekSatirlar.push({ etiket: (s.sevkiyatEtiketi ? String(s.sevkiyatEtiketi) : 'Kargo / Navlun'), tutar: ozet.kargo });
   }
 
   if (!kdvUstune && Math.abs(ozet.fark) > 0.005) {
-    ekSatirlar.push({ etiket: 'KAPANMAYAN FARK (yuvarlama / diğer)', tutar: ozet.fark });
+    ekSatirlar.push({ etiket: 'Kapanmayan Fark (yuvarlama / diğer)', tutar: ozet.fark });
   }
 
   const ozetGirdisi = {
@@ -6894,141 +6899,111 @@ function depoFisiHtml(s) {
   };
 
   const ozetHtml = F.ozetBlogu(ozetGirdisi);
-
-  const kdvNotu = ozet.kdvHaricMi
-    ? '<div class="kdv-notu">Bu siparişte KDV uygulanmamıştır' +
-      (Number(s.kdvDusulen) > 0.005 ? ' (düşülen KDV: ' + kacis(para(s.kdvDusulen)) + ')' : '') +
-      '. Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.</div>'
-    : '';
+  const dipnot = F.kdvDipnotu(ozetGirdisi.kdv);
 
   /* ---- Araç çubuğu: ORTAK (Yazdır · PDF · WhatsApp · Kapat) ---- */
   const arac = F.aracCubugu({
-    baslik: 'Depo Toplama Fişi · Sipariş #' + s.numara + ' · ' + cesit + ' kalem',
+    baslik: 'Depo / Sevk Fişi · Sipariş #' + s.numara + ' · ' + cesit + ' kalem',
     dosyaAdi: 'Depo-Fisi-' + String(s.numara).replace(/[^0-9A-Za-z_-]+/g, '_'),
     whatsapp: { tel: s.telefon, metin: F.whatsappMetni(F.normalle(s, siparisFisiBaglami())) }
   });
 
-  /* ---- Sayfalama: sabit kapasite, özet bölünmez ---- */
-  const bolum = F.sayfalaraBol(cesit, DEPO_SAYFA_KAPASITESI);
-  const sayfaToplam = bolum.toplam;
+  /* ---- İlk sayfa başlığı: marka | belge künyesi ---- */
+  const markaHtml = '<div class="marka">' +
+    (logo
+      ? '<img class="logo" src="' + kacis(logo) + '" alt="" onerror="this.onerror=null;this.style.display=\'none\';" />'
+      : '') +
+    '<div class="firma">' + kacis(firmaAdi) + '</div>' +
+    '</div>';
 
   const tamBaslik = '' +
-  /* ---- Tek şerit, 2 sütunlu mini başlık: solda firma, sağda sipariş/tarih/bayi ---- */
-  '  <div class="ust">' +
-  '    <div class="ust-sol">' +
-  '      <div class="logo">' +
-         (logo
-           ? '<img src="' + kacis(logo) + '" alt="" ' +
-             'onerror="this.onerror=null;this.parentNode.innerHTML=\'\';" />'
-           : fisIkonu(FIS_IKONLARI.paket, 16)) +
-  '      </div>' +
-  '      <div>' +
-  '        <div class="firma">' + kacis(durum.ayarlar.firmaAdi || 'FİRMA ADI') + '</div>' +
-  '        <div class="fis-turu">DEPO &amp; SEVK FİŞİ &nbsp;·&nbsp; ' +
-           (aliciKod === 'corporate' ? 'KURUMSAL BAYİ' : 'BİREYSEL MÜŞTERİ') + '</div>' +
-  '      </div>' +
-  '    </div>' +
-  '    <div class="ust-sag">' +
-  '      <div><span class="etiket">SİPARİŞ NO:</span> <span class="no">' + kacis(s.numara) + '</span>' +
-  '           &nbsp;·&nbsp; <span class="etiket">TARİH:</span> ' + kacis(tarihYaz(s.tarih, true)) + '</div>' +
-  '      <div><span class="alici-rozet ' + aliciKod + '">' + kacis(aliciBilgi.etiket) + '</span>' +
-  '           <span class="bayi">' + kacis(aliciAdi) + '</span></div>' +
-  '    </div>' +
-  '  </div>' +
+    '<header class="ust">' + markaHtml +
+      '<div class="baslik">' +
+        '<div class="fis-turu">DEPO / SEVK FİŞİ</div>' +
+        '<div class="no">Sipariş No: #' + kacis(s.numara) + '</div>' +
+        '<div class="tarih">Tarih: ' + kacis(tarihYaz(s.tarih, true)) + '</div>' +
+        '<div class="alici-tipi">' + (aliciKod === 'corporate' ? 'Kurumsal Bayi' : 'Bireysel Müşteri') + '</div>' +
+      '</div>' +
+    '</header>' +
 
-  /* ---- Bilgi şeridi: solda ALICI KÜNYESİ (tipe göre değişir), sağda sipariş özeti ---- */
-  '  <div class="bilgi">' +
-  '    <div>' + fisKunyesiHtml(s) + '</div>' +
-  '    <div>' +
-  '      <div><span class="etiket">Çeşit:</span> <span class="vurgu">' + cesit + '</span>' +
-  '           &nbsp;·&nbsp; <span class="etiket">Toplam Adet:</span> <span class="vurgu">' + toplamAdet + '</span>' +
-  '           &nbsp;·&nbsp; <span class="etiket">Sayfa:</span> <span class="vurgu">' + sayfaToplam + '</span></div>' +
-  '      <div><span class="etiket">Durum:</span> <span class="vurgu">' +
-         kacis((s.durumEtiketi || durumBilgisi(s.durum).etiket).toLocaleUpperCase('tr-TR')) + '</span></div>' +
-  /* Sevkiyat satırı: kargo firması, takip numarası ve serbest ambar notu.
-     Üçü de isteğe bağlıdır; hangileri doluysa yalnızca onlar basılır ve
-     hiçbiri yoksa satır hiç görünmez (boş "Kargo: —" satırı yer kaybıydı). */
-  ((s.kargo || s.takip || s.sevkiyatNotu)
-    ? '      <div><span class="etiket">Sevkiyat:</span> ' +
-      [
-        s.kargo ? kacis(s.kargo) : '',
-        s.takip ? '<span class="etiket">Takip:</span> ' + kacis(s.takip) : '',
-        s.sevkiyatNotu ? kacis(s.sevkiyatNotu) : ''
-      ].filter(Boolean).join(' &nbsp;·&nbsp; ') + '</div>'
-    : '') +
-  '    </div>' +
-  '  </div>';
+    /* Bilgi şeridi: solda ALICI KÜNYESİ (tipe göre değişir), sağda sipariş özeti */
+    '<section class="kunye">' +
+      '<div class="kutu"><h3>' + kacis(aliciBilgi.etiket) + '</h3>' + fisKunyesiHtml(s) + '</div>' +
+      '<div class="kutu"><h3>Sipariş</h3><dl>' +
+        '<dt>Alıcı</dt><dd>' + kacis(aliciAdi) + '</dd>' +
+        '<dt>Çeşit / Adet</dt><dd>' + cesit + ' çeşit · ' + toplamAdet + ' adet</dd>' +
+        '<dt>Durum</dt><dd>' + kacis(s.durumEtiketi || durumBilgisi(s.durum).etiket) + '</dd>' +
+        /* Sevkiyat satırı: kargo firması, takip numarası ve serbest ambar notu.
+           Üçü de isteğe bağlıdır; hangileri doluysa yalnızca onlar basılır ve
+           hiçbiri yoksa satır hiç görünmez (boş "Kargo: —" satırı yer kaybıydı). */
+        ((s.kargo || s.takip || s.sevkiyatNotu)
+          ? '<dt>Sevkiyat</dt><dd>' +
+            [
+              s.kargo ? kacis(s.kargo) : '',
+              s.takip ? 'Takip: ' + kacis(s.takip) : '',
+              s.sevkiyatNotu ? kacis(s.sevkiyatNotu) : ''
+            ].filter(Boolean).join(' · ') + '</dd>'
+          : '') +
+      '</dl></div>' +
+    '</section>';
 
-  const devamBasligi = function (no) {
-    return '<div class="ust devam">' +
-      '<div class="ust-sol"><div><div class="firma">' + kacis(durum.ayarlar.firmaAdi || 'FİRMA ADI') + '</div>' +
-      '<div class="fis-turu">DEPO &amp; SEVK FİŞİ &nbsp;·&nbsp; DEVAM</div></div></div>' +
-      '<div class="ust-sag"><div><span class="etiket">SİPARİŞ NO:</span> <span class="no">' + kacis(s.numara) + '</span>' +
-      ' &nbsp;·&nbsp; <span class="etiket">SAYFA:</span> ' + no + ' / ' + sayfaToplam +
-      ' &nbsp;·&nbsp; <span class="bayi">' + kacis(aliciAdi) + '</span></div></div>' +
-      '</div>';
-  };
+  /* Devam sayfası başlığı (sayfalayıcı kopyalar, sayfa numarasını doldurur). */
+  const devamBasligi = '' +
+    '<header class="ust devam">' + markaHtml +
+      '<div class="baslik">' +
+        '<div class="fis-turu">DEPO / SEVK FİŞİ</div>' +
+        '<div class="no">Sipariş No: #' + kacis(s.numara) + ' · ' + kacis(aliciAdi) +
+        ' · Sayfa <span class="sayfa-no"></span> / <span class="sayfa-toplam"></span> (devam)</div>' +
+      '</div>' +
+    '</header>';
 
-  const tabloBaslik = '' +
-  '    <thead><tr>' +
-  '      <th class="s-gorsel">GÖRSEL</th>' +
-  '      <th class="s-tik">TİK</th>' +
-  '      <th class="s-ad">ÜRÜN ADI</th>' +
-  '      <th class="s-kod">SKU / BARKOD</th>' +
-  '      <th class="s-adet">ADET</th>' +
-  '      <th class="s-liste">LİSTE BİRİM FİYATI</th>' +
-  '      <th class="s-birim">İSKONTOLU BİRİM FİYATI</th>' +
-  '      <th class="s-kdvo">KDV ORANI</th>' +
-  '      <th class="s-kdvt">KDV TUTARI</th>' +
-  '      <th class="s-toplam">SATIR TOPLAMI</th>' +
-  '    </tr></thead>';
+  const tablo = '' +
+    '<table class="kalemler">' +
+    '  <thead><tr>' +
+    '    <th class="s-gorsel">Görsel</th>' +
+    '    <th class="s-tik">Tik</th>' +
+    '    <th class="s-ad">Ürün Adı</th>' +
+    '    <th class="s-kod">SKU / Barkod</th>' +
+    '    <th class="s-adet">Adet</th>' +
+    '    <th class="s-liste">Liste Birim Fiyatı</th>' +
+    '    <th class="s-birim">İskontolu Birim Fiyatı</th>' +
+    '    <th class="s-kdvo">KDV Oranı</th>' +
+    '    <th class="s-kdvt">KDV Tutarı</th>' +
+    '    <th class="s-toplam">Satır Toplamı</th>' +
+    '  </tr></thead>' +
+    '  <tbody>' +
+      (cesit ? s.kalemler.map(satirHtml).join('') : '<tr><td class="bos-kalem" colspan="10">Kalem yok</td></tr>') +
+    '  </tbody>' +
+    '</table>';
 
-  const tablo = function (bas, son) {
-    const dilim = s.kalemler.slice(bas, son);
-
-    return '<table>' + tabloBaslik + '<tbody>' +
-      (dilim.length ? dilim.map(satirHtml).join('') : '<tr><td class="bos-kalem" colspan="10">Kalem yok</td></tr>') +
-      '</tbody></table>';
-  };
-
-  /* Özet + not/imza şeridi + alt bilgi: yalnızca SON sayfada, bölünmez. */
+  /* Kapanış: özet + dipnot + not/imza şeridi — yalnızca SON sayfada, BÖLÜNMEZ. */
   const kapanis = '' +
-  '  <div class="kapanis">' +
-       ozetHtml + kdvNotu +
-  '    <div class="alt">' +
-  '      <div class="not"><span class="etiket">SİPARİŞ NOTU:</span> ' + kacis(s.notlar || '—') + '</div>' +
-  '      <div class="imzalar">' +
-  '        <div class="imza"><div class="cizgi"></div><div class="etiket">HAZIRLAYAN (Depo)</div></div>' +
-  '        <div class="imza"><div class="cizgi"></div><div class="etiket">KONTROL EDEN</div></div>' +
-  '        <div class="imza"><div class="cizgi"></div><div class="etiket">TESLİM ALAN</div></div>' +
-  '      </div>' +
-  '    </div>' +
-  '  </div>';
+    '<div class="kapanis">' +
+      ozetHtml +
+      (dipnot ? '<div class="dipnot">' + kacis(dipnot) + '</div>' : '') +
+      '<div class="alt-serit">' +
+        '<div class="not"><span class="etiket">Sipariş Notu:</span> ' + kacis(s.notlar || '—') + '</div>' +
+        '<div class="imzalar">' +
+          '<div class="imza"><div class="cizgi"></div><div class="etiket">Hazırlayan (Depo)</div></div>' +
+          '<div class="imza"><div class="cizgi"></div><div class="etiket">Kontrol Eden</div></div>' +
+          '<div class="imza"><div class="cizgi"></div><div class="etiket">Teslim Alan</div></div>' +
+        '</div>' +
+      '</div>' +
+      '<footer class="alt">Tutarlar Türk Lirası (₺) cinsindendir. Bu belge sevk ve toplama amaçlıdır; fatura yerine geçmez.</footer>' +
+    '</div>';
 
-  const altbilgi = function (no) {
-    return '<div class="altbilgi">' +
-      '<span>' + kacis(durum.ayarlar.firmaAdi || '') + '</span>' +
-      '<span>Tutarlar ₺ (Türk Lirası) cinsindendir.</span>' +
-      '<span>Sayfa ' + no + ' / ' + sayfaToplam + ' &nbsp;·&nbsp; Yazdırma: ' + kacis(tarihYaz(new Date().toISOString(), true)) + '</span>' +
-      '</div>';
-  };
+  const sayfaAlti = '' +
+    '<div class="sayfa-alt" hidden>' +
+      '<span>' + kacis(firmaAdi) + ' · Depo / Sevk Fişi · Sipariş No: #' + kacis(s.numara) + '</span>' +
+      '<span>Yazdırma: ' + kacis(tarihYaz(new Date().toISOString(), true)) + '</span>' +
+      '<span>Sayfa <span class="sayfa-no"></span> / <span class="sayfa-toplam"></span></span>' +
+    '</div>';
 
-  let sayfalar = bolum.sayfalar.map(function (sf, i) {
-    const no = i + 1;
-    const sonSayfa = (i === bolum.sayfalar.length - 1) && !bolum.ozetAyri;
-
-    return '<div class="sayfa' + (i ? ' devam' : '') + '" data-sayfa="' + no + '">' +
-      (i ? devamBasligi(no) : tamBaslik) +
-      tablo(sf.bas, sf.son) +
-      (sonSayfa ? kapanis : '') +
-      altbilgi(no) +
-      '</div>';
-  }).join('');
-
-  if (bolum.ozetAyri) {
-    sayfalar += '<div class="sayfa devam ozet-sayfasi" data-sayfa="' + sayfaToplam + '">' +
-      devamBasligi(sayfaToplam) + kapanis + altbilgi(sayfaToplam) + '</div>';
-  }
+  const belge = '<div class="belge" data-kagit="a4" data-icerik-mm="281">' +
+    '<div class="belge-bas">' + tamBaslik + '</div>' +
+    '<div class="belge-devam" hidden>' + devamBasligi + '</div>' +
+    tablo + kapanis + sayfaAlti +
+    '</div>';
 
   return '<!DOCTYPE html>\n' +
 '<html lang="tr"><head><meta charset="UTF-8">' +
@@ -7037,139 +7012,107 @@ function depoFisiHtml(s) {
 '  @page { size: A4; margin: 8mm; }' +
 '  * { box-sizing: border-box; }' +
 '  html, body { margin:0; padding:0; }' +
-'  body { font-family: "Segoe UI", Arial, sans-serif; background:#e8eaee; color:#0f172a; }' +
+'  body { font-family: "Segoe UI", Arial, sans-serif; font-size:10px; background:#e8eaee; color:#111; }' +
 
 arac.stil +
 
-'  /* ---- A4 sayfa: SABİT ÖLÇÜ ----' +
-'     297 mm − 2 × 8 mm kenar = 281 mm içerik. Ekranda ve kâğıtta aynı; kalem' +
-'     sayısı artınca punto/görsel KÜÇÜLMEZ, sayfa sayısı artar (sayfalaraBol).' +
-'     Taşan içerik gizlenir — son emniyet, kapasite zaten taşırmaz. ---- */' +
-'  .sayfa { position:relative; width:210mm; height:297mm; margin:16px auto; padding:8mm 8mm 12mm; background:#fff;' +
-'           box-shadow:0 10px 40px rgba(0,0,0,.28); overflow:hidden; }' +
+'  /* ---- Akış → sayfalar: 297 mm − 2 × 8 mm kenar = 281 mm içerik. Sayfalayıcı satırları' +
+'     ÖLÇÜP .sayfa yapraklarına dağıtır; kalem artınca punto/görsel KÜÇÜLMEZ. ---- */' +
+'  .belge, .sayfa { width:210mm; margin:16px auto; padding:8mm; background:#fff; box-shadow:0 10px 40px rgba(0,0,0,.28); }' +
+'  .sayfa { position:relative; height:297mm; overflow:hidden; --kenar:8mm; }' +
+'  .sayfa-alt { position:absolute; left:var(--kenar); right:var(--kenar); bottom:var(--kenar); border-top:1px solid #bbb; padding-top:1mm;' +
+'               font-size:7.5px; color:#555; display:flex; justify-content:space-between; gap:4mm; }' +
+'  .belge-devam[hidden], .sayfa-alt[hidden] { display:none; }' +
 
-'  /* ---- Üst şerit: tek satırda 2 sütunlu mini başlık ---- */' +
-'  .ust { display:flex; align-items:center; justify-content:space-between; gap:10px;' +
-'         border:1px solid #e2e8f0; border-radius:3px; padding:3px 6px; margin-bottom:4px; }' +
-'  .ust.devam { background:#f8fafc; }' +
-'  .ust-sol { display:flex; align-items:center; gap:7px; min-width:0; }' +
-'  .logo { flex:0 0 auto; height:26px; min-width:26px; max-width:120px; border:1px solid #e2e8f0;' +
-'          border-radius:4px; background:#f8fafc; color:#475569;' +
-'          display:flex; align-items:center; justify-content:center; overflow:hidden; }' +
-'  .logo img { max-height:24px; max-width:116px; object-fit:contain; display:block; }' +
-'  .firma { font-size:12px; font-weight:800; line-height:1.2; }' +
-'  .fis-turu { font-size:8.5px; font-weight:700; letter-spacing:.6px; color:#64748b; }' +
-'  .ust-sag { text-align:right; font-size:10px; line-height:1.35; white-space:nowrap; }' +
-'  .ust-sag .no { font-size:13px; font-weight:900; }' +
-'  .ust-sag .bayi { font-size:11px; font-weight:800; }' +
-'  .ust-sag .etiket { color:#64748b; font-weight:700; }' +
+'  /* ---- Başlık: marka | belge künyesi ---- */' +
+'  .ust { display:flex; justify-content:space-between; align-items:flex-start; gap:8mm; border-bottom:2px solid #222; padding-bottom:2.5mm; margin-bottom:3mm; }' +
+'  .ust.devam { border-bottom-width:1px; padding-bottom:1.5mm; margin-bottom:2mm; }' +
+'  .ust.devam .fis-turu { font-size:11px; }' +
+'  .ust.devam .firma { font-size:10.5px; }' +
+'  .ust.devam .logo { max-height:8mm; }' +
+'  .marka { display:flex; align-items:center; gap:3mm; min-width:0; }' +
+'  .logo { display:block; max-height:13mm; max-width:45mm; object-fit:contain; }' +
+'  .firma { font-size:13px; font-weight:800; overflow-wrap:anywhere; }' +
+'  .baslik { text-align:right; white-space:nowrap; line-height:1.35; }' +
+'  .fis-turu { font-size:15px; font-weight:800; letter-spacing:.8px; }' +
+'  .no { font-size:11.5px; font-weight:800; }' +
+'  .tarih, .alici-tipi { color:#333; }' +
 
-'  /* Alıcı rolü rozeti — ekrandaki mavi [MÜŞTERİ] / yeşil [BAYİ] ile aynı renkler.' +
-'     Yazıcı renkli değilse bile çerçeve + kalın yazı ayrımı korur. */' +
-'  .alici-rozet { display:inline-block; margin-right:5px; padding:0 5px; border-radius:3px;' +
-'                 font-size:8.5px; font-weight:900; letter-spacing:.5px; border:1px solid; }' +
-'  .alici-rozet.individual { color:#075985; border-color:#38bdf8; background:#e0f2fe; }' +
-'  .alici-rozet.corporate  { color:#065f46; border-color:#34d399; background:#d1fae5; }' +
+'  /* ---- Künye kutuları ---- */' +
+'  .kunye { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-bottom:3mm; }' +
+'  .kutu { border:1px solid #bbb; padding:2mm 2.5mm; font-size:9.5px; line-height:1.4; }' +
+'  .kutu h3 { margin:0 0 1mm; font-size:8px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#555; }' +
+'  .kutu dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:.6mm 2.5mm; }' +
+'  .kutu dt { color:#555; white-space:nowrap; }' +
+'  .kutu dd { margin:0; font-weight:600; overflow-wrap:anywhere; }' +
+'  .kutu .etiket { color:#555; }' +
+'  .kutu .vurgu { font-weight:700; }' +
 
-'  /* ---- Bilgi şeridi: solda bayi künyesi, sağda sipariş özeti ---- */' +
-'  .bilgi { display:flex; gap:4px; margin-bottom:4px; }' +
-'  .bilgi > div { flex:1; min-width:0; border:1px solid #e2e8f0; border-radius:3px;' +
-'                 padding:3px 6px; font-size:10px; line-height:1.45; }' +
-'  .bilgi .etiket { color:#64748b; font-weight:700; }' +
-'  .bilgi .vurgu { font-weight:800; }' +
+'  /* ---- Ürün tablosu: sabit ölçü (görsel 30 px, punto 10 px), ad SARAR ---- */' +
+'  table.kalemler { width:100%; border-collapse:collapse; table-layout:fixed; }' +
+'  .kalemler th { border-top:1px solid #222; border-bottom:1px solid #222; padding:1.6mm 1.2mm;' +
+'                 font-size:8px; font-weight:700; letter-spacing:.2px; text-align:left; color:#222; }' +
+'  .kalemler td { border-bottom:1px solid #d9d9d9; padding:1.4mm 1.2mm; vertical-align:middle; }' +
+'  .bos-kalem { text-align:center; color:#777; padding:6mm 0; }' +
 
-'  /* ---- Ürün tablosu: SABİT satır ölçüsü (görsel 30 px, yazı 10,5 px) ---- */' +
-'  table { width:100%; border-collapse:collapse; table-layout:fixed; }' +
-'  thead th { background:#f1f5f9; border:1px solid #e2e8f0; padding:3px 5px;' +
-'             font-size:8.5px; font-weight:800; letter-spacing:.2px; text-align:left; color:#334155; }' +
-'  tbody td { border:1px solid #e2e8f0; padding:3px 5px; vertical-align:middle; }' +
-'  tbody tr:nth-child(even) td { background:#f8fafc; }' +
-'  .bos-kalem { text-align:center; color:#94a3b8; padding:6mm 0; }' +
-
-'  /* ---- Sütun genişlikleri (hem başlık hem hücre) ---- */' +
+'  /* ---- Sütun genişlikleri (hem başlık hem hücre) — ürün adı kalanı alır ---- */' +
 '  .s-gorsel { width:10mm; text-align:center; }' +
 '  .s-tik    { width:7mm;  text-align:center; }' +
-'  .s-kod    { width:24mm; }' +
+'  .s-kod    { width:20mm; }' +
 '  .s-adet   { width:11mm; text-align:center; }' +
-'  .s-liste  { width:19mm; text-align:right; }' +
-'  .s-birim  { width:20mm; text-align:right; }' +
-'  .s-kdvo   { width:12mm; text-align:right; }' +
-'  .s-kdvt   { width:17mm; text-align:right; }' +
-'  .s-toplam { width:20mm; text-align:right; }' +
+'  .s-liste  { width:17mm; text-align:right; }' +
+'  .s-birim  { width:17mm; text-align:right; }' +
+'  .s-kdvo   { width:10mm; text-align:right; }' +
+'  .s-kdvt   { width:15mm; text-align:right; }' +
+'  .s-toplam { width:19mm; text-align:right; }' +
 
-'  /* Ürün görseli — sabit 30 × 30 px, küçülmez */' +
-'  .urun-gorsel { width:30px; height:30px; object-fit:cover; border:1px solid #e2e8f0; border-radius:2px;' +
-'                 background:#f8fafc; display:block; margin:0 auto; }' +
-'  /* display:block — satır altına yazı tabanı boşluğu eklemesin (yer kaybı olmasın) */' +
-'  .tik-kutu { display:block; width:12px; height:12px; margin:0 auto; border:1px solid #94a3b8;' +
-'              border-radius:2px; background:#fff; }' +
+'  .urun-gorsel { width:30px; height:30px; object-fit:cover; border:1px solid #ccc; background:#fafafa; display:block; margin:0 auto; }' +
+'  .tik-kutu { display:block; width:12px; height:12px; margin:0 auto; border:1px solid #444; background:#fff; }' +
 
-'  tbody .s-ad     { font-size:10.5px; font-weight:700; line-height:1.25; }' +
-'  /* Ürün adı en çok İKİ satır: satır yüksekliği sınırlı kalsın ki sayfa' +
-'     kapasitesi kâğıtta da tutsun. */' +
-'  .s-ad-metin { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }' +
-'  tbody .s-kod    { font-size:9.5px; font-weight:600; font-family:Consolas,"Courier New",monospace;' +
-'                    color:#334155; word-wrap:break-word; }' +
-'  tbody .s-adet   { font-size:10.5px; font-weight:900; }' +
-'  /* Liste fiyatı: iskonto varsa üstü çizili ve soluk — indirimli fiyatla' +
-'     karışmasın, renksiz yazıcıda da ayrışsın. */' +
-'  tbody .s-liste  { font-size:9.5px; font-weight:600; color:#64748b; }' +
-'  tbody .s-liste.cizili { text-decoration:line-through; }' +
-'  tbody .s-birim  { font-size:10.5px; font-weight:800; }' +
-'  tbody .s-kdvo   { font-size:9.5px; font-weight:700; color:#475569; }' +
-'  tbody .s-kdvt   { font-size:9.5px; font-weight:700; color:#475569; }' +
-'  tbody .s-toplam { font-size:10.5px; font-weight:800; }' +
+'  .kalemler td.s-ad  { font-weight:600; line-height:1.3; overflow-wrap:anywhere; }' +
+'  .kalemler td.s-kod { font-family:Consolas, "Courier New", monospace; font-size:9px; color:#333; overflow-wrap:anywhere; }' +
+'  .kalemler td.s-adet { font-weight:800; }' +
+'  /* Liste fiyatı: iskonto varsa üstü çizili — indirimli fiyatla karışmasın. */' +
+'  .kalemler td.s-liste { color:#444; }' +
+'  .kalemler td.s-liste.cizili { text-decoration:line-through; }' +
+'  .kalemler td.s-birim, .kalemler td.s-toplam { font-weight:700; white-space:nowrap; }' +
+'  .kalemler td.s-kdvo, .kalemler td.s-kdvt { color:#333; white-space:nowrap; }' +
 
-'  /* ---- Kapanış: özet bloğu (ORTAK çizici) + not/imza ---- */' +
-'  .kapanis { margin-top:4px; }' +
-'  .toplamlar { width:auto; min-width:110mm; margin:0 0 0 auto; table-layout:auto; border-collapse:collapse; }' +
-'  .toplamlar td { padding:3px 6px; font-size:10.5px; font-weight:800; border:1px solid #e2e8f0; background:#f8fafc; }' +
-'  .toplamlar .etiket { text-align:right; color:#334155; }' +
+'  /* ---- Kapanış: özet (ORTAK çizici), dipnot, not + imza ---- */' +
+'  .kapanis { margin-top:3mm; }' +
+'  .toplamlar { width:auto; min-width:105mm; margin:0 0 0 auto; border-collapse:collapse; }' +
+'  .toplamlar td { padding:1.1mm 1.6mm; font-size:10px; border-bottom:1px solid #e3e3e3; }' +
+'  .toplamlar .etiket { text-align:right; color:#333; }' +
 '  .toplamlar .deger { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }' +
-'  .toplamlar .ince { font-weight:600; color:#64748b; font-size:9px; }' +
-'  .toplamlar .indirim td { color:#b91c1c; }' +
-'  .toplamlar .bos .deger { color:#94a3b8; }' +
-'  /* ---- Köprü satırı: bir ARA TOPLAMDIR, indirim değil ---- */' +
-'  .toplamlar .ara td { color:#0f172a; background:#f1f5f9; border-top:1px solid #cbd5e1; }' +
-'  .toplamlar .kdv td { color:#475569; }' +
-'  .toplamlar .kdv-yok .deger { color:#b45309; font-weight:900; }' +
-'  .toplamlar .net td { font-size:12px; font-weight:900; background:#eef2f7; border-top:2px solid #94a3b8; }' +
-'  .kdv-notu { margin-top:4px; border:1.5px solid #b45309; border-radius:3px; padding:4px 6px; font-size:9.5px;' +
-'              color:#7c2d12; background:#fffbeb; font-weight:600; }' +
+'  .toplamlar .bos .deger { color:#888; }' +
+'  .toplamlar .ara td { font-weight:700; }' +
+'  .toplamlar .kdv-yok .deger { font-weight:700; }' +
+'  .toplamlar .net td { font-size:12px; font-weight:800; border-top:2px solid #222; border-bottom:2px double #222; padding-top:1.8mm; padding-bottom:1.8mm; }' +
+'  .dipnot { margin-top:1.5mm; font-size:8px; line-height:1.4; color:#444; text-align:right; }' +
 
-'  /* ---- Alt bant: sipariş notu ve imzalar YAN YANA (dikeyde yer kazanır) ---- */' +
-'  .alt { display:flex; gap:4px; margin-top:4px; align-items:stretch; }' +
-'  .not { flex:2; min-width:0; border:1px solid #e2e8f0; border-radius:3px;' +
-'         padding:3px 6px; font-size:10px; line-height:1.35; }' +
-'  .not .etiket { color:#64748b; font-weight:700; }' +
-'  .imzalar { flex:3; display:flex; gap:4px; }' +
-'  .imza { flex:1; border:1px solid #e2e8f0; border-radius:3px; padding:3px 6px 2px; }' +
-'  .imza .cizgi { height:11mm; border-bottom:1px solid #e2e8f0; }' +
-'  .imza .etiket { margin-top:2px; font-size:9px; font-weight:700; text-align:center; color:#64748b; }' +
+'  .alt-serit { display:flex; gap:3mm; margin-top:3mm; align-items:stretch; }' +
+'  .not { flex:2; min-width:0; border:1px solid #bbb; padding:2mm 2.5mm; font-size:9.5px; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; }' +
+'  .not .etiket { color:#555; font-weight:700; }' +
+'  .imzalar { flex:3; display:flex; gap:3mm; }' +
+'  .imza { flex:1; border:1px solid #bbb; padding:2mm 2.5mm 1.5mm; }' +
+'  .imza .cizgi { height:10mm; border-bottom:1px solid #999; }' +
+'  .imza .etiket { margin-top:1.2mm; font-size:8px; font-weight:700; text-align:center; color:#555; }' +
+'  .alt { margin-top:2.5mm; border-top:1px solid #bbb; padding-top:1.2mm; font-size:8px; color:#555; text-align:center; }' +
 
-'  .altbilgi { position:absolute; left:8mm; right:8mm; bottom:4mm; border-top:1px solid #e2e8f0; padding-top:2px;' +
-'              font-size:8px; display:flex; justify-content:space-between; color:#64748b; }' +
-
-'  /* ---- YAZDIRMA: her .sayfa bir kâğıt sayfasıdır ---- */' +
+'  /* ---- YAZDIRMA: her .sayfa bir kâğıt; akış kalmışsa tarayıcı böler (satır/özet bölünmez) ---- */' +
 '  @media print {' +
 '    body { background:#fff; }' +
-'    .sayfa { width:auto; height:281mm; margin:0; padding:0 0 4mm; box-shadow:none;' +
-'             page-break-after:always; break-after:page; }' +
+'    .belge, .sayfa { width:auto; margin:0; padding:0; box-shadow:none; }' +
+'    .sayfa { height:281mm; --kenar:0; page-break-after:always; break-after:page; }' +
 '    .sayfa:last-child { page-break-after:auto; break-after:auto; }' +
-'    .altbilgi { left:0; right:0; bottom:0; }' +
 '    thead { display:table-header-group; }' +
-'    tr { page-break-inside:avoid; }' +
-'    /* Özet bloğu, KDV notu ve imza şeridi BÖLÜNMEZ: çıkarma listesinin' +
-'       yarısı bir sayfada, toplamı ötekinde kalırsa fiş okunamaz olur. */' +
-'    .kapanis, .toplamlar, .alt, .kdv-notu { page-break-inside:avoid; }' +
-'    /* Köprü ve KDV satırlarının zemini baskıda da görünsün. */' +
-'    .toplamlar .ara td { background:#f1f5f9 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }' +
-'    .toplamlar .net td { background:#eef2f7 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }' +
+'    tr, .kutu, .toplamlar, .alt-serit, .kapanis { page-break-inside:avoid; break-inside:avoid; }' +
 '  }' +
-'</style></head><body>' +
+'</style></head><body class="a4">' +
 
 arac.govde +
-sayfalar +
+belge +
+F.sayfalayiciBetigi() +
 arac.betik +
 '</body></html>';
 }

@@ -1516,21 +1516,41 @@ kök `CLAUDE.md §10 Faz 14`.
 
 ### 4.18.2 Fiş sistemi — sabit ölçü, sayfalama, altı satırlık ORTAK özet, araç çubuğu
 - **Yoğunluk kademeleri KALKTI** (`.orta/.sik`, `--gorsel/--yazi`): görsel 30 px ve punto sabit;
-  kalem artınca **sayfa artar**. `SiparisFisi.sayfalaraBol(n, {ilk, devam, ozet})` saf;
-  A4 sipariş fişi `{20, 26, 9}`, depo fişi `DEPO_SAYFA_KAPASITESI {22, 24, 9}`. Son sayfada
-  özet için yer yoksa özet **tek başına** yeni sayfaya. Her `.sayfa` sabit yükseklik
-  (ekran 297 mm, kâğıt 273/281 mm) + `page-break-after:always`; devam sayfalarında
-  kompakt başlık + "Sayfa i / n"; `thead` her sayfada; ürün adı `line-clamp:2`.
+  kalem artınca **sayfa artar**. **14-B (ürün sahibi):** ürün adı **ASLA kırpılmaz**
+  (`line-clamp` yok) ve özet **tek başına sayfaya atılmaz** — sayfalama bu yüzden
+  satır sayısıyla değil **ÖLÇÜMLE** yapılır:
+  - `html()` belgeyi tek **akış iskeleti** olarak basar: `.belge[data-kagit][data-icerik-mm]`
+    → `.belge-bas` · `.belge-devam[hidden]` · `table.kalemler` · `.kapanis` · `.sayfa-alt[hidden]`.
+    Depo fişi (renderer.js) **aynı iskeleti** kurar (`data-icerik-mm="281"`).
+  - `SiparisFisi.sayfalayiciBetigi()` (pencere() ve depoFisiHtml gömer; IPC betiğinden ÖNCE):
+    fiş penceresinde `.belge`yi bir kez yerleştirir, `offsetHeight` okur (başlık, devam
+    başlığı, thead, her satır, kapanış, sayfa altı; 273/281 mm probe), **`sayfalaraBol`'u
+    `toString` ile gömülü AYNI fonksiyon** olarak çağırır, `.sayfa` yaprakları kurar (thead
+    klon, satırlar taşınır, kapanış yalnızca son sayfada, "Sayfa i / n" dolar), `.belge`yi
+    değiştirir, `body[data-sayfali]` yazar. `document.fonts.ready` beklenir; ölçüm 0 ise
+    (yerleşim yok) akış kalır ve tarayıcı böler (`thead` tekrar, `tr/.kapanis` bölünmez).
+    Termalde çalışmaz. WhatsApp görseli aynı geçici HTML'i yüklediği için o da sayfalıdır.
+  - `sayfalaraBol(agirliklar, {ilk, devam, ozet})` saf ve **dengeli**: en az sayfa (sıralı
+    doldurma), özet sığmıyorsa bir sayfa daha ama kalemler dengeli (12 → 6/6, 20 → 10/10,
+    50 → 17/17/16); her sayfa hedefe en yakın yerde kapanır, "kalan kalemler SIRALI sığar mı"
+    sınamasıyla dolum garantisi; özet yalnızca tek başına sayfadan büyükse ayrı sayfa.
+    Sayı verilirse her kalem 1 ağırlık (testler). `SAYFA_KAPASITESI` / `DEPO_SAYFA_KAPASITESI` **kalktı**.
+  - **Resmî belge dili:** tek yazı ailesi, siyah metin, ince gri çizgiler, kalın önemli alanlar
+    (belge türü, No, ünvan, NET çift çizgili); renkli rozet/kutu/çizgili zemin YOK; KDV
+    açıklaması toplamın altında küçük **dipnot** (`kdvDipnotu`: dâhil / tutara eklendi /
+    uygulanmadı). Araç çubuğu düğmeleri emojisiz.
 - **A4 sütunları sabit (8):** Ürün Adı · Kod / Barkod · Koli / Adet · Birim Fiyat ·
   İskontolu Birim Fiyat · KDV Oranı · KDV Tutarı · Satır Tutarı; bilinmeyen "—".
   Kalem `listeBirim` (`list_unit_price` ‖ satır metası/adet ‖ birim); liste toplamı
   **birim × güncel adet** (depo fişinin revizyon koruması artık sipariş fişinde de).
 - **`SiparisFisi.ozetBlogu(o)`** — altı sabit satır: Liste Fiyatı Ara Toplamı · Bayi
   İskonto Tutarı (%x) · İskontolu Ara Toplam · `<Yöntem>` Sipariş İskontosu (%x) · KDV ·
-  NET ÖDENECEK TUTAR. Değer yoksa "—"; KDV bilgi satırıdır ("fiyatlara dâhil" /
-  vergi motoru ekledi ise "+ … toplama eklenir" / hariçte `UYGULANMADI`); ek satırlar
-  (kargo, kupon, kapanmayan fark) yalnızca sıfır değilse. **Depo fişi aynı çiziciyi
-  çağırır** (`ozetGirdisi` → `F.ozetBlogu`); `siparisFinansOzeti` motoru değişmedi.
+  NET ÖDENECEK TUTAR. Değer yoksa "—"; KDV satırı YALIN ("KDV (%20) · 358,67 TL",
+  hariçte `UYGULANMADI`), açıklaması `kdvDipnotu()` ile toplamın altında küçük dipnot
+  (dâhil / tutara eklendi / uygulanmadı — tablo içine not, renkli kutu girmez); ek
+  satırlar (kargo, kupon, kapanmayan fark) yalnızca sıfır değilse. **Depo fişi aynı
+  çiziciyi ve aynı dipnotu çağırır** (`ozetGirdisi` → `F.ozetBlogu` / `F.kdvDipnotu`);
+  `siparisFinansOzeti` motoru değişmedi.
 - **`aracCubugu()` + `pencere()`:** Yazdır · PDF Olarak Kaydet · WhatsApp'tan Gönder ·
   Kapat + gömülü IPC betiği. `html()` **saf** (etkileşim/betik yok; testin "DOM/ağ/require
   yok" sözü motor içindir). Gömülü JSON `<` kaçışlı. İki kabuk `pencere()` ile açar;
@@ -1583,7 +1603,7 @@ kök `CLAUDE.md §10 Faz 14`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**762 test**: panel 323 + kök 439).
+İkisini birden `../scripts/check-all.js` koşar (**767 test**: panel 323 + kök 444).
 
 ```bash
 # Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
@@ -1636,6 +1656,7 @@ node --test scripts/tests/yonetici-arayuz.dom.test.js # 18 — Faz 11-13: sipari
 node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki rol iki harita, renk/il formu, saha kısayolları, bayi profili kapısı
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/fis-pencere.test.js         # 4  — Faz 14 (kaynak): fis:whatsapp offscreen+pano, plasiyer:siparis-* kimlik oturumdan, pencere()
+node --test scripts/tests/fis-sayfalayici.dom.test.js # 5  — Faz 14-B: sayfalayıcı betiği jsdom'da (offsetHeight taklidi) — 50 kalem 16/18/16, kapanış yalnızca sonda, termalde çalışmaz
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
 node --test scripts/tests/sifir-kurulum.test.js       # "0 KM" kuralları
 node --test scripts/tests/registry-parity.test.js     # 3 registry kopyası eşit mi
@@ -1646,7 +1667,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (762 test)
+# Bitirirken: üç katmanın tamamı (767 test)
 node scripts/check-all.js
 ```
 
@@ -1725,7 +1746,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 185 php / 102 js / 762 test
+cd .. && node scripts/check-all.js     # 0 hata / 185 php / 103 js / 767 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

@@ -498,15 +498,15 @@ test('paraYaz vektörleri: tr-TR gruplama, iki ondalık, işaret, bozuk girdi', 
 
 test('dışa verme: işlevler + kacis + sabitler; window yokken module.exports; motor DOM/ağ kullanmaz', () => {
   ['normalle', 'html', 'pencere', 'whatsappMetni', 'waTelefon', 'waAdresi', 'paraYaz', 'kacis',
-   'fisOzeti', 'ozetBlogu', 'sayfalaraBol', 'aracCubugu'].forEach((ad) => {
+   'fisOzeti', 'ozetBlogu', 'kdvDipnotu', 'sayfalaraBol', 'sayfalayiciBetigi', 'aracCubugu'].forEach((ad) => {
     assert.equal(typeof F[ad], 'function', ad);
   });
   assert.equal(F.PARA_BIRIMI, 'TL');
   assert.equal(F.WA_EN_COK_KALEM, 20);
   assert.equal(F.WA_EN_COK_KARAKTER, 1800);
   assert.equal(F.ALT_YAZI, 'BYOM B2B · Bu fiş bilgi amaçlıdır, fatura yerine geçmez.');
-  assert.deepEqual(F.SAYFA_KAPASITESI, { ilk: 20, devam: 26, ozet: 9 });
   assert.equal(F.OZET_ETIKET.net, 'NET ÖDENECEK TUTAR');
+  assert.equal(F.SAYFA_KAPASITESI, undefined, 'sabit satır kapasitesi KALKTI — yükseklik pencerede ölçülür');
   assert.equal(F.kacis('<a href="x">&\'</a>'), '&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;');
 
   /* Kaynak denetimi: çift modlu dışa verme satırları birebir duruyor. */
@@ -517,16 +517,15 @@ test('dışa verme: işlevler + kacis + sabitler; window yokken module.exports; 
   assert.ok(kaynak.includes("if (typeof window !== 'undefined') window.SiparisFisi = SiparisFisi;"));
   assert.ok(kaynak.includes("'use strict';"));
 
-  /* Motorun KENDİSİ DOM/ağ/require kullanmaz. Tek istisna araç çubuğunun
-     GÖMÜLÜ betiği: o bir METİN olarak üretilir ve yalnızca fiş penceresinde
-     çalışır (pencere()). Denetim onun dışındaki kaynağa bakar. */
-  const bas = kaynak.indexOf('function aracCubugu(');
+  /* Motorun KENDİSİ DOM/ağ/require kullanmaz. İki istisna METİN olarak üretilir
+     ve yalnızca fiş penceresinde çalışır: sayfalayıcı betiği (ölçüm) ve araç
+     çubuğu betiği (IPC). Denetim onların dışındaki kaynağa bakar. */
+  const bas = kaynak.indexOf('function sayfalayiciBetigi(');
   const son = kaynak.indexOf('function pencere(');
-  assert.ok(bas > 0 && son > bas, 'aracCubugu ve pencere kaynakta ve sırada');
+  assert.ok(bas > 0 && son > bas, 'sayfalayiciBetigi … pencere sırası');
   const motor = kaynak.slice(0, bas) + kaynak.slice(son);
-  assert.ok(!/document\.|window\.open|fetch\(|XMLHttpRequest|require\(/.test(motor), 'DOM / ağ / require yok (araç çubuğu betiği hariç)');
-});
-/* ------------------------------------------------------------------ *
+  assert.ok(!/document\.|window\.open|fetch\(|XMLHttpRequest|require\(/.test(motor), 'DOM / ağ / require yok (pencere betikleri hariç)');
+});/* ------------------------------------------------------------------ *
  *  7. Faz 12 inceleme turu düzeltmeleri — koli TAM SAYIDIR, il ADI,
  *     ücret satırları
  *
@@ -812,8 +811,11 @@ test('KDV: ÜÇ KAYNAK da aynı künyeyi verir (kalemde oran+tutar, kökte topla
     assert.ok(h.includes('<th class="sayi">KDV Tutarı</th>'), ad + ': KDV tutarı sütunu');
     assert.ok(h.includes('<td class="s-kdv sayi">%20</td>'), ad + ': satırda oran');
     assert.ok(h.includes('<td class="s-kdvtutar sayi">342,00 TL</td>'), ad + ': satırda tutar');
-    assert.ok(h.includes('KDV (%20)</td><td class="deger sayi">358,67 TL <span class="ince">fiyatlara dâhil</span>'), ad + ': toplam KDV satırı + "fiyatlara dâhil" notu');
+    /* Faz 14-B: KDV satırı YALIN; açıklaması dipnotta (renkli kutu değil). */
+    assert.ok(h.includes('<tr class="kdv"><td class="etiket">KDV (%20)</td><td class="deger sayi">358,67 TL</td></tr>'), ad + ': toplam KDV satırı yalın');
+    assert.ok(h.includes('<div class="dipnot">Fiyatlara KDV dâhildir. KDV (%20) satırı bilgi amaçlıdır; toplamdan ayrıca düşülmez ya da eklenmez.</div>'), ad + ': dipnot');
     assert.ok(h.indexOf('KDV (%20)') < h.indexOf('NET ÖDENECEK TUTAR'), ad + ': KDV, NET satırından ÖNCE');
+    assert.ok(!h.includes('kdv-notu') && !h.includes('class="ince"'), ad + ': kutu / satır içi not yok');
 
     /* Aynı bilgi WhatsApp'ta TEK SATIR — kalem başına yazmak 1800 karakter
        bütçesini yer ve sınıra dayanınca ilk düşen şey kalem olurdu. */
@@ -823,7 +825,6 @@ test('KDV: ÜÇ KAYNAK da aynı künyeyi verir (kalemde oran+tutar, kökte topla
     assert.ok(wa.indexOf('*KDV (%20):* 358,67 TL') < wa.indexOf('*NET ÖDENECEK TUTAR: 2.152,00 TL*'), ad);
   });
 });
-
 test('sütun sırası ürün sahibinin istediği gibi (Faz 14) — Ürün Adı · Kod/Barkod · Koli/Adet · Birim Fiyat · İskontolu Birim Fiyat · KDV Oranı · KDV Tutarı · Satır Tutarı', () => {
   /* NEDEN: sıra doğrudan ürün sahibinin cümlesidir ("Yeni düzen: …").
      Sütunları alfabetik ya da "para en sağa" diye yeniden dizmek fişi
@@ -851,7 +852,7 @@ test('sütun sırası ürün sahibinin istediği gibi (Faz 14) — Ürün Adı �
   /* Liste birim gelmeyen satırda iskontolu birim "—": iki fiyat aynıysa ikinci sütun bilgi değil gürültü */
   assert.ok(h.includes('<td class="s-liste sayi">2,50 TL</td><td class="s-birim sayi">—</td>'));
 });
-test('KDV İSTENMEDİ: açık uyarı bloğu basılır, toplam KDV satırı basılmaz ve NET İKİNCİ KEZ DÜŞMEZ', () => {
+test('KDV İSTENMEDİ: açık dipnot basılır, toplam KDV satırı UYGULANMADI der ve NET İKİNCİ KEZ DÜŞMEZ', () => {
   /* NEDEN: "KDV istemiyorum" seçildiğinde sunucu satır tutarlarını ZATEN
      netleştirir (B2B_Order_Revision::apply_vat_mode → `_b2b_vat_excluded`).
      Panelin bir kez daha KDV çıkarması müşteriye iki kez indirim yazmak, yani
@@ -882,7 +883,9 @@ test('KDV İSTENMEDİ: açık uyarı bloğu basılır, toplam KDV satırı bası
 
   const h = F.html(f);
 
-  assert.ok(h.includes('<section class="kdv-notu">'), 'uyarı bloğu var');
+  /* Faz 14-B: açıklama sarı kutuda DEĞİL, toplamın altında küçük puntoda dipnotta. */
+  assert.ok(h.includes('<div class="dipnot">Bu siparişte KDV uygulanmamıştır (düşülen KDV: 358,67 TL). Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.</div>'), 'dipnot');
+  assert.ok(!h.includes('kdv-notu') && !h.includes('#fffbeb'), 'sarı bilgi kutusu YOK');
   assert.ok(h.includes('Bu siparişte KDV uygulanmamıştır (düşülen KDV: 358,67 TL)'), 'düşülen tutar yazıyla');
   assert.ok(h.includes('<tr class="kdv-yok"><td class="etiket">KDV</td><td class="deger sayi">UYGULANMADI</td>'));
   assert.ok(!h.includes('KDV (%20)</td>'), 'toplam KDV satırı KDV siz siparişte basılmaz');
@@ -920,7 +923,6 @@ test('KDV İSTENMEDİ: açık uyarı bloğu basılır, toplam KDV satırı bası
   assert.ok(F.html(saha).includes('Bu siparişte KDV uygulanmamıştır (düşülen KDV: 358,67 TL)'));
   assert.ok(F.html(saha).includes('<td class="deger sayi">UYGULANMADI</td>'));
 });
-
 test('KDV termal: 80 mm tek sütundur — KDV kalemin ALTINDA ikinci satır, yan yana sütun YOK', () => {
   /* NEDEN: 74 mm lik kâğıda yedi sütun sığmaz; sığdırmaya çalışmak ürün adını
      üç harfe düşürür. Aynı veri, iki yerleşim: A4 tablo, termal liste. Tek
@@ -1064,76 +1066,83 @@ test('KDV türetmesi: tutar HİÇ gelmediyse orandan — KDV dahil fiyattan AYRI
  *  Sayfa ölçüsü SABİT, sayfa sayısı değişkendir; özet bloğu bölünmez.
  * ------------------------------------------------------------------ */
 
-test('sayfalaraBol: sabit kapasite — 5 kalem tek sayfa, 20 kalem özetle 2 sayfa, 50 kalem 3 sayfa; özet bölünmez', () => {
-  const az = F.sayfalaraBol(5);
-  assert.deepEqual(az.sayfalar, [{ bas: 0, son: 5, kapasite: 20 }]);
-  assert.equal(az.ozetAyri, false, '15 satır pay var → özet aynı sayfada');
-  assert.equal(az.toplam, 1);
+test('sayfalaraBol: DENGELİ dağıtım — özet tek başına sayfaya atılmaz, sayfa sayısı en az, hiçbir kalem kayıp/çift değil', () => {
+  /* Ürün sahibi: "ikinci sayfada sadece iskonto tablosu olmasın; sırf onun
+     için sayfa basılmaz, denge olsun". Birim önemsiz: sayı → her kalem 1. */
+  const kap = { ilk: 20, devam: 26, ozet: 9 };
+  const dag = (n, k) => F.sayfalaraBol(n, k || kap).sayfalar.map((s) => s.son - s.bas);
 
-  const tam = F.sayfalaraBol(20);
-  assert.equal(tam.sayfalar.length, 1);
-  assert.equal(tam.ozetAyri, true, 'sayfa dolu → özet tek başına ikinci sayfaya');
-  assert.equal(tam.toplam, 2);
-
-  const cok = F.sayfalaraBol(50);
-  assert.deepEqual(cok.sayfalar, [{ bas: 0, son: 20, kapasite: 20 }, { bas: 20, son: 46, kapasite: 26 }, { bas: 46, son: 50, kapasite: 26 }]);
-  assert.equal(cok.ozetAyri, false, 'son sayfada 22 satır pay var');
-  assert.equal(cok.toplam, 3);
+  assert.deepEqual(dag(5), [5], '5 kalem + özet tek sayfa');
+  assert.deepEqual(dag(11), [11], '11 kalem + 9 özet = 20 → tek sayfa (sınır)');
+  assert.deepEqual(dag(12), [6, 6], 'özet sığmayınca sayfa AÇILIR ama kalemler DENGELİ bölünür');
+  assert.deepEqual(dag(20), [10, 10], '20 kalem → 20 + boş sayfada özet DEĞİL');
+  assert.deepEqual(dag(23), [12, 11]);
+  assert.deepEqual(dag(37), [20, 17], 'son sayfa özetle dolar (17 + 9 = 26), ilk sayfa doldurulur');
+  assert.deepEqual(dag(50), [17, 17, 16], 'üç sayfa, dengeli');
+  assert.equal(F.sayfalaraBol(50, kap).toplam, 3);
+  assert.equal(F.sayfalaraBol(20, kap).ozetAyri, false, 'özet yalnız sayfaya GİTMEZ');
 
   /* Hiçbir kalem iki sayfada birden değil, hiçbiri kayıp değil. */
+  const cok = F.sayfalaraBol(50, kap);
   const gorulen = [];
   cok.sayfalar.forEach((s) => { for (let i = s.bas; i < s.son; i++) gorulen.push(i); });
   assert.deepEqual(gorulen, Array.from({ length: 50 }, (_, i) => i));
 
-  /* Sıfır kalem: tek sayfa, özet yine basılır. */
-  const bos = F.sayfalaraBol(0);
-  assert.equal(bos.sayfalar.length, 1);
-  assert.equal(bos.ozetAyri, false);
+  /* Ölçülmüş yükseklikler (px): farklı satırlar farklı ağırlık. */
+  const px = F.sayfalaraBol([40, 40, 80, 40, 40, 120, 40, 40], { ilk: 200, devam: 220, ozet: 150 });
+  assert.equal(px.sayfalar.reduce((t, s) => t + (s.son - s.bas), 0), 8, 'kalem sayısı korunur');
+  px.sayfalar.forEach((s, i) => {
+    const kapasite = (i === 0 ? 200 : 220) - (i === px.sayfalar.length - 1 ? 150 : 0);
+    assert.ok(s.agirlik <= kapasite, 'sayfa ' + (i + 1) + ' taşmaz: ' + s.agirlik + ' ≤ ' + kapasite);
+  });
+  assert.equal(px.ozetAyri, false);
 
-  /* Özel kapasite ve bozuk girdi */
-  const ozel = F.sayfalaraBol(7, { ilk: 3, devam: 3, ozet: 1 });
-  assert.equal(ozel.sayfalar.length, 3);
-  assert.equal(ozel.ozetAyri, false, 'son sayfada 1 kalem, 2 satır pay ≥ 1');
+  /* Özet tek başına bir sayfadan büyükse (istisna) ayrı sayfa. */
+  const dev = F.sayfalaraBol(3, { ilk: 10, devam: 10, ozet: 12 });
+  assert.equal(dev.ozetAyri, true);
+  assert.equal(dev.toplam, 2);
+
+  /* Sıfır kalem: tek sayfa, özet o sayfada. Bozuk girdi çökmez. */
+  assert.deepEqual(F.sayfalaraBol(0, kap).sayfalar, [{ bas: 0, son: 0, agirlik: 0 }]);
   assert.equal(F.sayfalaraBol('abc').sayfalar.length, 1);
   assert.equal(F.sayfalaraBol(-4).sayfalar[0].son, 0);
+  assert.equal(F.sayfalaraBol([1, 'x', null, 2], { ilk: 10 }).sayfalar[0].agirlik, 3, 'bozuk ağırlık 0 sayılır');
 });
-
-test('html A4 sayfalı: 50 kalem 3 sayfa, her sayfa sabit ölçü + "Sayfa i / n", devam başlığı, özet YALNIZCA son sayfada, tek stil', () => {
+test('html A4: belge AKIŞ iskeletiyle basılır (sayfalama pencerede ölçülerek yapılır); sabit ölçü, ad kırpılmaz, yoğunluk kademesi YOK', () => {
   const kalemler = [];
-  for (let i = 1; i <= 50; i++) kalemler.push({ ad: 'Ürün ' + i, adet: 1, tutar: 10 });
+  for (let i = 1; i <= 50; i++) kalemler.push({ ad: 'Ürün ' + i + ' — çok uzun bir ürün adı ki sarsın ve yine de tam okunsun', adet: 1, tutar: 10 });
 
   const h = F.html(F.normalle({ numara: '77', tutar: 500, kalemler }, { firmaAdi: 'X' }));
 
-  assert.equal((h.match(/<div class="sayfa[" ]/g) || []).length, 3, 'üç sayfa (sayfa-no kutuları sayılmaz)');
-  assert.ok(h.includes('data-sayfa="1"') && h.includes('data-sayfa="3"'));
-  assert.ok(h.includes('Sayfa 1 / 3') && h.includes('Sayfa 2 / 3') && h.includes('Sayfa 3 / 3'));
-  assert.equal((h.match(/<header class="ust devam">/g) || []).length, 2, 'iki devam başlığı');
-  assert.ok(h.includes('#77 · sayfa 2/3 · devam'));
-  assert.equal((h.match(/<table class="toplamlar">/g) || []).length, 1, 'özet bloğu bir kez');
-  assert.ok(h.lastIndexOf('<table class="toplamlar">') > h.lastIndexOf('data-sayfa="3"'), 'özet SON sayfada');
-  assert.equal((h.match(/<thead>/g) || []).length, 3, 'başlık satırı her sayfada tekrarlanır');
+  /* Sayfalayıcı sözleşmesi (depo fişi de aynı iskeleti kurar) */
+  assert.ok(h.includes('<div class="belge" data-kagit="a4" data-icerik-mm="273">'));
+  assert.ok(h.includes('<div class="belge-bas">'), 'ilk sayfa başlığı');
+  assert.ok(h.includes('<div class="belge-devam" hidden>'), 'devam başlığı şablonu (gizli)');
+  assert.ok(h.includes('Sayfa <span class="sayfa-no"></span> / <span class="sayfa-toplam"></span> (devam)'));
+  assert.ok(h.includes('<table class="kalemler">'));
+  assert.ok(h.includes('<div class="kapanis">'), 'özet + dipnot + not + alt yazı tek blok');
+  assert.ok(h.includes('<div class="sayfa-alt" hidden>'), 'sayfa altı şablonu');
+  assert.equal((h.match(/<div class="sayfa[" ]/g) || []).length, 0, 'html() sayfa üretmez — ölçüm pencerede');
   assert.equal((h.match(/<td class="s-ad">/g) || []).length, 50, 'hiçbir kalem kayıp / çift değil');
-  assert.equal((h.match(/<section class="kunye">/g) || []).length, 1, 'künye yalnızca ilk sayfada');
+  assert.equal((h.match(/<table class="toplamlar">/g) || []).length, 1, 'özet bloğu bir kez');
+  assert.equal((h.match(/<section class="kunye">/g) || []).length, 1);
 
-  /* Sabit ölçü: küçültme YOK. Yoğunluk sınıfı ya da değişken punto olmamalı. */
-  assert.ok(h.includes('.sayfa { position:relative; width:210mm; height:297mm;'));
-  assert.ok(h.includes('body.a4 .sayfa { height:273mm; page-break-after:always; break-after:page; }'));
-  assert.ok(!/\.sik|\.orta|--yazi|--gorsel/.test(h), 'yoğunluk kademesi yok');
-  assert.ok(h.includes('-webkit-line-clamp:2'), 'ürün adı en çok iki satır — satır yüksekliği sınırlı');
+  /* Sabit ölçü, kırpma yok, renkli süs yok. */
+  assert.ok(h.includes('.sayfa { position:relative; height:297mm; overflow:hidden; --kenar:12mm; }'));
+  assert.ok(h.includes('body.a4 .sayfa { height:273mm; --kenar:0; page-break-after:always; break-after:page; }'));
+  assert.ok(!/line-clamp|\.sik|\.orta|--yazi|--gorsel/.test(h), 'ürün adı KIRPILMAZ; yoğunluk kademesi yok');
+  assert.ok(!/#fffbeb|#b45309|#b91c1c|nth-child\(even\)/.test(h), 'sarı/kırmızı vurgu ve çizgili zemin yok');
+  assert.ok(h.includes('tr, .kutu, .toplamlar, .not, .kapanis { page-break-inside:avoid; break-inside:avoid; }'), 'akış yedeğinde de bölünmez');
+  assert.ok(h.includes('thead { display:table-header-group; }'));
+  assert.ok(h.includes('<div class="no">No: #77</div>'), 'belge numarası kalın künye');
 
-  /* Tam dolu sayfa: 20 kalem → özet tek başına 2. sayfada */
-  const yirmi = F.html(F.normalle({ numara: '78', tutar: 1, kalemler: kalemler.slice(0, 20) }, {}));
-  assert.equal((yirmi.match(/<div class="sayfa[" ]/g) || []).length, 2);
-  assert.ok(yirmi.includes('ozet-sayfasi'), 'özet sayfası işaretli');
-  assert.ok(yirmi.includes('Sayfa 2 / 2'));
-
-  /* Termal SAYFALANMAZ (rulo) */
+  /* Termal SAYFALANMAZ (rulo): devam başlığı ve sayfa altı yok */
   const termal = F.html(F.normalle({ numara: '79', tutar: 1, kalemler }, {}), { kagit: 'termal' });
-  assert.equal((termal.match(/<div class="sayfa[" ]/g) || []).length, 1);
-  assert.ok(!termal.includes('Sayfa 1 /'));
+  const tGovde = termal.slice(termal.indexOf('<body'));
+  assert.ok(tGovde.includes('data-kagit="termal"'));
+  assert.ok(!tGovde.includes('belge-devam') && !tGovde.includes('sayfa-alt'), 'termal gövdesinde devam başlığı / sayfa altı yok');
 });
-
-test('ozetBlogu: ALTI SABİT SATIR — dolu ve boş hâller, ek satırlar, KDV üç hâl, depo fişi de aynı çiziciyi kullanır', () => {
+test('ozetBlogu: ALTI SABİT SATIR — dolu ve boş hâller, ek satırlar, KDV üç hâl; kdvDipnotu açıklaması', () => {
   const dolu = F.ozetBlogu({
     liste: 2152, bayiOrani: 10, bayiTutar: 215.2, iskontoluAra: 1936.8,
     odemeAdi: 'Nakit', odemeOrani: 5, odemeTutar: 96.84,
@@ -1150,8 +1159,9 @@ test('ozetBlogu: ALTI SABİT SATIR — dolu ve boş hâller, ek satırlar, KDV �
   assert.ok(dolu.includes('<tr class="ara"><td class="etiket">İskontolu Ara Toplam</td><td class="deger sayi">1.936,80 TL</td></tr>'));
   assert.ok(dolu.includes('<tr class="ek"><td class="etiket">KARGO / NAVLUN</td><td class="deger sayi">50,00 TL</td></tr>'));
   assert.ok(dolu.includes('<tr class="ek indirim"><td class="etiket">Kupon</td><td class="deger sayi">&minus;12,50 TL</td></tr>'));
-  assert.ok(dolu.includes('KDV (%20)</td><td class="deger sayi">358,67 TL <span class="ince">fiyatlara dâhil</span></td>'));
+  assert.ok(dolu.includes('<tr class="kdv"><td class="etiket">KDV (%20)</td><td class="deger sayi">358,67 TL</td></tr>'), 'KDV satırı yalın');
   assert.ok(dolu.includes('<tr class="net"><td class="etiket">NET ÖDENECEK TUTAR</td><td class="deger sayi">1.839,96 TL</td></tr>'));
+  assert.ok(!dolu.includes('class="ince"'), 'tablo içine açıklama girmez');
 
   /* Hiç iskonto, KDV bilinmiyor → aynı altı satır, değerler "—" */
   const bos = F.ozetBlogu({ liste: 100, iskontoluAra: 100, kdv: { bilinmiyor: true }, net: 100 });
@@ -1162,15 +1172,23 @@ test('ozetBlogu: ALTI SABİT SATIR — dolu ve boş hâller, ek satırlar, KDV �
 
   /* KDV üç hâl: istenmedi / üstüne eklenir / karışık */
   assert.ok(F.ozetBlogu({ kdv: { istenmedi: true } }).includes('<tr class="kdv-yok"><td class="etiket">KDV</td><td class="deger sayi">UYGULANMADI</td></tr>'));
-  assert.ok(F.ozetBlogu({ kdv: { tutar: 20, oran: 20, ustune: true } }).includes('<td class="deger sayi">+20,00 TL <span class="ince">toplama eklenir</span></td>'));
+  assert.ok(F.ozetBlogu({ kdv: { tutar: 20, oran: 20, ustune: true } }).includes('<tr class="kdv"><td class="etiket">KDV (%20)</td><td class="deger sayi">20,00 TL</td></tr>'));
   assert.ok(F.ozetBlogu({ kdv: { tutar: 30, karisik: true } }).includes('KDV (karışık oran)</td>'));
+
+  /* Dipnot: açıklama TABLONUN ALTINDA küçük puntoda — üç hâl + bilinmiyorsa boş */
+  assert.equal(F.kdvDipnotu({ tutar: 20, oran: 20 }), 'Fiyatlara KDV dâhildir. KDV (%20) satırı bilgi amaçlıdır; toplamdan ayrıca düşülmez ya da eklenmez.');
+  assert.equal(F.kdvDipnotu({ tutar: 20, oran: 20, ustune: true }), 'KDV (%20) tutara eklenmiştir; NET ÖDENECEK TUTAR KDV dâhildir.');
+  assert.equal(F.kdvDipnotu({ istenmedi: true, dusulen: 358.67 }), 'Bu siparişte KDV uygulanmamıştır (düşülen KDV: 358,67 TL). Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.');
+  assert.equal(F.kdvDipnotu({ istenmedi: true }), 'Bu siparişte KDV uygulanmamıştır. Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.');
+  assert.equal(F.kdvDipnotu({ tutar: 30, karisik: true }), 'Fiyatlara KDV dâhildir. KDV (karışık oran) satırı bilgi amaçlıdır; toplamdan ayrıca düşülmez ya da eklenmez.');
+  assert.equal(F.kdvDipnotu({ bilinmiyor: true }), '', 'bilinmeyen şey yazılmaz');
+  assert.equal(F.kdvDipnotu(null), '');
 
   /* Kaçış: etiketler HTML olarak yorumlanmaz; bozuk girdi çökertmez */
   assert.ok(F.ozetBlogu({ odemeAdi: '<b>x</b>', odemeTutar: 1, ekSatirlar: [{ etiket: '<i>', tutar: 1 }] }).includes('&lt;b&gt;x&lt;/b&gt; Sipariş İskontosu'));
   assert.ok(F.ozetBlogu(null).includes('NET ÖDENECEK TUTAR'));
   assert.ok(F.ozetBlogu({ ekSatirlar: 'x', kdv: 5 }).includes('NET ÖDENECEK TUTAR'));
 });
-
 test('fisOzeti: liste − bayi = iskontolu ara; KDV "üstüne" bayrağı yalnızca net ≈ (ara − ödeme) + KDV iken', () => {
   const f = F.normalle(hamKaynak(), BAGLAM);
   const o = F.fisOzeti(f);
@@ -1184,6 +1202,7 @@ test('fisOzeti: liste − bayi = iskontolu ara; KDV "üstüne" bayrağı yalnız
   assert.equal(o.kdv.bilinmiyor, true, 'bu kaynakta KDV künyesi yok');
   assert.equal(o.kdv.ustune, false);
   assert.deepEqual(o.ekSatirlar, []);
+  assert.ok(!F.html(f).includes('class="dipnot"'), 'KDV bilinmiyorsa dipnot yok');
 
   /* WooCommerce vergi motoru: satır KDV'si var ve toplam = satırlar + KDV */
   const vergili = F.normalle({
@@ -1191,26 +1210,28 @@ test('fisOzeti: liste − bayi = iskontolu ara; KDV "üstüne" bayrağı yalnız
   }, {});
   const ov = F.fisOzeti(vergili);
   assert.equal(ov.kdv.ustune, true, 'net 120 = 100 + 20 → KDV toplama eklenmiş');
-  assert.ok(F.html(vergili).includes('toplama eklenir'));
+  assert.ok(F.html(vergili).includes('<div class="dipnot">KDV (%20) tutara eklenmiştir; NET ÖDENECEK TUTAR KDV dâhildir.</div>'));
 
   /* KDV dâhil sistem: total = satırlar */
   const dahil = F.normalle({
     id: 2, number: '2', total: 100, items: [{ name: 'A', quantity: 1, unit_price: 100, total: 100, vat_rate: 20, vat_amount: 16.67 }]
   }, {});
   assert.equal(F.fisOzeti(dahil).kdv.ustune, false);
-  assert.ok(F.html(dahil).includes('fiyatlara dâhil'));
+  assert.ok(F.html(dahil).includes('<div class="dipnot">Fiyatlara KDV dâhildir.'));
 
   /* Kaynak nesne de kabul edilir (fisEmin) */
   assert.equal(F.fisOzeti(hamKaynak()).liste, 2152);
 });
-
-test('pencere: araç çubuğu Yazdır · PDF · WhatsApp · Kapat + gömülü IPC betiği; telefon yoksa WhatsApp devre dışı; html() SAF kalır', () => {
+test('pencere: sade araç çubuğu (Yazdır · PDF · WhatsApp · Kapat) + SAYFALAYICI + IPC betiği; telefon yoksa WhatsApp devre dışı; html() SAF kalır', () => {
   const fis = F.normalle(yoneticiKaynak(), BAGLAM);
   const p = F.pencere(fis);
 
   assert.ok(p.includes('<div class="arac yazdirma-yok">'));
   ['btnYazdir', 'btnPdf', 'btnWa', 'btnKapat'].forEach((id) => assert.ok(p.includes('id="' + id + '"'), id));
-  assert.ok(p.includes('🖨️ YAZDIR') && p.includes('📄 PDF OLARAK KAYDET') && p.includes("📲 WHATSAPP'TAN GÖNDER") && p.includes('✕ KAPAT'));
+  /* Resmî görünüm: düğmelerde emoji YOK, yalın büyük harf etiketler. */
+  assert.ok(p.includes('type="button">YAZDIR</button>') && p.includes('type="button">PDF OLARAK KAYDET</button>') &&
+            p.includes(">WHATSAPP'TAN GÖNDER</button>") && p.includes('type="button">KAPAT</button>'));
+  assert.ok(!/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(p.slice(p.indexOf('<div class="arac'), p.indexOf('<div class="belge'))), 'araç çubuğunda emoji yok');
   assert.ok(p.includes('ipc.invoke("fis:yazdir")') && p.includes('ipc.invoke("fis:pdf"') && p.includes('ipc.invoke("fis:whatsapp"') && p.includes('ipc.invoke("fis:kapat")'));
   assert.ok(p.includes('@media print { .yazdirma-yok { display:none !important; } }'), 'çubuk kâğıda yansımaz');
   assert.ok(p.includes('"tel":"905324152278"'), 'telefon wa.me biçiminde gömülü');
@@ -1220,15 +1241,25 @@ test('pencere: araç çubuğu Yazdır · PDF · WhatsApp · Kapat + gömülü IP
   assert.ok(!p.includes('<button class="b-wa" id="btnWa" type="button" disabled'), 'telefon varken düğme açık');
   assert.ok(p.includes('<table class="toplamlar">'), 'belge gövdesi aynen içeride');
 
+  /* SAYFALAYICI: pencerede ölçer, sayfalaraBol AYNI fonksiyondur (toString), araç betiğinden ÖNCE gelir */
+  const sb = p.indexOf('var sayfalaraBol = function sayfalaraBol(');
+  assert.ok(sb > 0, 'sayfalaraBol gömülü');
+  assert.ok(sb < p.indexOf('require("electron")'), 'sayfalayıcı, IPC betiğinden önce');
+  const betik = F.sayfalayiciBetigi();
+  ['.belge-bas', '.belge-devam', 'table.kalemler', '.kapanis', '.sayfa-alt', 'data-icerik-mm', 'offsetHeight', 'document.fonts', 'replaceChild', 'sayfa-toplam', 'cloneNode(true)']
+    .forEach((iz) => assert.ok(betik.includes(iz), 'sayfalayıcı: ' + iz));
+  assert.ok(!betik.includes('require('), 'sayfalayıcı IPC/require kullanmaz');
+  assert.ok(betik.includes('"termal" === belge.getAttribute("data-kagit")) return;'), 'termalde sayfalama yok');
+
   /* Telefonsuz müşteri: düğme devre dışı ve sebebi yazılı */
   const telsiz = F.pencere(F.normalle({ numara: '3', tutar: 1, musteri: 'X', kalemler: [] }, {}));
   assert.ok(telsiz.includes('id="btnWa" type="button" disabled title="Müşterinin kayıtlı telefon numarası yok"'));
 
   /* Gömülü JSON "<" kaçışlı — ürün adındaki "</script>" belgeyi kapatamaz */
   const kotu = F.pencere(F.normalle({ numara: '4</script><b>', tutar: 1, telefon: '05321112233', kalemler: [{ ad: '</script>', adet: 1, tutar: 1 }] }, {}));
-  const betik = kotu.slice(kotu.indexOf('<script>'));
-  assert.ok(!betik.includes('</script><b>'), 'JSON içinde ham </script yok');
-  assert.ok(betik.includes('\\u003c'));
+  const ipcBetik = kotu.slice(kotu.indexOf('var ipc = require'));
+  assert.ok(!ipcBetik.includes('</script><b>'), 'JSON içinde ham </script yok');
+  assert.ok(ipcBetik.includes('\\u003c'));
 
   /* html() etkileşim ve betik içermez */
   const saf = F.html(fis);
@@ -1239,7 +1270,6 @@ test('pencere: araç çubuğu Yazdır · PDF · WhatsApp · Kapat + gömülü IP
   assert.equal(ac.tel, '905324152278');
   assert.ok(ac.govde.includes('Depo Fişi #9') && ac.betik.includes('"dosyaAdi":"Depo-Fisi-9"') && ac.stil.includes('.b-wa'));
 });
-
 test('whatsappMetni Faz 14: iskonto varken "İskontolu Ara Toplam" satırı, altı satır fişle aynı sözcükler', () => {
   const s = F.whatsappMetni(F.normalle(hamKaynak(), BAGLAM)).split('\n');
 

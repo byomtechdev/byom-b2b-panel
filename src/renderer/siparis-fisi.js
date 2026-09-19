@@ -738,47 +738,153 @@
   /** Olmayan değerin işareti — boş hücre "unutulmuş" okunur, tire "yok" der. */
   var YOK = '—';
 
-  /**
-   * Sayfalama kapasiteleri (satır). Sayfa ölçüsü SABİTTİR: kalem sayısı
-   * artınca punto/satır küçülmez, sayfa sayısı artar. Kapasiteler bilerek
-   * temkinli: iki satıra sarmış ürün adları ve iskonto notu için pay bırakır.
-   *   ilk   : birinci sayfa (tam başlık + künye alır)
-   *   devam : devam sayfaları (kompakt başlık)
-   *   ozet  : özet bloğu + notlar + alt yazı için son sayfada gereken satır payı
-   */
-  var SAYFA_KAPASITESI = { ilk: 20, devam: 26, ozet: 9 };
+  /* ------------------------------------------------------------------ *
+   *  SAYFALAMA — ÖLÇÜLMÜŞ AĞIRLIKLARLA DENGELİ DAĞITIM (Faz 14-B)
+   *
+   *  Satır yükseklikleri fiş penceresinde ÖLÇÜLÜR (ürün adı kaç satıra
+   *  sardıysa o kadar yer kaplar; ad ASLA kırpılmaz), sonra bu saf fonksiyon
+   *  kalemleri sayfalara böler. Kural üç maddedir:
+   *    1) Sayfa sayısı en az olsun (sıralı doldurmada mümkün olan en az).
+   *    2) Özet bloğu (toplamlar + notlar + imza) BÖLÜNMEZ ve TEK BAŞINA bir
+   *       sayfaya ATILMAZ: özet için yer yoksa bir sayfa daha açılır ama
+   *       kalemler sayfalara DENGELİ dağıtılır — 22 kalem + boş sayfada
+   *       yalnız özet DEĞİL, 11 + 11 kalem ve özet son sayfada.
+   *    3) Özet tek başına bir sayfadan büyükse (istisna) ayrı sayfaya gider.
+   *
+   *  Birim önemsizdir (px, mm ya da "satır"): sayı verilirse her kalem 1
+   *  ağırlık sayılır (testler ve tahminler için).
+   * ------------------------------------------------------------------ */
 
   /**
-   * Kalemleri sabit kapasiteli sayfalara böler (saf fonksiyon).
-   *
-   * Son sayfada özet için yer kalmadıysa özet TEK BAŞINA yeni sayfaya geçer;
-   * bloğun yarısı bir sayfada, toplamı ötekinde kalırsa fiş okunamaz olur.
-   *
-   * @param {number} n   Kalem sayısı.
-   * @param {object} kap { ilk, devam, ozet } — verilmeyen alan varsayılandan.
-   * @returns {{ sayfalar: Array<{bas:number, son:number, kapasite:number}>, ozetAyri: boolean, toplam: number }}
+   * @param {number[]|number} agirliklar  Kalem yükseklikleri (ya da kalem sayısı).
+   * @param {object} kap  { ilk, devam, ozet } — ilk sayfa, devam sayfası
+   *                      kapasitesi ve özet bloğunun ağırlığı (aynı birim).
+   * @returns {{ sayfalar: Array<{bas:number, son:number, agirlik:number}>, ozetAyri: boolean, toplam: number }}
    */
-  function sayfalaraBol(n, kap) {
-    n = Math.max(0, Math.floor(sayi(n)));
+  function sayfalaraBol(agirliklar, kap) {
+    var w = [];
+    var i;
+
+    if (Array.isArray(agirliklar)) {
+      for (i = 0; i < agirliklar.length; i++) {
+        var a = Number(agirliklar[i]);
+        w.push(isFinite(a) && a > 0 ? a : 0);
+      }
+    } else {
+      var n = Math.max(0, Math.floor(Number(agirliklar) || 0));
+      for (i = 0; i < n; i++) w.push(1);
+    }
 
     var k = (kap && 'object' === typeof kap) ? kap : {};
-    var ilk = Math.max(1, Math.floor(sayi(k.ilk)) || SAYFA_KAPASITESI.ilk);
-    var devam = Math.max(1, Math.floor(sayi(k.devam)) || SAYFA_KAPASITESI.devam);
-    var ozet = Math.max(0, Math.floor(sayi(k.ozet)) || SAYFA_KAPASITESI.ozet);
+    var ilk = Number(k.ilk);
+    var devam = Number(k.devam);
+    var ozet = Number(k.ozet);
+
+    if (!isFinite(ilk) || ilk <= 0) ilk = 20;
+    if (!isFinite(devam) || devam <= 0) devam = ilk;
+    if (!isFinite(ozet) || ozet < 0) ozet = 0;
+
+    var adet = w.length;
+    var toplamAgirlik = 0;
+
+    for (i = 0; i < adet; i++) toplamAgirlik += w[i];
+
+    /* 1) Sıralı açgözlü doldurma → en az sayfa sayısı. Bir kalem tek başına
+       sayfadan büyükse yine bir sayfaya konur (taşma, kırpma değil). */
+    var sayfaSayisi = 1;
+    var dolu = 0;
+    var kapasite = ilk;
+
+    for (i = 0; i < adet; i++) {
+      if (dolu > 0 && dolu + w[i] > kapasite) {
+        sayfaSayisi++;
+        kapasite = devam;
+        dolu = 0;
+      }
+
+      dolu += w[i];
+    }
+
+    /* 2) Özet son sayfaya sığmıyorsa: kalem varsa bir sayfa daha (dengeli
+       dağıtılacak); özet tek başına bir sayfadan büyükse ayrı sayfa. */
+    var ozetAyri = false;
+    var sonKapasite = 1 === sayfaSayisi ? ilk : devam;
+
+    if (dolu + ozet > sonKapasite) {
+      if (ozet > devam) {
+        ozetAyri = true;          // özet tek başına bir sayfadan büyük (istisna)
+      } else if (adet > 0) {
+        sayfaSayisi++;            // bir sayfa daha: kalemler DENGELİ dağıtılır
+      }
+      /* Kalemsiz belge: tek sayfa, özet o sayfada (taşarsa taşar; kırpılmaz). */
+    }
+
+    /* 3) Dengeli dağıtım: her sayfanın hedefi kalan ağırlığın kalan sayfaya
+       bölümü; sayfa hedefe EN YAKIN olduğu yerde kapanır. Ama kapanmadan önce
+       "kalan kalemler SIRALI olarak sonraki sayfalara sığar mı" sınanır
+       (toplam kapasiteye bakmak yetmez — kalemler bölünemez, sıra değişemez);
+       sığmıyorsa sayfa dolmaya devam eder. Sıralı doldurmanın bulduğu sayfa
+       sayısı böyle bir dağıtımın var olduğunu garanti eder. */
+    var kapasiteler = [];
+
+    for (i = 0; i < sayfaSayisi; i++) {
+      kapasiteler.push((0 === i ? ilk : devam) - ((i === sayfaSayisi - 1 && !ozetAyri) ? ozet : 0));
+    }
+
+    /** w[bas..] kalemleri p+1..son sayfalara sırayla sığar mı? */
+    function sigarMi(bas, p) {
+      var sayfa = p + 1;
+      var doluluk = 0;
+
+      for (var j = bas; j < adet; j++) {
+        if (sayfa >= sayfaSayisi) return false;
+
+        if (doluluk > 0 && doluluk + w[j] > kapasiteler[sayfa]) {
+          sayfa++;
+          doluluk = 0;
+
+          if (sayfa >= sayfaSayisi) return false;
+        }
+
+        doluluk += w[j];
+      }
+
+      return true;
+    }
 
     var sayfalar = [];
-    var i = 0;
+    var bas = 0;
+    var kalanAgirlik = toplamAgirlik;
 
-    do {
-      var kapasite = sayfalar.length ? devam : ilk;
-      var son = Math.min(n, i + kapasite);
+    for (var p = 0; p < sayfaSayisi; p++) {
+      var hedef = kalanAgirlik / (sayfaSayisi - p);
+      var son = bas;
+      var agirlik = 0;
 
-      sayfalar.push({ bas: i, son: son, kapasite: kapasite });
-      i = son;
-    } while (i < n);
+      if (p === sayfaSayisi - 1) {
+        son = adet;
+        agirlik = kalanAgirlik;
+      } else {
+        while (son < adet) {
+          var sonraki = w[son];
+          var sigar = (agirlik + sonraki <= kapasiteler[p]) || 0 === agirlik;
 
-    var sonSayfa = sayfalar[sayfalar.length - 1];
-    var ozetAyri = (sonSayfa.kapasite - (sonSayfa.son - sonSayfa.bas)) < ozet;
+          if (!sigar) break;
+
+          var gerekli = !sigarMi(son, p);
+          var yakin = Math.abs(agirlik + sonraki - hedef) <= Math.abs(agirlik - hedef);
+
+          if (!gerekli && !yakin) break;
+
+          agirlik += sonraki;
+          son++;
+        }
+      }
+
+      sayfalar.push({ bas: bas, son: son, agirlik: agirlik });
+      kalanAgirlik -= agirlik;
+      bas = son;
+    }
 
     return { sayfalar: sayfalar, ozetAyri: ozetAyri, toplam: sayfalar.length + (ozetAyri ? 1 : 0) };
   }
@@ -790,7 +896,7 @@
    * net = sunucunun tutarı. KDV "üstüne" bayrağı: net ≈ (ara − ödeme) + KDV
    * ise WooCommerce vergi motoru KDV'yi toplama EKLEMİŞTİR; aksi hâlde KDV
    * fiyatların içindedir. İkisi ayrı sorudur ("ne ödeyeceğim" / "içinde ne
-   * kadar vergi var") ve fiş ikisini de açıkça yazar.
+   * kadar vergi var") ve fiş ikisini de dipnotta açıkça yazar.
    */
   function fisOzeti(fis) {
     fis = fisEmin(fis);
@@ -834,6 +940,9 @@
    * Satırlar her fişte VARDIR; olmayan değer "—" ile basılır. Ek satırlar
    * (kargo, kupon, kapanmayan artık) yalnızca sıfır değilse KDV'den önce
    * araya girer — kapanmayan bir çıkarma listesi basmak fişi yalancı yapar.
+   * KDV satırı yalın yazılır ("KDV (%20) · 358,67 TL"); dâhil mi, eklendi mi,
+   * uygulanmadı mı — açıklaması kdvDipnotu() ile toplamın ALTINDA küçük
+   * puntoda durur (resmî belgede tablo içine renkli kutu girmez).
    *
    * @param {object} o        fisOzeti() çıktısı ya da aynı biçimde elle kurulmuş nesne.
    * @param {object} secenek  { paraBirimi }
@@ -885,9 +994,7 @@
     } else if (kdv.bilinmiyor || !(sayi(kdv.tutar) > 0.005 || sayi(kdv.oran) > 0)) {
       govde += satir('kdv bos', kacis(OZET_ETIKET.kdv), YOK);
     } else {
-      govde += satir('kdv', kacis(kdvEtiketi({ karisik: !!kdv.karisik, oran: sayi(kdv.oran) })),
-        (kdv.ustune ? '+' : '') + kacis(para(kdv.tutar)) +
-        ' <span class="ince">' + (kdv.ustune ? 'toplama eklenir' : 'fiyatlara dâhil') + '</span>');
+      govde += satir('kdv', kacis(kdvEtiketi({ karisik: !!kdv.karisik, oran: sayi(kdv.oran) })), kacis(para(kdv.tutar)));
     }
 
     govde += satir('net', kacis(OZET_ETIKET.net), kacis(para(o.net)));
@@ -895,99 +1002,138 @@
     return '<table class="toplamlar"><tbody>' + govde + '</tbody></table>';
   }
 
+  /**
+   * KDV dipnotu — toplamın altında küçük puntoda, renkli kutu değil.
+   * Üç hâl: uygulanmadı · toplama eklendi · fiyatlara dâhil. KDV künyesi
+   * hiç yoksa dipnot yoktur (bilinmeyen şey yazılmaz).
+   *
+   * @param {object} kdv  fisOzeti().kdv biçimi.
+   * @param {object} secenek { paraBirimi }
+   * @returns {string} düz metin ('' olabilir)
+   */
+  function kdvDipnotu(kdv, secenek) {
+    kdv = (kdv && 'object' === typeof kdv) ? kdv : {};
+
+    var s = (secenek && 'object' === typeof secenek) ? secenek : {};
+    var birim = s.paraBirimi === undefined ? PARA_BIRIMI : s.paraBirimi;
+
+    if (kdv.istenmedi) {
+      var dusulen = kurus(kdv.dusulen) || kurus(kdv.tutar);
+
+      return 'Bu siparişte KDV uygulanmamıştır' +
+        (dusulen > 0.005 ? ' (düşülen KDV: ' + paraYaz(dusulen, birim) + ')' : '') +
+        '. Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.';
+    }
+
+    if (kdv.bilinmiyor || !(sayi(kdv.tutar) > 0.005 || sayi(kdv.oran) > 0)) return '';
+
+    var etiket = kdvEtiketi({ karisik: !!kdv.karisik, oran: sayi(kdv.oran) });
+
+    if (kdv.ustune) {
+      return etiket + ' tutara eklenmiştir; NET ÖDENECEK TUTAR KDV dâhildir.';
+    }
+
+    return 'Fiyatlara KDV dâhildir. ' + etiket + ' satırı bilgi amaçlıdır; toplamdan ayrıca düşülmez ya da eklenmez.';
+  }
+
   /* ------------------------------------------------------------------ *
-   *  HTML — A4 (sayfalı) ve 80 mm termal
+   *  HTML — A4 (akış + pencerede sayfalama) ve 80 mm termal
+   *
+   *  TASARIM DİLİ (Faz 14-B, ürün sahibi): resmî fiş/fatura gibi — tek yazı
+   *  ailesi, siyah metin, ince gri çizgiler, önemli alanlar kalın; renkli
+   *  rozet, sarı/turuncu bilgi kutusu, çizgili satır zemini YOK. Açıklamalar
+   *  toplamın altında küçük puntoda dipnottur.
    * ------------------------------------------------------------------ */
 
   function stil(termal) {
     var ortak = [
       '* { box-sizing: border-box; }',
       'html, body { margin:0; padding:0; }',
-      'h3 { margin:0 0 2mm; font-size:9.5px; font-weight:800; letter-spacing:.8px; text-transform:uppercase; color:#64748b; }',
+      'h3 { margin:0 0 1.5mm; font-size:8.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#555; }',
       'table { width:100%; border-collapse:collapse; }',
       'th, td { vertical-align:top; }',
       /* Rakam sütunları eş genişlikli rakamla dizilir: virgüller alt alta gelir. */
       '.sayi { text-align:right; white-space:nowrap; font-variant-numeric: tabular-nums; }',
-      'dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:1mm 3mm; }',
-      'dt { color:#64748b; white-space:nowrap; }',
+      'dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:.8mm 3mm; }',
+      'dt { color:#555; white-space:nowrap; }',
       'dd { margin:0; font-weight:600; overflow-wrap:anywhere; }',
-      '.kalemler th { text-align:left; font-size:9.5px; letter-spacing:.5px; color:#64748b; border-bottom:1.5px solid #0f172a; padding:2mm 1.5mm; }',
+      '.kalemler th { text-align:left; font-size:8.5px; letter-spacing:.3px; color:#222; font-weight:700; border-top:1px solid #222; border-bottom:1px solid #222; padding:1.6mm 1.2mm; }',
       '.kalemler th.sayi { text-align:right; }',
-      '.kalemler td { padding:1.8mm 1.5mm; border-bottom:1px solid #e2e8f0; }',
-      /* Ürün adı en çok İKİ satır: satır yüksekliği sınırlı kalsın ki sayfa
-         kapasitesi (sayfalaraBol) kâğıtta da tutsun. */
-      '.s-ad { overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }',
-      '.s-sku { color:#64748b; white-space:nowrap; }',
-      '.s-liste { color:#475569; }',
-      '.toplamlar td { padding:1.2mm 1.5mm; }',
-      '.toplamlar .etiket { text-align:right; color:#475569; }',
-      '.toplamlar .indirim .deger { color:#b91c1c; }',
-      '.toplamlar .bos .deger { color:#94a3b8; }',
-      '.toplamlar .ara td { font-weight:700; border-top:1px solid #cbd5e1; }',
-      '.toplamlar .kdv .etiket, .toplamlar .kdv .deger { font-weight:700; }',
-      '.toplamlar .ince { font-weight:500; color:#64748b; font-size:.9em; }',
-      '.toplamlar .kdv-yok .deger { color:#b45309; font-weight:800; }',
-      /* KDV'siz sipariş uyarısı: müşteri fişe bakınca "neden KDV yok?" sorusunu
-         sormadan cevabını görmeli. Bu yüzden toplam bloğunun altında, çerçeveli. */
-      '.kdv-notu { margin-top:3mm; border:1.5px solid #b45309; border-radius:2mm; padding:2.5mm 3mm; color:#7c2d12; background:#fffbeb; font-weight:600; }',
+      '.kalemler td { padding:1.5mm 1.2mm; border-bottom:1px solid #d9d9d9; }',
+      /* Ürün adı TAM yazılır: kaç satıra sararsa sarar, kırpma YOK (Faz 14-B).
+         Satır yüksekliği sayfalamada ÖLÇÜLÜR, tahmin edilmez. */
+      '.s-ad { overflow-wrap:anywhere; font-weight:600; }',
+      '.s-sku { color:#444; white-space:nowrap; font-family:Consolas, "Courier New", monospace; font-size:.92em; }',
+      '.s-liste { color:#444; }',
+      '.toplamlar td { padding:1.1mm 1.5mm; border-bottom:1px solid #e3e3e3; }',
+      '.toplamlar .etiket { text-align:right; color:#333; }',
+      '.toplamlar .bos .deger { color:#888; }',
+      '.toplamlar .ara td { font-weight:700; }',
+      '.toplamlar .kdv-yok .deger { font-weight:700; }',
+      '.toplamlar .net td { font-weight:800; border-top:2px solid #222; border-bottom:2px double #222; padding-top:2mm; padding-bottom:2mm; }',
+      '.dipnot { margin-top:2mm; font-size:8.5px; line-height:1.4; color:#444; }',
       /* Termal kip: KDV kalemin ALTINDA ikinci satırdır; üstteki satırın alt
          çizgisi kaldırılır ki kalem tek blok gibi okunsun. */
       '.kalemler tr.s-kdvli td { border-bottom:0; }',
-      '.s-kdv-bilgi { padding-top:0 !important; color:#475569; }',
-      '.toplamlar .net td { font-weight:900; border-top:2px solid #0f172a; padding-top:2.5mm; }',
-      '.not { border:1px dashed #94a3b8; border-radius:2mm; padding:3mm; white-space:pre-wrap; overflow-wrap:anywhere; }',
-      '.alt { border-top:1px solid #cbd5e1; padding-top:2mm; font-size:9px; color:#64748b; text-align:center; }',
+      '.s-kdv-bilgi { padding-top:0 !important; color:#444; }',
+      '.not { border:1px solid #bbb; padding:2.5mm 3mm; white-space:pre-wrap; overflow-wrap:anywhere; }',
+      '.alt { border-top:1px solid #bbb; padding-top:2mm; font-size:8.5px; color:#555; text-align:center; }',
       '.logo { display:block; object-fit:contain; }',
-      '.bos-kalem { text-align:center; color:#94a3b8; padding:6mm 0; }'
+      '.bos-kalem { text-align:center; color:#777; padding:6mm 0; }',
+      '.belge-devam[hidden], .sayfa-alt[hidden] { display:none; }'
     ];
 
     var a4 = [
       '@page { size: A4; margin: 12mm; }',
-      'body { font-family:"Segoe UI", Arial, sans-serif; font-size:11px; color:#0f172a; background:#e8eaee; }',
+      'body { font-family:"Segoe UI", Arial, sans-serif; font-size:10.5px; color:#111; background:#e8eaee; }',
       /*
-       * SAYFA ÖLÇÜSÜ SABİT: 297 mm − 2 × 12 mm kenar = 273 mm içerik. Ekranda
-       * ve kâğıtta aynı yükseklik; taşan içerik GİZLENİR (sayfalaraBol zaten
-       * taşırmaz, bu son emniyettir). Kalem sayısı artınca punto küçülmez,
-       * sayfa sayısı artar.
+       * AKIŞ → SAYFALAR. Belge önce tek akış olarak basılır (.belge); fiş
+       * penceresindeki sayfalayıcı satırları ÖLÇÜP .sayfa yapraklarına
+       * dağıtır. Sayfalayıcı çalışamazsa akış olduğu gibi kalır ve tarayıcı
+       * kendi bölmesini yapar (thead tekrarı + satır bölünmez).
        */
-      '.sayfa { position:relative; width:210mm; height:297mm; margin:16px auto; padding:12mm; background:#fff; box-shadow:0 10px 40px rgba(0,0,0,.28); overflow:hidden; }',
-      '.sayfa-no { position:absolute; right:12mm; bottom:5mm; font-size:9px; color:#94a3b8; }',
-      '.ust { display:flex; justify-content:space-between; align-items:flex-start; gap:10mm; border-bottom:2px solid #0f172a; padding-bottom:4mm; margin-bottom:5mm; }',
+      '.belge, .sayfa { width:210mm; margin:16px auto; padding:12mm; background:#fff; box-shadow:0 10px 40px rgba(0,0,0,.28); }',
+      '.sayfa { position:relative; height:297mm; overflow:hidden; --kenar:12mm; }',
+      '.sayfa-alt { position:absolute; left:var(--kenar); right:var(--kenar); bottom:var(--kenar); border-top:1px solid #bbb; padding-top:1.2mm; font-size:8px; color:#555; display:flex; justify-content:space-between; }',
+      '.ust { display:flex; justify-content:space-between; align-items:flex-start; gap:10mm; border-bottom:2px solid #222; padding-bottom:3.5mm; margin-bottom:4mm; }',
       '.ust.devam { padding-bottom:2mm; margin-bottom:3mm; border-bottom-width:1px; }',
-      '.ust.devam .fis-turu { font-size:13px; }',
-      '.ust.devam .firma { font-size:12px; }',
+      '.ust.devam .fis-turu { font-size:12px; }',
+      '.ust.devam .firma { font-size:11px; }',
+      '.ust.devam .logo { max-height:9mm; }',
       '.marka { display:flex; align-items:center; gap:4mm; min-width:0; }',
-      '.logo { max-height:18mm; max-width:60mm; }',
-      '.firma { font-size:16px; font-weight:800; overflow-wrap:anywhere; }',
+      '.logo { max-height:16mm; max-width:55mm; }',
+      '.firma { font-size:15px; font-weight:800; overflow-wrap:anywhere; }',
       '.baslik { text-align:right; white-space:nowrap; }',
-      '.fis-turu { font-size:18px; font-weight:900; letter-spacing:1.5px; }',
-      '.no { font-size:14px; font-weight:800; }',
-      '.tarih, .durum { color:#475569; }',
-      '.kunye { display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-bottom:5mm; }',
-      '.kutu { border:1px solid #cbd5e1; border-radius:2mm; padding:3mm; }',
+      '.fis-turu { font-size:17px; font-weight:800; letter-spacing:1px; }',
+      '.no { font-size:12.5px; font-weight:800; }',
+      '.tarih, .durum { color:#333; }',
+      '.kunye { display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-bottom:4mm; }',
+      '.kutu { border:1px solid #bbb; padding:2.5mm 3mm; }',
+      /* Sütun genişlikleri: ürün adı kalan alanı alır (~66 mm) ve SARAR. */
       '.kalemler { table-layout:fixed; }',
-      '.kalemler .s-sku { width:24mm; }',
-      '.kalemler .s-adet { width:24mm; }',
-      '.kalemler .s-liste, .kalemler .s-birim, .kalemler .s-kdvtutar { width:19mm; }',
-      '.kalemler .s-kdv { width:14mm; }',
-      '.kalemler .s-tutar { width:22mm; }',
-      '.toplamlar { margin:4mm 0 0 auto; width:auto; min-width:95mm; }',
-      '.toplamlar .net td { font-size:14px; }',
-      '.not { margin-top:5mm; }',
-      '.alt { margin-top:8mm; }'
+      '.kalemler .s-sku { width:19mm; }',
+      '.kalemler .s-adet { width:22mm; }',
+      '.kalemler .s-liste, .kalemler .s-birim { width:17mm; }',
+      '.kalemler .s-kdv { width:11mm; }',
+      '.kalemler .s-kdvtutar { width:16mm; }',
+      '.kalemler .s-tutar { width:19mm; }',
+      '.toplamlar { margin:3mm 0 0 auto; width:auto; min-width:96mm; }',
+      '.toplamlar .net td { font-size:13px; }',
+      '.not { margin-top:4mm; }',
+      '.alt { margin-top:6mm; }'
     ];
 
     var termalStil = [
       '@page { size: 80mm auto; margin: 3mm; }',
       'body { font-family:"Segoe UI", Arial, sans-serif; font-size:11px; color:#000; background:#fff; }',
-      '.sayfa { width:74mm; margin:0 auto; padding:2mm 0; }',
+      '.belge { width:74mm; margin:0 auto; padding:2mm 0; }',
       '.ust { text-align:center; border-bottom:1px dashed #000; padding-bottom:2mm; margin-bottom:2mm; }',
       '.logo { max-width:60mm; max-height:14mm; margin:0 auto 1mm; }',
       '.firma { font-size:14px; font-weight:800; overflow-wrap:anywhere; }',
       '.fis-turu { font-size:14px; font-weight:900; letter-spacing:1.5px; margin-top:1mm; }',
       '.no { font-size:13px; font-weight:800; }',
       '.kunye { display:block; margin-bottom:2mm; }',
-      '.kutu { border:0; border-bottom:1px dashed #94a3b8; padding:1.5mm 0; }',
+      '.kutu { border:0; border-bottom:1px dashed #999; padding:1.5mm 0; }',
       'dl { gap:.5mm 2mm; }',
       '.kalemler th { font-size:9px; padding:1mm .5mm; }',
       '.kalemler td { padding:1mm .5mm; font-size:10.5px; }',
@@ -1001,18 +1147,18 @@
       '.alt { margin-top:4mm; }'
     ];
 
-    /* Fişte etkileşimli öğe yoktur; yazdırmada yalnızca ekran süsü (gölge, gri zemin)
-       kalkar. A4'te her .sayfa bir kâğıt sayfasıdır: sabit 273 mm ve zorunlu
-       sayfa sonu — tarayıcının kendi bölmesine bırakılmaz. */
+    /* Yazdırma: ekran süsü kalkar; sayfalanmış belgede her .sayfa bir kâğıt
+       (sabit 273 mm, zorunlu sayfa sonu); akış kalmışsa tarayıcı böler ama
+       satır, özet ve kutular bölünmez, başlık satırı her sayfada tekrarlanır. */
     var yazdir = [
       '@media print {',
       '  body { background:#fff; }',
-      '  .sayfa { width:auto; margin:0; padding:0; box-shadow:none; }',
-      '  body.a4 .sayfa { height:273mm; page-break-after:always; break-after:page; }',
+      '  .belge, .sayfa { width:auto; margin:0; padding:0; box-shadow:none; }',
+      '  body.a4 .sayfa { height:273mm; --kenar:0; page-break-after:always; break-after:page; }',
       '  body.a4 .sayfa:last-child { page-break-after:auto; break-after:auto; }',
-      '  body.termal .sayfa { height:auto; }',
+      '  body.termal .belge { height:auto; }',
       '  thead { display:table-header-group; }',
-      '  tr, .kutu, .toplamlar, .not, .kdv-notu { page-break-inside:avoid; }',
+      '  tr, .kutu, .toplamlar, .not, .kapanis { page-break-inside:avoid; break-inside:avoid; }',
       '}'
     ];
 
@@ -1031,8 +1177,17 @@
   var A4_SUTUN = 8;
 
   /**
-   * Tam belge. Üçüncü parametre (araç çubuğu) yalnızca pencere() tarafından
-   * verilir; html() SAF kalır — etkileşimli öğe, betik ve harici kaynak yok.
+   * Tam belge. Üçüncü parametre (araç çubuğu + sayfalayıcı) yalnızca pencere()
+   * tarafından verilir; html() SAF kalır — etkileşimli öğe, betik ve harici
+   * kaynak yok.
+   *
+   * BELGE İSKELETİ (sayfalayıcı sözleşmesi — depo fişi de aynı iskeleti kurar):
+   *   .belge[data-kagit][data-icerik-mm]
+   *     .belge-bas          ilk sayfa başlığı (marka + fiş künyesi + kutular)
+   *     .belge-devam[hidden] devam sayfası başlığı (kopyalanır; .sayfa-no doldurulur)
+   *     table.kalemler      thead + tbody (satırlar sayfalara TAŞINIR)
+   *     .kapanis            toplamlar + dipnot + not + alt yazı (BÖLÜNMEZ)
+   *     .sayfa-alt[hidden]  her sayfanın alt satırı (kopyalanır; .sayfa-no / .sayfa-toplam)
    */
   function belgeKur(fis, secenek, arac) {
     fis = fisEmin(fis);
@@ -1072,18 +1227,16 @@
     var tamBaslik = '<header class="ust">' + markaHtml +
       '<div class="baslik">' +
         '<div class="fis-turu">SİPARİŞ FİŞİ</div>' +
-        '<div class="no">#' + kacis(fis.numara || YOK) + '</div>' +
-        (fis.tarihYazi ? '<div class="tarih">' + kacis(fis.tarihYazi) + '</div>' : '') +
-        (fis.durumEtiketi ? '<div class="durum">' + kacis(fis.durumEtiketi) + '</div>' : '') +
+        '<div class="no">No: #' + kacis(fis.numara || YOK) + '</div>' +
+        (fis.tarihYazi ? '<div class="tarih">Tarih: ' + kacis(fis.tarihYazi) + '</div>' : '') +
+        (fis.durumEtiketi ? '<div class="durum">Durum: ' + kacis(fis.durumEtiketi) + '</div>' : '') +
       '</div></header>';
 
-    function devamBasligi(no, toplam) {
-      return '<header class="ust devam">' + markaHtml +
-        '<div class="baslik"><div class="fis-turu">SİPARİŞ FİŞİ</div>' +
-        '<div class="no">#' + kacis(fis.numara || YOK) + ' · sayfa ' + no + '/' + toplam + ' · devam</div></div></header>';
-    }
+    var devamBasligi = '<header class="ust devam">' + markaHtml +
+      '<div class="baslik"><div class="fis-turu">SİPARİŞ FİŞİ</div>' +
+      '<div class="no">No: #' + kacis(fis.numara || YOK) + ' · Sayfa <span class="sayfa-no"></span> / <span class="sayfa-toplam"></span> (devam)</div></div></header>';
 
-    var bayiKutusu = '<div class="kutu"><h3>Bayi</h3><dl>' +
+    var bayiKutusu = '<div class="kutu"><h3>Alıcı</h3><dl>' +
       '<dt>Ünvan</dt><dd>' + kacis(m.unvan || YOK) + '</dd>' +
       kunyeSatiri('Yetkili', m.yetkili) +
       kunyeSatiri('Telefon', m.telefon) +
@@ -1145,60 +1298,38 @@
       return satir;
     }
 
-    function tablo(bas, son) {
-      var dilim = kalemler.slice(bas, son);
-      var govde = dilim.length
-        ? dilim.map(termal ? termalSatir : a4Satir).join('')
-        : '<tr><td class="bos-kalem" colspan="' + (termal ? termalSutun : A4_SUTUN) + '">Kalem yok</td></tr>';
+    var govde = kalemler.length
+      ? kalemler.map(termal ? termalSatir : a4Satir).join('')
+      : '<tr><td class="bos-kalem" colspan="' + (termal ? termalSutun : A4_SUTUN) + '">Kalem yok</td></tr>';
 
-      var baslik = termal
-        ? '<tr><th>Ürün</th><th>Kod / Barkod</th><th class="sayi">Koli × Adet</th><th class="sayi">Birim</th><th class="sayi">Tutar</th></tr>'
-        : A4_BASLIK;
+    var baslikSatiri = termal
+      ? '<tr><th>Ürün</th><th>Kod / Barkod</th><th class="sayi">Koli × Adet</th><th class="sayi">Birim</th><th class="sayi">Tutar</th></tr>'
+      : A4_BASLIK;
 
-      return '<table class="kalemler"><thead>' + baslik + '</thead><tbody>' + govde + '</tbody></table>';
-    }
+    var tablo = '<table class="kalemler"><thead>' + baslikSatiri + '</thead><tbody>' + govde + '</tbody></table>';
 
-    /* --- Özet, KDV notu, sipariş notu, alt yazı --- */
+    /* --- Kapanış: özet, dipnot, not, alt yazı (BÖLÜNMEZ) --- */
     var ozet = fisOzeti(fis);
-    var kdvDusulen = ozet.kdv.dusulen;
+    var dipnot = kdvDipnotu(ozet.kdv, { paraBirimi: birim });
 
-    var kdvNotu = fis.kdvIstenmedi
-      ? '<section class="kdv-notu">Bu siparişte KDV uygulanmamıştır' +
-        (kdvDusulen > 0.005 ? ' (düşülen KDV: ' + kacis(para(kdvDusulen)) + ')' : '') +
-        '. Tutarlar, ürünlerin tekil KDV oranları düşüldükten sonraki değerlerdir.</section>'
-      : '';
-
-    var kapanis = ozetBlogu(ozet, { paraBirimi: birim }) + kdvNotu +
+    var kapanis = '<div class="kapanis">' +
+      ozetBlogu(ozet, { paraBirimi: birim }) +
+      (dipnot ? '<div class="dipnot">' + kacis(dipnot) + '</div>' : '') +
       (fis.not ? '<section class="not"><h3>Sipariş Notu</h3>' + kacis(fis.not) + '</section>' : '') +
-      '<footer class="alt">' + kacis(ALT_YAZI) + '</footer>';
+      '<footer class="alt">' + kacis(ALT_YAZI) + '</footer>' +
+      '</div>';
 
-    /* --- Sayfalar --- */
-    var sayfalar;
+    var sayfaAlti = termal ? '' :
+      '<div class="sayfa-alt" hidden>' +
+        '<span>' + kacis(firma.ad ? firma.ad + ' · ' : '') + 'Sipariş Fişi No: #' + kacis(fis.numara || YOK) + '</span>' +
+        '<span>Sayfa <span class="sayfa-no"></span> / <span class="sayfa-toplam"></span></span>' +
+      '</div>';
 
-    if (termal) {
-      sayfalar = '<div class="sayfa">' + tamBaslik + kunye + tablo(0, kalemler.length) + kapanis + '</div>';
-    } else {
-      var bolum = sayfalaraBol(kalemler.length, s.kapasite);
-      var toplam = bolum.toplam;
-
-      sayfalar = bolum.sayfalar.map(function (sf, i) {
-        var no = i + 1;
-        var sonSayfa = (i === bolum.sayfalar.length - 1) && !bolum.ozetAyri;
-
-        return '<div class="sayfa' + (i ? ' devam' : '') + '" data-sayfa="' + no + '">' +
-          (i ? devamBasligi(no, toplam) : tamBaslik + kunye) +
-          tablo(sf.bas, sf.son) +
-          (sonSayfa ? kapanis : '') +
-          '<div class="sayfa-no">Sayfa ' + no + ' / ' + toplam + '</div>' +
-          '</div>';
-      }).join('');
-
-      if (bolum.ozetAyri) {
-        sayfalar += '<div class="sayfa devam ozet-sayfasi" data-sayfa="' + toplam + '">' +
-          devamBasligi(toplam, toplam) + kapanis +
-          '<div class="sayfa-no">Sayfa ' + toplam + ' / ' + toplam + '</div></div>';
-      }
-    }
+    var belge = '<div class="belge" data-kagit="' + (termal ? 'termal' : 'a4') + '" data-icerik-mm="273">' +
+      '<div class="belge-bas">' + tamBaslik + kunye + '</div>' +
+      (termal ? '' : '<div class="belge-devam" hidden>' + devamBasligi + '</div>') +
+      tablo + kapanis + sayfaAlti +
+      '</div>';
 
     var a = (arac && 'object' === typeof arac) ? arac : { stil: '', govde: '', betik: '' };
 
@@ -1207,17 +1338,80 @@
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<title>Sipariş Fişi #' + kacis(fis.numara) + '</title>' +
       '<style>\n' + stil(termal) + (a.stil ? '\n' + a.stil : '') + '\n</style></head>' +
-      '<body class="' + (termal ? 'termal' : 'a4') + '">' + a.govde + sayfalar + a.betik + '</body></html>';
+      '<body class="' + (termal ? 'termal' : 'a4') + '">' + a.govde + belge + a.betik + '</body></html>';
   }
 
   /**
    * Tam HTML belgesi (satır içi <style>, harici kaynak yok, etkileşim yok).
    *
    * @param {object} fis      normalle() çıktısı (kaynak nesne de kabul edilir)
-   * @param {object} secenek  { kagit: 'a4'|'termal', paraBirimi: 'TL', kapasite }
+   * @param {object} secenek  { kagit: 'a4'|'termal', paraBirimi: 'TL' }
    */
   function html(fis, secenek) {
     return belgeKur(fis, secenek, null);
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  SAYFALAYICI BETİĞİ — fiş penceresinde ÖLÇ, DENGELİ BÖL, YAPRAKLARA DİZ
+   *
+   *  Neden pencerede: satır yüksekliği ürün adının kaç satıra sardığına,
+   *  fonta ve sütun genişliğine bağlıdır; bunu HTML üretirken tahmin etmek
+   *  ya adı kırpmayı (yasak) ya da sayfayı taşırmayı gerektirir. Pencere
+   *  belgeyi bir kez akış olarak yerleştirir, gerçek yükseklikleri okur ve
+   *  sayfalaraBol() ile (AYNI fonksiyon — toString ile gömülür, ikinci kopya
+   *  yok) yapraklara dağıtır. Depo fişi de bu betiği kullanır.
+   * ------------------------------------------------------------------ */
+  function sayfalayiciBetigi() {
+    return '<script>(function () {' +
+      'var belge = document.querySelector(".belge");' +
+      'if (!belge || "termal" === belge.getAttribute("data-kagit")) return;' +
+      'var sayfalaraBol = ' + sayfalaraBol.toString() + ';' +
+      'function doldur(kok, no, toplam) {' +
+        'var i, l = kok.querySelectorAll(".sayfa-no"); for (i = 0; i < l.length; i++) l[i].textContent = no;' +
+        'l = kok.querySelectorAll(".sayfa-toplam"); for (i = 0; i < l.length; i++) l[i].textContent = toplam;' +
+      '}' +
+      'function calistir() {' +
+        'if (!belge.parentNode) return;' +
+        'var bas = belge.querySelector(".belge-bas"), devam = belge.querySelector(".belge-devam"),' +
+            'tablo = belge.querySelector("table.kalemler"), kapanis = belge.querySelector(".kapanis"),' +
+            'altSablon = belge.querySelector(".sayfa-alt");' +
+        'if (!bas || !tablo || !kapanis || !tablo.tBodies.length) return;' +
+        'var mm = Number(belge.getAttribute("data-icerik-mm")) || 273;' +
+        'var probe = document.createElement("div");' +
+        'probe.style.cssText = "position:absolute;visibility:hidden;height:" + mm + "mm;width:1px;";' +
+        'document.body.appendChild(probe); var H = probe.offsetHeight; document.body.removeChild(probe);' +
+        'if (!H) return;' +
+        'var thead = tablo.tHead, satirlar = Array.prototype.slice.call(tablo.tBodies[0].rows);' +
+        'var devamH = 0; if (devam) { devam.hidden = false; devamH = devam.offsetHeight; devam.hidden = true; }' +
+        'var altH = 0; if (altSablon) { altSablon.hidden = false; altH = altSablon.offsetHeight; altSablon.hidden = true; }' +
+        'var basH = bas.offsetHeight, theadH = thead ? thead.offsetHeight : 0, kapanisH = kapanis.offsetHeight;' +
+        'if (!basH || !kapanisH) return;' +
+        'var pay = 10;' +
+        'var agirliklar = satirlar.map(function (tr) { return tr.offsetHeight; });' +
+        'var sonuc = sayfalaraBol(agirliklar, { ilk: H - basH - theadH - altH - pay, devam: H - devamH - theadH - altH - pay, ozet: kapanisH + pay });' +
+        'var toplam = sonuc.toplam, kapsayici = document.createElement("div"); kapsayici.className = "sayfalar";' +
+        'function sayfaKur(no, baslik, dilim, kapanisMi) {' +
+          'var s = document.createElement("div"); s.className = "sayfa" + (no > 1 ? " devam" : ""); s.setAttribute("data-sayfa", no);' +
+          's.appendChild(baslik);' +
+          'if (dilim) { var t = document.createElement("table"); t.className = tablo.className;' +
+            'if (thead) t.appendChild(thead.cloneNode(true));' +
+            'var tb = document.createElement("tbody"); for (var i = 0; i < dilim.length; i++) tb.appendChild(dilim[i]);' +
+            't.appendChild(tb); s.appendChild(t); }' +
+          'if (kapanisMi) s.appendChild(kapanis);' +
+          'if (altSablon) { var alt = altSablon.cloneNode(true); alt.hidden = false; doldur(alt, no, toplam); s.appendChild(alt); }' +
+          'return s;' +
+        '}' +
+        'function devamBasligi(no) { var b = devam ? devam.cloneNode(true) : document.createElement("div"); b.hidden = false; doldur(b, no, toplam); return b; }' +
+        'for (var i = 0; i < sonuc.sayfalar.length; i++) {' +
+          'var sf = sonuc.sayfalar[i], son = (i === sonuc.sayfalar.length - 1) && !sonuc.ozetAyri;' +
+          'kapsayici.appendChild(sayfaKur(i + 1, i ? devamBasligi(i + 1) : bas, satirlar.slice(sf.bas, sf.son), son));' +
+        '}' +
+        'if (sonuc.ozetAyri) kapsayici.appendChild(sayfaKur(toplam, devamBasligi(toplam), null, true));' +
+        'belge.parentNode.replaceChild(kapsayici, belge);' +
+        'document.body.setAttribute("data-sayfali", toplam);' +
+      '}' +
+      'try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(calistir, calistir); else calistir(); } catch (e) { calistir(); }' +
+      '})();<\/script>';
   }
 
   /* ------------------------------------------------------------------ *
@@ -1233,7 +1427,7 @@
    * açar. Telefon yoksa düğme devre dışıdır ve sebebini söyler.
    *
    * @param {object} secenek { baslik, dosyaAdi, whatsapp: { tel, metin } }
-   * @returns {{ stil: string, govde: string, betik: string }}
+   * @returns {{ stil: string, govde: string, betik: string, tel: string }}
    */
   function aracCubugu(secenek) {
     var s = (secenek && 'object' === typeof secenek) ? secenek : {};
@@ -1241,17 +1435,17 @@
     var tel = waTelefon(wa.tel);
 
     var stilSatirlari = [
-      '.arac { position:sticky; top:0; z-index:10; display:flex; gap:10px; align-items:center; padding:8px 12px; background:#0f172a; box-shadow:0 1px 2px rgba(0,0,0,.25); font-family:"Segoe UI", Arial, sans-serif; }',
-      '.arac .baslik { color:#cbd5e1; font-size:12.5px; font-weight:600; margin-right:auto; white-space:normal; text-align:left; }',
-      '.arac button { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; padding:8px 14px; border:0; border-radius:6px; color:#fff; cursor:pointer; transition:filter .15s, transform .1s; }',
+      '.arac { position:sticky; top:0; z-index:10; display:flex; gap:8px; align-items:center; padding:8px 12px; background:#1f2937; box-shadow:0 1px 2px rgba(0,0,0,.25); font-family:"Segoe UI", Arial, sans-serif; }',
+      '.arac .baslik { color:#e5e7eb; font-size:12.5px; font-weight:600; margin-right:auto; white-space:normal; text-align:left; }',
+      '.arac button { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; letter-spacing:.2px; padding:8px 14px; border:1px solid transparent; border-radius:4px; color:#fff; cursor:pointer; transition:filter .15s, transform .1s; }',
       '.arac button:hover { filter:brightness(1.12); }',
-      '.arac button:active { transform:scale(.96); }',
+      '.arac button:active { transform:scale(.97); }',
       '.arac button[disabled] { opacity:.45; cursor:not-allowed; filter:none; transform:none; }',
       '.b-yazdir { background:#2563eb; }',
-      '.b-pdf { background:#334155; }',
-      '.b-wa { background:#16a34a; }',
-      '.b-kapat { background:#334155; }',
-      '.fis-toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); max-width:640px; padding:10px 16px; border-radius:8px; background:#0f172a; color:#fff; font:600 13px "Segoe UI", Arial, sans-serif; box-shadow:0 8px 24px rgba(0,0,0,.35); z-index:20; }',
+      '.b-pdf { background:#374151; border-color:#4b5563; }',
+      '.b-wa { background:#15803d; }',
+      '.b-kapat { background:#374151; border-color:#4b5563; }',
+      '.fis-toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); max-width:640px; padding:10px 16px; border-radius:6px; background:#1f2937; color:#fff; font:600 13px "Segoe UI", Arial, sans-serif; box-shadow:0 8px 24px rgba(0,0,0,.35); z-index:20; }',
       '.fis-toast.ok { background:#166534; }',
       '.fis-toast.hata { background:#991b1b; }',
       '@media print { .yazdirma-yok { display:none !important; } }'
@@ -1259,12 +1453,12 @@
 
     var govde = '<div class="arac yazdirma-yok">' +
       '<div class="baslik">' + kacis(s.baslik || '') + '</div>' +
-      '<button class="b-yazdir" id="btnYazdir" type="button">🖨️ YAZDIR</button>' +
-      '<button class="b-pdf" id="btnPdf" type="button">📄 PDF OLARAK KAYDET</button>' +
+      '<button class="b-yazdir" id="btnYazdir" type="button">YAZDIR</button>' +
+      '<button class="b-pdf" id="btnPdf" type="button">PDF OLARAK KAYDET</button>' +
       '<button class="b-wa" id="btnWa" type="button"' +
         (tel ? '' : ' disabled title="Müşterinin kayıtlı telefon numarası yok"') +
-        '>📲 WHATSAPP\'TAN GÖNDER</button>' +
-      '<button class="b-kapat" id="btnKapat" type="button">✕ KAPAT</button>' +
+        '>WHATSAPP\'TAN GÖNDER</button>' +
+      '<button class="b-kapat" id="btnKapat" type="button">KAPAT</button>' +
       '</div>' +
       '<div id="fisToast" class="fis-toast yazdirma-yok" hidden></div>';
 
@@ -1310,8 +1504,8 @@
   }
 
   /**
-   * Araç çubuklu fiş penceresi (fis:onizleme'ye giden belge).
-   * html() saf kalır; etkileşim yalnızca burada eklenir.
+   * Araç çubuklu, sayfalayıcılı fiş penceresi (fis:onizleme'ye giden belge).
+   * html() saf kalır; etkileşim ve sayfalama betiği yalnızca burada eklenir.
    */
   function pencere(fis, secenek) {
     fis = fisEmin(fis);
@@ -1324,7 +1518,9 @@
       whatsapp: { tel: fis.musteri && fis.musteri.telefon, metin: whatsappMetni(fis, s) }
     });
 
-    return belgeKur(fis, s, arac);
+    /* Sayfalayıcı araç çubuğu betiğinden ÖNCE: belge yapraklara dizilmeden
+       yazdırma/PDF tetiklenmesin. */
+    return belgeKur(fis, s, { stil: arac.stil, govde: arac.govde, betik: sayfalayiciBetigi() + arac.betik });
   }
 
   /* ------------------------------------------------------------------ *
@@ -1489,15 +1685,16 @@
     /* Faz 14 — iki fişin ortak parçaları */
     fisOzeti: fisOzeti,
     ozetBlogu: ozetBlogu,
+    kdvDipnotu: kdvDipnotu,
     sayfalaraBol: sayfalaraBol,
+    sayfalayiciBetigi: sayfalayiciBetigi,
     aracCubugu: aracCubugu,
     /* sabitler */
     PARA_BIRIMI: PARA_BIRIMI,
     WA_EN_COK_KALEM: WA_EN_COK_KALEM,
     WA_EN_COK_KARAKTER: WA_EN_COK_KARAKTER,
     ALT_YAZI: ALT_YAZI,
-    OZET_ETIKET: OZET_ETIKET,
-    SAYFA_KAPASITESI: SAYFA_KAPASITESI
+    OZET_ETIKET: OZET_ETIKET
   };
 
   if (typeof module !== 'undefined' && module.exports && typeof window === 'undefined') module.exports = SiparisFisi;
