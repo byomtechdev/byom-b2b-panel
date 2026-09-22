@@ -44,7 +44,16 @@
     arama: '',           // seçim penceresi / şerit araması
     portfoyArama: '',    // Müşterilerim sekmesi araması
     yuklendi: false,     // sunucu listesi en az bir kez çekildi mi?
-    profil: null         // Müşterilerim'de açık profil
+    profil: null,        // Müşterilerim'de açık profil
+    /*
+     * Ödeme yöntemi iskontosu varsayılanı (eklenti 2.21.0) — sahada AÇILAN,
+     * henüz WordPress kimliği olmayan müşteri için KURUMSAL satır.
+     * null = sunucu göndermedi (eski eklenti) → tablo boş kalır, uydurulmaz.
+     */
+    odemeVarsayilan: null,
+    /* Matris anahtarı açık mı? null = bilinmiyor (eski eklenti).
+       Üç oran da 0 iken "kapalı mı, sıfır mı" ayrımı bununla yapılır. */
+    odemeMatrisiAcik: null
   };
 
   var bagli = false;
@@ -214,6 +223,24 @@
         durumM.musteriler = [];
         return { ok: false, hata: (cevap && cevap.hata) || 'Müşteri listesi alınamadı.' };
       }
+
+      /*
+       * ÖDEME İSKONTOSU VARSAYILANI (eklenti 2.21.0).
+       *
+       * Sahada açılan müşterinin WordPress kimliği yoktur; sunucu onun için
+       * oran üretemiyordu ve panel üç yöntemi de %0 gösteriyordu. Sunucu artık
+       * KURUMSAL satırı ayrıca gönderiyor (eşitlenen saha müşterisi bayi olur).
+       * `odemeMatrisiAcik` ayrı bir sorudur: üç oran da 0 iken "matris kapalı
+       * mı, oranlar mı 0" ayrımını yapıp kullanıcıya SEBEBİNİ söyleyebilelim.
+       */
+      durumM.odemeVarsayilan = (cevap.veri && cevap.veri.odemeIskontolariVarsayilan &&
+                                'object' === typeof cevap.veri.odemeIskontolariVarsayilan)
+        ? cevap.veri.odemeIskontolariVarsayilan
+        : null;
+
+      durumM.odemeMatrisiAcik = (cevap.veri && undefined !== cevap.veri.odemeMatrisiAcik)
+        ? !!cevap.veri.odemeMatrisiAcik
+        : null;   // null = eski eklenti, bilinmiyor
 
       durumM.musteriler = ((cevap.veri && cevap.veri.bayiler) || []).map(function (b) {
         return {
@@ -537,8 +564,47 @@
    * @param {object} m         Müşteri.
    * @param {object} [secenek] { sessiz: true } → bildirim ve sekme değişimi yok.
    */
+  /**
+   * Müşterinin ödeme yöntemi iskonto tablosunu tamamlar (Faz 15).
+   *
+   * Sahada açılan müşterinin (ve "Tekrar Sipariş"te sipariş yükünden kurulan
+   * sentetik kaydın) tablosu YOKTU; üç yöntem de %0 görünüyor ama sunucu
+   * siparişi yazarken gerçek müşteri kimliğinden matrisi okuyup uyguluyordu.
+   * Plasiyer müşterinin yanında gördüğünden FARKLI bir fiyatla satış yazıyordu.
+   *
+   * Eksikse oturum varsayılanı (sunucunun gönderdiği KURUMSAL satır) konur.
+   * Kayıtta tablo VARSA dokunulmaz — gerçek bayinin kendi oranı kazanır.
+   * Son söz yine sunucudadır (siparis_olustur oranı kimlikten okur).
+   *
+   * @param {object} m Müşteri kaydı (yerinde değiştirilir).
+   * @returns {object} aynı kayıt
+   */
+  function odemeTablosunuTamamla(m) {
+    if (!m || 'object' !== typeof m) return m;
+
+    var tablo = m.odemeIskontolari;
+    var dolu = tablo && 'object' === typeof tablo &&
+      ['nakit', 'vade', 'kart'].some(function (y) { return Number(tablo[y]) > 0; });
+
+    if (dolu) return m;
+
+    if (durumM.odemeVarsayilan && 'object' === typeof durumM.odemeVarsayilan) {
+      m.odemeIskontolari = {
+        nakit: Number(durumM.odemeVarsayilan.nakit) || 0,
+        vade: Number(durumM.odemeVarsayilan.vade) || 0,
+        kart: Number(durumM.odemeVarsayilan.kart) || 0
+      };
+    } else if (!tablo || 'object' !== typeof tablo) {
+      m.odemeIskontolari = {};
+    }
+
+    return m;
+  }
+
   function musteriSec(m, secenek) {
     secenek = secenek || {};
+
+    odemeTablosunuTamamla(m);
 
     durumM.secili = m;
     durumM.sonSiparis = null;
@@ -1020,6 +1086,68 @@
    * (B2B_Order_Revision::apply_vat_mode) — ekrandaki sayı gösterimdir.
    */
 
+  /**
+   * Ödeme yöntemi iskontosunun RAKAMSAL şeridi (Faz 15).
+   *
+   * Üç hâl:
+   *   · yöntem seçili + oran > 0  → "Nakit iskontosu (%5): −45,00 ₺" + matrah
+   *   · yöntem seçili + oran = 0  → "Bu yöntemde iskonto yok"
+   *   · hiçbir yöntemde oran yok  → SEBEBİ yazan uyarı (sessiz sıfır yok)
+   *
+   * @param {object} s Sepet.
+   * @returns {string} HTML
+   */
+  function odemeIskontoSeridi(s) {
+    var mot = M();
+    var musteri = durumM.secili;
+    var oranlar = mot.ODEME_YONTEMLERI.map(function (y) { return mot.odemeIskontosu(musteri, y); });
+    var hicOranYok = !oranlar.some(function (o) { return Number(o) > 0; });
+
+    /* Hiçbir yöntemde oran yoksa: bu bir ayar sorunudur, kullanıcı bilmeli. */
+    if (hicOranYok) {
+      var sebep = (false === durumM.odemeMatrisiAcik)
+        ? 'Ödeme yöntemi iskontoları KAPALI (WordPress → B2B Ayarları → "Ödeme seçeneklerini rol bazlı yönet").'
+        : 'Bu müşteri için ödeme yöntemi iskontosu tanımlı değil. Yönetici panelinde ' +
+          '<b>İskonto Oranları → Kurumsal Bayiler</b> satırından tanımlayabilirsiniz.';
+
+      return '<div class="mt-2 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 ' +
+             'bg-slate-50 dark:bg-slate-900/50 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">' +
+             'ℹ️ ' + sebep + '</div>';
+    }
+
+    if (!mot.odemeGecerliMi(s.odeme)) {
+      return '<div class="mt-2 px-1 text-sm font-bold text-slate-500 dark:text-slate-400">' +
+             'Ödeme yöntemi seçin — iskonto tutarı burada hesaplanacak.</div>';
+    }
+
+    var g = mot.toplamlar(s, tavan());
+    var oran = Number(g.odemeIskontoOrani) || 0;
+    var tutar = Number(g.odemeIndirim) || 0;
+    var etiket = kacis(mot.ODEME_ETIKET[s.odeme] || 'Ödeme');
+
+    if (!(oran > 0) || !(tutar > 0)) {
+      return '<div class="mt-2 px-1 text-sm font-bold text-slate-500 dark:text-slate-400">' +
+             etiket + ' seçildi — bu yöntemde iskonto yok (%0).</div>';
+    }
+
+    /* Matrah AÇIKÇA yazılır: ödeme iskontosu bayi iskontosundan SONRAKİ
+       tutara uygulanır (bileşik). Yazılmazsa "neyin %5'i" sorusu kalır. */
+    var matrah = Number(g.araToplam) - Number(g.indirim || 0);
+
+    return '<div class="mt-2 rounded-xl border-2 border-emerald-300 dark:border-emerald-500/40 ' +
+           'bg-emerald-50 dark:bg-emerald-500/10 px-4 py-3">' +
+             '<div class="flex flex-wrap items-baseline justify-between gap-2">' +
+               '<span class="text-sm font-bold text-emerald-800 dark:text-emerald-300">' +
+                 etiket + ' iskontosu (%' + kacis(yuzdeYaz(oran)) + ')</span>' +
+               '<span class="text-lg font-black text-emerald-700 dark:text-emerald-400">−' + kacis(paraYaz(tutar)) + '</span>' +
+             '</div>' +
+             '<div class="mt-1 text-xs text-emerald-700/80 dark:text-emerald-400/80">' +
+               kacis(paraYaz(matrah)) + ' üzerinden hesaplandı' +
+               (Number(g.indirim) > 0 ? ' (bayi iskontosu düşüldükten sonra)' : '') +
+             '</div>' +
+           '</div>';
+  }
+
   function tamamlamaAc() {
     var s = sepet();
 
@@ -1047,10 +1175,26 @@
               ? 'bg-marka-700 text-white border-marka-700'
               : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700') +
             '" data-odeme="' + y + '">' + kacis(M().ODEME_ETIKET[y]) +
+            /* Kutunun İÇİNDE küçük "%X iskonto" (ürün sahibi). Oranı 0 olan
+               yöntemde "%0" yazmak "iskonto var ama sıfır" diye okunur; o
+               yüzden yalnızca pozitif oran basılır. */
             (oran > 0 ? '<span class="block text-xs font-bold opacity-80">%' + kacis(yuzdeYaz(oran)) + ' iskonto</span>' : '') +
           '</button>';
         }).join('') +
       '</div>' +
+
+      /*
+       * ÖDEME İSKONTOSU — RAKAMSAL, DÜĞMELERİN ALTINDA (Faz 15).
+       *
+       * Ürün sahibi: "bu butona basıldığı zaman kaç iskonto yapıldığı da
+       * rakamsal olarak en altta hesaplansın, okunsun, belirtilsin."
+       * Yüzde bir vaattir; müşterinin duymak istediği TL'dir.
+       *
+       * Üç oran da 0 ise SEBEBİ yazılır. Sessiz sıfır, bu fazın düzelttiği
+       * hata sınıfının ta kendisi: kullanıcı "iskonto tanımladım ama
+       * görünmüyor" diyor, ekran hiçbir şey söylemiyordu.
+       */
+      odemeIskontoSeridi(s) +
 
       /*
        * KDV TERCİHİ — ödeme yönteminin HEMEN ALTINDA, çünkü ikisi de "bu
@@ -1203,8 +1347,23 @@
       }
 
       if (haric) {
-        html += '<div class="mt-2 pt-2 border-t border-dashed border-amber-400 font-extrabold text-amber-700 dark:text-amber-400">🚫 Bu sipariş KDV UYGULANMADAN yazılacak</div>' +
-          '<div class="text-xs text-slate-500 dark:text-slate-400">Kesin tutar sunucuda, ürün başına KDV oranıyla hesaplanır.' +
+        /*
+         * "KDV DAHİL DEĞİL : xxx ₺" — ürün sahibinin istediği BİREBİR ifade.
+         *
+         * Üstteki "Düşülen KDV" satırı hesabın adımıdır; bu satır müşterinin
+         * duyacağı CÜMLEdir ("fiyata KDV dâhil değil, şu kadar düştü").
+         * KDV istendiğinde bu satır HİÇ basılmaz (ürün sahibi: "Kdv istendiyse
+         * bu satır yazılmasına gerek yok").
+         */
+        html += '<div class="mt-2 pt-2 border-t border-dashed border-amber-400 font-extrabold text-amber-700 dark:text-amber-400">🚫 Bu sipariş KDV UYGULANMADAN yazılacak</div>';
+
+        if (!kdv.hicYok && kdv.dusulen > 0) {
+          html += '<div class="flex justify-between gap-3 mt-1 text-base font-black text-amber-700 dark:text-amber-400">' +
+                    '<span>KDV DAHİL DEĞİL :</span><span class="whitespace-nowrap">' + kacis(paraYaz(kdv.dusulen)) + '</span>' +
+                  '</div>';
+        }
+
+        html += '<div class="text-xs text-slate-500 dark:text-slate-400">Kesin tutar sunucuda, ürün başına KDV oranıyla hesaplanır.' +
           (kdv.bilinmeyen > 0 ? ' ' + kdv.bilinmeyen + ' kalemin oranı bu cihazda yok, sunucuda çözülecek.' : '') + '</div>';
       }
 

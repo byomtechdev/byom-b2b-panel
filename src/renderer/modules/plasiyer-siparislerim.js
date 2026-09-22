@@ -127,6 +127,16 @@
         return { ad: String((u && u.name) || ''), tutar: Number((u && u.total) || 0) || 0 };
       }),
       iskonto: Number(s.plasiyer_iskonto || 0) || 0,
+      /*
+       * İSKONTO REVİZESİ KÜNYESİ (eklenti 2.21.0).
+       *
+       * Yönetici siparişe özel bir oran uyguladığında pazarlamacı bunu kartta
+       * görmeli — müşterisi aradığında "fiyat neden değişti" sorusuna fişi
+       * açmadan cevap verebilsin. Rozeti `renderer.js → iskontoRevizeRozetiHtml`
+       * çizer; ikinci bir çizici yazılmadı.
+       */
+      iskontoRevizeEdildi: !!(s.revision && s.revision.discount_revised),
+      iskontoRevize: (s.revision && s.revision.discount_revision) || null,
       /* ÜÇ ŞEKİL (Faz 11 — Görsel 6 "0 çeşit / 0 adet"): sunucu 2.17.0
          `kalemler` verir; eski eklenti `line_items` (ince yük) ya da
          prepare_order'ın `items`ı. Panel ve eklenti ayrı yayınlanır — üçü de
@@ -456,6 +466,19 @@
     bildir('#' + sip.numara + ' kalıcı olarak silindi.', 'ok');
   }
 
+  /**
+   * "İskonto revize edilen sipariş" rozeti.
+   *
+   * ÇİZİCİ TEK: renderer.js'teki ortak fonksiyon kullanılır. Saha kabuğunda o
+   * dosya da yüklüdür (index.html script sırası), ama yine de korumalı
+   * çağrılır — eksikse rozet basılmaz, kart çökmez (Registry §0 madde 4).
+   */
+  function iskontoRozeti(s) {
+    return ('function' === typeof window.iskontoRevizeRozetiHtml)
+      ? window.iskontoRevizeRozetiHtml(s)
+      : '';
+  }
+
   function kartHtml(s) {
     var acik = !!durumS.acik[s.id];
     var adetToplam = s.kalemler.reduce(function (t, k) { return t + k.adet; }, 0);
@@ -478,6 +501,8 @@
           '<div class="shrink-0 lg:text-right">' +
             '<div class="text-2xl font-black text-emerald-600 dark:text-emerald-400">' + kacis(paraYaz(s.tutar)) + '</div>' +
             '<span class="inline-block mt-1 px-3 py-1 rounded-lg border-2 text-sm font-bold ' + durumSinifi(s.durum) + '">' + kacis(s.durumEtiketi) + '</span>' +
+            /* "İskonto revize edilen sipariş" rozeti — ORTAK çizici (Faz 15). */
+            iskontoRozeti(s) +
           '</div>' +
         '</div>' +
         /* TEK EYLEM: depo düğmeleri YOK. */

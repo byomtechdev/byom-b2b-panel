@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.1.0** (Faz 14).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.2.0** (Faz 15).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -1612,6 +1612,108 @@ kök `CLAUDE.md §10 Faz 14`.
 
 ---
 
+## 4.19 Faz 15 — Fiş iskonto zinciri, siparişe özel iskonto revizesi, ödeme iskontosunda sessiz sıfırın sonu
+
+Panel **2.2.0** · Eklenti 2.21.0 → `../BYOM-REGISTRY.md §5.42`, kök `CLAUDE.md §10 Faz 15`.
+
+### 4.19.1 🔴 Depo fişi MATEMATİKSEL OLARAK KAPANMIYORDU — sessiz yalan
+
+İki akış iskontoyu **iki ayrı yerde** taşıyor:
+
+```
+WEB siparişi   satır fiyatı İSKONTOLU        → kanıt: list_subtotal farkı
+               ödeme iskontosu               → payment_discount_amount meta'sı
+SAHA siparişi  satır fiyatı LİSTE fiyatı     → iki iskonto da NEGATİF ÜCRET SATIRI
+               payment_discount_* BOŞ gelir  → b2b_get_order_payment_meta
+                                               `b2b_payment_type` arar, saha
+                                               `_b2b_odeme_anahtari` yazar
+```
+
+Panel **yalnızca birinci temsili** okuyordu. Sonuç: bir saha siparişinin depo
+fişinde iki iskonto satırı da `—` basılıyor ve **14-C'de "kapanmayan fark"
+satırı fişten kaldırıldığı için** çıkarma listesi kapanmıyordu:
+`Liste − 0 − 0 ≠ NET`. Hiçbir yerde hata çıkmıyordu.
+
+| Ne | Nerede |
+|---|---|
+| **`ucretIskontolari(s)`** — ücret satırlarından bayi/ödeme ayrımı. Eşleme kuralı `siparis-fisi.js → ucretSatirlari()` ile **BİREBİR**; ayrışsalardı aynı sipariş iki fişte iki farklı rakam basardı | `renderer.js` |
+| `b2bSiparisNormalle` **üç kademeli yedek**: `payment_discount_*` → `odeme_iskonto` → `fee_lines`. Ayrıca `bayiIskontoOrani` / `bayiIskontoTutar` (daha önce **hiç map edilmiyordu**) | aynı |
+| `siparisFinansOzeti`: satır farkı 0 ise iskonto ücret satırından. **TOPLANMAZ** — ikisi yapısal olarak birbirini dışlar (iskonto ya satır fiyatının içinde ya ücret satırında); toplamak, iskonto revizesinden sonra ücret satırı silinene kadar iskontoyu iki kez düşmek olurdu | aynı |
+| `iskontoRevize` künyesi fiş nesnesine girdi → `FIS_ANAHTARLARI` **bilinçli** büyüdü. **ASLA null değil**: künye yokken `{ ilk: 0, yeni: 0 }` (fişin "hiçbir alan null/NaN olamaz" sözü) | `siparis-fisi.js` |
+
+### 4.19.2 Revize penceresinde bayiye özel iskonto
+
+**Ürün sahibinin kuralı, birebir:** *"%10 iskontolu bayi 100 liralık ürünü 90'a
+görüyor. %20 vermek istediğimde 90 TL'nin ÜSTÜNE %20 düşmeyecek. Ürünün
+iskontosuz LİSTE fiyatı neyse onu baz alıp %10 yerine %20 uygulayıp düşecek."*
+→ 100 **→ 80**. Yanlış olan 90 × 0,80 = **72**.
+
+| Parça | Yer |
+|---|---|
+| Şerit işaretlemesi (`#revizeIskontoKutu` · `#revizeIskontoOran` · `#revizeIskontoGeri` · `#revizeIskontoOnizleme` · `#revizeIskontoKilit` · `#revizeIskontoKunye`) | `index.html`, ürün tablosu ile canlı toplam **arasında** |
+| `revizeIskontoOrani()` — geçerli oran ya da **null (dokunma)** | `renderer.js` |
+| `revizeEtkinBirim(r, oran)` — liste fiyatından yeniden hesap; **liste künyesi yoksa dokunmaz** | aynı |
+| `revizeIskontoKutusunuCiz(s)` — künye, kapılar, geri sayım | aynı |
+| `yuzdeYazi(n)` — Türkçe yüzde biçimi | aynı |
+| `iskontoRevizeRozetiHtml(s)` — **ORTAK çizici**, `plasiyer-siparislerim.js` de çağırır | aynı |
+| Satırda `data-liste-birim` | `revizeModaliAc` |
+| Gövdede `discount_rate` (`''` = dokunma) | `revizeyiOnayla` |
+
+**Bozmaman gereken sözler:**
+- **Kutu siparişin mevcut oranıyla DOLU açılır ve değişmezse `''` gider.**
+  Aksi hâlde pencereyi açıp kapatmak siparişe revize kaydı düşürürdü.
+  Karar `dataset.baslangic` ile verilir.
+- **`type="number"` VİRGÜL KABUL ETMEZ.** Alan `.replace('.', ',')` ile
+  yazılıyordu; %12,5 iskontolu bir siparişte alan **sessizce boşalıyordu**.
+  Değer **noktalı** yazılır; okuyucu virgülü yine kabul eder (kullanıcı elle
+  yazarsa). Test bunu kilitliyor.
+- **Liste fiyatı künyesi yoksa kutu HİÇ gösterilmez** — "önce liste fiyatına
+  dön" adımı yapılamaz ve girilen oran sessizce etkisiz kalırdı. Faz 11'deki
+  "çalışan/çalışmayan ayar" reddiyle aynı ilke.
+- **Kapılar SUNUCUDAN gelir** (`revision.can_revise_discount` /
+  `discount_days_left`). Panel kendi takvim hesabını yapmaz; 10 iş günü kuralı
+  (ve ileride resmî tatil süzgeci) eklentide **tek yerde** durur.
+- **Canlı önizleme sunucuya GİTMEZ** (`../BYOM-REGISTRY.md §0 madde 3`).
+- **Tutarı değiştiren işlem ONAY ister.** Adet revizesinde onay yok (depocu
+  fiilen saydığını giriyor); burada müşterinin ödeyeceği tutar elle değişiyor.
+- **Yetki: yalnızca yönetici.** Revize penceresi zaten yönetici kabuğunda;
+  pazarlamacı sonucu (rozet + yeni fiyatlar) görür, düzenleyemez.
+
+> ⚠️ **`renderer.js`'ten fonksiyon kesen DOM testleri**
+> (`revize-kaldir.dom.test.js`, `revize-iskonto.dom.test.js`) yeni bir yardımcı
+> eklendiğinde `kes(...)` listesine de eklenmelidir — yoksa pencere
+> `ReferenceError` ile **hiç açılmaz**.
+
+### 4.19.3 Ödeme yöntemi iskontosu — sessiz sıfırın sonu
+
+**Gerçek hata:** sahada AÇILAN müşterinin WordPress kimliği yok
+(`temp_musteri_<uuid>`); sunucu onun için oran üretemiyor ve üç düğme de "%0"
+gösteriyordu. **Sunucu ise siparişi yazarken gerçek kimlikten matrisi okuyup
+uyguluyordu** — plasiyer, müşterinin yanında gördüğünden FARKLI bir fiyatla
+satış yazıyordu.
+
+| Ne | Yer |
+|---|---|
+| `durumM.odemeVarsayilan` / `durumM.odemeMatrisiAcik` — `/plasiyer/dealers` yanıtından (eklenti 2.21.0) | `plasiyer-musteri.js` |
+| `odemeTablosunuTamamla(m)` — `musteriSec` içinde; tablosu boş kayda oturum varsayılanı konur, **gerçek bayinin kendi oranı EZİLMEZ** | aynı |
+| **`odemeIskontoSeridi(s)`** — düğmelerin altında rakamsal tutar + **matrah** ("90,00 TL üzerinden hesaplandı — bayi iskontosu düşüldükten sonra") | aynı |
+| Üç oran da 0 ise **SEBEP**: "matris KAPALI" ≠ "tanımlı değil" | aynı |
+| `KDV DAHİL DEĞİL : xxx ₺` — ürün sahibinin birebir ifadesi; KDV istendiğinde **hiç basılmaz** | `ozetiCiz` |
+
+**Zaten çalışıyordu, dokunulmadı** (denetlendi, testle kilitlendi): düğme
+içindeki `%X iskonto` alt yazısı, `.odeme-sec { white-space: normal }` taşma
+ezmesi, onay özetindeki iskonto satırları, KDV döküm tablosu.
+
+### Bozmaman gereken sözler (Faz 15)
+- İki fiş motoru **aynı siparişte aynı rakamı** basar; çıkarma listesi kapanır.
+- Ücret satırı yedeği ile satır farkı **toplanmaz**.
+- İskonto revizesi **liste fiyatından** hesaplar; eski oran çarpana girmez.
+- Değişmeyen oran = dokunma; `type="number"` alanına virgül yazılmaz.
+- `odemeTablosunuTamamla` gerçek bayinin oranını ezmez.
+- Sıfır oran **sessiz kalmaz**, sebebi yazılır.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1619,7 +1721,7 @@ kök `CLAUDE.md §10 Faz 14`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**769 test**: panel 324 + kök 445).
+İkisini birden `../scripts/check-all.js` koşar (**806 test**: panel 324 + kök 482).
 
 ```bash
 # Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
@@ -1671,6 +1773,8 @@ node --test scripts/tests/saha-analitik.dom.test.js   # 11 — Faz 11: Performan
 node --test scripts/tests/yonetici-arayuz.dom.test.js # 18 — Faz 11-13: sipariş sekmesi iki seviye, WhatsApp fişi, logo ÖLÇEĞİ (--logo-height, önizleme şeridi), üç görsel yuvası
 node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki rol iki harita, renk/il formu, saha kısayolları, bayi profili kapısı
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
+node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
+node --test scripts/tests/fis-iskonto-zinciri.test.js # 13 — Faz 15: iki fiş motoru aynı rakam, çıkarma listesi KAPANIR, ücret yedeği toplanmaz
 node --test scripts/tests/fis-pencere.test.js         # 4  — Faz 14 (kaynak): fis:whatsapp offscreen+pano, plasiyer:siparis-* kimlik oturumdan, pencere()
 node --test scripts/tests/fis-sayfalayici.dom.test.js # 5  — Faz 14-B/C: sayfalayıcı betiği jsdom'da (offsetHeight taklidi) — 50 kalem 16/22/12 (sırayla dolu), 12 → 9+3, kapanış yalnızca sonda, termalde çalışmaz
 node --test scripts/tests/php-plasiyer-role.test.js   # plasiyer rolü + veri izolasyonu (PHP)
@@ -1683,7 +1787,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (769 test)
+# Bitirirken: üç katmanın tamamı (806 test)
 node scripts/check-all.js
 ```
 
@@ -1762,7 +1866,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 185 php / 103 js / 769 test
+cd .. && node scripts/check-all.js     # 0 hata / 185 php / 105 js / 806 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

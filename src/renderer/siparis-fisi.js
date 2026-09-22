@@ -463,6 +463,38 @@
   }
 
   /**
+   * İSKONTO REVİZESİ künyesini iki sayıya indirger (Faz 15).
+   *
+   * Sunucu `revision.discount_revision` altında `{ ilk, eski, yeni, zaman,
+   * kullanıcı }` verir; panel normalizasyonları `iskontoRevize` adıyla taşır.
+   * Fişin ihtiyacı yalnızca İLK ve YENİ orandır.
+   *
+   * ASLA null DÖNMEZ. Fiş nesnesinin değişmez sözü: hiçbir alan `null` /
+   * `undefined` / `NaN` olamaz, olmayan değer `0` ya da `''` olur
+   * (siparis-fisi.test.js → "asla NaN / undefined"). Bu yüzden künye yokken
+   * de `{ ilk: 0, yeni: 0 }` döner ve dipnot kendiliğinden susar.
+   *
+   * @param {object} k Ham sunucu yükü ya da panel normalizasyonu.
+   * @returns {{ilk:number,yeni:number}}
+   */
+  function iskontoKutugu(k) {
+    var kaynak = null;
+
+    if (k && 'object' === typeof k) {
+      if (k.revision && 'object' === typeof k.revision && k.revision.discount_revision &&
+          'object' === typeof k.revision.discount_revision) {
+        kaynak = k.revision.discount_revision;
+      } else if (k.iskontoRevize && 'object' === typeof k.iskontoRevize) {
+        kaynak = k.iskontoRevize;
+      }
+    }
+
+    kaynak = kaynak || {};
+
+    return { ilk: yuzde(kaynak.ilk), yeni: yuzde(kaynak.yeni) };
+  }
+
+  /**
    * Ücret satırlarından iskonto tutarlarını toplar.
    *
    * Sunucu iki iskontoyu NEGATİF ÜCRET SATIRI olarak yazar ("Plasiyer
@@ -555,6 +587,13 @@
       kdvDusulen: ilkPozitif(k.vat_removed, k.kdvDusulen, meta._b2b_vat_removed),
       kdvToplam: ilkPozitif(k.vat_total, k.kdvToplam, k.total_tax),
       odeme: odemeEtiketi(ilkDolu(k.payment_method_title, k.payment_title, meta._b2b_odeme_tipi, k.payment_type_label, k.payment_method, ucret.odemeAd)),
+      /*
+       * İSKONTO REVİZESİ KÜNYESİ (eklenti 2.21.0) — { ilk, eski, yeni, … }.
+       * Fiş yeni fiyatları ZATEN basar (satır tutarları sunucuda değişti);
+       * bu künye yalnızca "neden değişti" sorusunu dipnotta cevaplar.
+       * Fiş kendi başına hiçbir şey HESAPLAMAZ.
+       */
+      iskontoRevize: iskontoKutugu(k),
       not: ilkDolu(k.customer_note, meta._b2b_vade_notu, k.note),
       kalemler: Array.isArray(k.items) ? k.items : (Array.isArray(k.line_items) ? k.line_items : k.kalemler)
     };
@@ -602,6 +641,8 @@
       kdvDusulen: ilkPozitif(k.kdvDusulen, k.vat_removed),
       kdvToplam: ilkPozitif(k.kdvToplam, k.vat_total, k.toplamKdv),
       odeme: odemeEtiketi(ilkDolu(k.odeme, k.odemeTipiEtiket, k.odemeTipi, ucret.odemeAd)),
+      /* Bkz. hamOku — iki okuyucu ASLA ayrışmamalı. */
+      iskontoRevize: iskontoKutugu(k),
       not: ilkDolu(k.notlar, k.not, k.siparisNotu, k.vadeNotu),
       kalemler: k.kalemler
     };
@@ -729,6 +770,7 @@
       kdvDusulen: kdvDusulen,
       net: net,
       odeme: o.odeme,
+      iskontoRevize: iskontoKutugu(o),
       not: o.not
     };
   }
@@ -1052,6 +1094,30 @@
     return 'Fiyatlara KDV dâhildir. ' + etiket + ' satırı bilgi amaçlıdır; toplamdan ayrıca düşülmez ya da eklenmez.';
   }
 
+  /**
+   * İSKONTO REVİZESİ dipnotu (Faz 15).
+   *
+   * Fiş yeni fiyatları zaten basar — satır tutarları sunucuda değişmiştir ve
+   * revize ÖNCESİ liste hiçbir yerde görünmez (ürün sahibinin isteği). Bu
+   * dipnot yalnızca "oran neden farklı" sorusunu cevaplar: müşteriye giden
+   * belgede sessiz bir fiyat değişikliği bırakmamak için vardır.
+   *
+   * Künye yoksa dipnot da yoktur — bilinmeyen şey yazılmaz.
+   *
+   * @param {object} fis normalle() çıktısı.
+   * @returns {string} düz metin ('' olabilir)
+   */
+  function iskontoDipnotu(fis) {
+    var k = iskontoKutugu(fis);
+
+    /* Künye hiç yoksa ya da oran gerçekten değişmediyse dipnot basmak gürültüdür. */
+    if (!(k.ilk > 0 || k.yeni > 0)) return '';
+    if (Math.abs(k.ilk - k.yeni) < 0.005) return '';
+
+    return 'Bu siparişte bayi iskonto oranı ' + oranYazi(k.ilk) + ' yerine ' + oranYazi(k.yeni) +
+      ' olarak uygulanmıştır. Tutarlar liste fiyatı üzerinden yeniden hesaplanmıştır.';
+  }
+
   /* ------------------------------------------------------------------ *
    *  HTML — A4 (akış + pencerede sayfalama) ve 80 mm termal
    *
@@ -1338,8 +1404,13 @@
     var ozet = fisOzeti(fis);
     var dipnot = kdvDipnotu(ozet.kdv, { paraBirimi: birim });
 
+    /* İskonto revizesi dipnotu KDV dipnotundan ÖNCE: fiyatın neden değiştiği,
+       verginin nasıl hesaplandığından önce gelen sorudur. */
+    var iskDipnot = iskontoDipnotu(fis);
+
     var kapanis = '<div class="kapanis">' +
       ozetBlogu(ozet, { paraBirimi: birim }) +
+      (iskDipnot ? '<div class="dipnot">' + kacis(iskDipnot) + '</div>' : '') +
       (dipnot ? '<div class="dipnot">' + kacis(dipnot) + '</div>' : '') +
       (fis.not ? '<section class="not"><h3>Sipariş Notu</h3>' + kacis(fis.not) + '</section>' : '') +
       '<footer class="alt">' + kacis(ALT_YAZI) + '</footer>' +
@@ -1712,6 +1783,7 @@
     fisOzeti: fisOzeti,
     ozetBlogu: ozetBlogu,
     kdvDipnotu: kdvDipnotu,
+    iskontoDipnotu: iskontoDipnotu,
     odemeKisaAd: odemeKisaAd,
     sayfalaraBol: sayfalaraBol,
     sayfalayiciBetigi: sayfalayiciBetigi,

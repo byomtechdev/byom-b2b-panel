@@ -33,6 +33,12 @@ const FIS_ANAHTARLARI = [
      aynı anahtarları döndürmesi kilitli — biri eksik kalırsa o ekranda fişte
      KDV satırı sessizce kaybolurdu. */
   'kdvToplam', 'kdvIstenmedi', 'kdvDusulen',
+  /* Faz 15-İSKONTO: siparişe özel iskonto revizesi künyesi ({ ilk, yeni }).
+     KDV ile AYNI gerekçe — üç kaynak da döndürmeli, yoksa bir ekranda fişin
+     "iskonto oranı neden farklı" dipnotu sessizce kaybolurdu. ASLA null
+     değildir: künye yokken { ilk: 0, yeni: 0 } gelir ve dipnot kendiliğinden
+     susar ("asla NaN / undefined" sözü korunur). */
+  'iskontoRevize',
   'net', 'odeme', 'not'
 ].sort();
 

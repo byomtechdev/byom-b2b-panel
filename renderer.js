@@ -1503,6 +1503,68 @@ async function eklentiyiTani() {
 
 /* --- API yanıtlarını uygulamanın iç yapısına çevirenler --- */
 
+/**
+ * Ücret satırlarından iskonto künyesini çıkarır (2.21.0).
+ *
+ * NEDEN VAR — DEPO FİŞİ KAPANMIYORDU
+ * ----------------------------------
+ * İki farklı akış iskontoyu iki farklı yerde saklıyor:
+ *
+ *   · WEB siparişi  → iskonto SATIR FİYATININ İÇİNDE; kanıtı `list_subtotal`
+ *     ile satır tutarı arasındaki fark. Ödeme iskontosu ise
+ *     `payment_discount_amount` meta'sında.
+ *   · SAHA siparişi → satır fiyatları LİSTE fiyatıdır; iki iskonto da NEGATİF
+ *     ÜCRET SATIRIDIR (`fee_lines`). `payment_discount_*` alanları BOŞ gelir,
+ *     çünkü `b2b_get_order_payment_meta()` `b2b_payment_type` metasını arar ve
+ *     saha siparişi onu yazmaz.
+ *
+ * Panel yalnızca birinci yolu okuyordu: bir saha siparişinin depo fişinde
+ * hem bayi hem ödeme iskonto satırı "—" basılıyor, üstelik 14-C'de
+ * "kapanmayan fark" satırı kaldırıldığı için fiş matematiksel olarak
+ * KAPANMIYORDU (Liste − 0 − 0 ≠ NET) ve bunu hiçbir yerde hata olarak
+ * görünmüyordu.
+ *
+ * Eşleme kuralı `siparis-fisi.js → ucretSatirlari()` ile BİREBİR aynıdır;
+ * ayrışırlarsa aynı sipariş iki fişte iki farklı rakam basardı.
+ *
+ * @param {object} s Sunucu sipariş yükü (prepare_order / ince yük).
+ * @returns {{bayi:number,bayiOran:number,odeme:number,odemeOran:number,odemeAd:string}}
+ */
+function ucretIskontolari(s) {
+  const bos = { bayi: 0, bayiOran: 0, odeme: 0, odemeOran: 0, odemeAd: '' };
+
+  if (!s || typeof s !== 'object') return bos;
+
+  const liste = Array.isArray(s.fee_lines) ? s.fee_lines : (Array.isArray(s.ucretler) ? s.ucretler : []);
+
+  liste.forEach(function (f) {
+    if (!f || typeof f !== 'object') return;
+
+    const hamAd = String(f.name || f.ad || '').trim();
+    const ad = hamAd.toLowerCase();
+    const tutar = Math.abs(Number(f.total !== undefined ? f.total : f.tutar) || 0);
+
+    if (!tutar) return;
+
+    /* Oran satır adındaki "(%10)" ifadesinden okunur; sunucu alanı varsa o kazanır. */
+    const es = /%\s*(\d+(?:[.,]\d+)?)/.exec(ad);
+    const oran = es ? Number(es[1].replace(',', '.')) || 0 : 0;
+
+    if (/[öo]deme/.test(ad)) {
+      bos.odeme = Math.round((bos.odeme + tutar) * 100) / 100;
+      if (oran) bos.odemeOran = oran;
+
+      const yontem = /[—–-]\s*([^()]+?)\s*(?:\(|$)/.exec(hamAd);
+      if (yontem && yontem[1].trim()) bos.odemeAd = yontem[1].trim();
+    } else if (/iskonto|indirim|plasiyer|bayi/.test(ad)) {
+      bos.bayi = Math.round((bos.bayi + tutar) * 100) / 100;
+      if (oran) bos.bayiOran = oran;
+    }
+  });
+
+  return bos;
+}
+
 /** b2b-core /orders yanıtını iç yapıya çevirir. */
 function b2bSiparisNormalle(s) {
   const bayi = s.dealer || {};
@@ -1521,6 +1583,9 @@ function b2bSiparisNormalle(s) {
     teslim.city || fatura.city,
     teslim.state || fatura.state
   ].filter(Boolean).join(', ');
+
+  /* Saha siparişinin İKİ iskontosu da ücret satırındadır; bkz. ucretIskontolari(). */
+  const ucret = ucretIskontolari(s);
 
   return {
     id: s.id,
@@ -1601,11 +1666,32 @@ function b2bSiparisNormalle(s) {
     takip: s.tracking_number || '',
     /* Serbest sevkiyat metni: özel ambar / nakliyeci / sevk fişi numarası. */
     sevkiyatNotu: s.shipment_note || '',
-    /* Sipariş türü (Nakit / Kredi Kartı / Vadeli) ve uygulanan iskonto */
-    odemeTipi: s.payment_type || '',
-    odemeTipiEtiket: s.payment_type_label || '',
-    odemeIskonto: Number(s.payment_discount_rate || 0),
-    odemeIskontoTutar: Number(s.payment_discount_amount || 0),
+    /*
+     * Sipariş türü (Nakit / Kredi Kartı / Vadeli) ve uygulanan iskonto.
+     *
+     * ÜÇ KADEMELİ KAYNAK (2.21.0) — sıra önemlidir:
+     *   1) payment_discount_*  → WEB akışı (B2B_Payment_Types meta'sı)
+     *   2) odeme_iskonto       → SAHA akışı damgası (_b2b_odeme_iskonto), yalnız ORAN
+     *   3) fee_lines           → SAHA akışı ücret satırı, TUTAR buradan
+     *
+     * İkinci ve üçüncü kademe olmadan saha siparişinin ödeme iskontosu panelde
+     * her zaman 0 görünüyordu: `b2b_get_order_payment_meta()` `b2b_payment_type`
+     * meta'sını arıyor, saha siparişi ise `_b2b_odeme_anahtari` yazıyor.
+     */
+    odemeTipi: s.payment_type || String(b2bMeta._b2b_odeme_anahtari || ''),
+    odemeTipiEtiket: s.payment_type_label || String(b2bMeta._b2b_odeme_tipi || '') || ucret.odemeAd,
+    odemeIskonto: Number(s.payment_discount_rate || 0) || Number(s.odeme_iskonto || 0) || ucret.odemeOran,
+    odemeIskontoTutar: Number(s.payment_discount_amount || 0) || ucret.odeme,
+    /*
+     * BAYİ İSKONTOSU — aynı mantık, tersten.
+     *   Oran : pricing.order_rate (siparişe damgalı) → plasiyer_iskonto → ücret satırı
+     *   Tutar: ücret satırı (saha). Web akışında tutar satır farkından türer ve
+     *          `siparisFinansOzeti` onu zaten hesaplar; burası YEDEK kanaldır.
+     */
+    bayiIskontoOrani: Number((s.pricing && s.pricing.order_rate) || 0) ||
+                      Number(s.plasiyer_iskonto || 0) ||
+                      Number(b2bMeta._b2b_discount_rate || 0) || ucret.bayiOran,
+    bayiIskontoTutar: ucret.bayi,
     odemeNotu: s.payment_type_note || '',
     /* Alıcı rolü (bireysel müşteri / kurumsal bayi) — bkz. ALICI TİPİ bölümü */
     aliciTipi: s.buyer_type || bayi.buyer_type || s.customer_type ||
@@ -1626,6 +1712,21 @@ function b2bSiparisNormalle(s) {
     revizeTarih: (s.revision && s.revision.revised_at) || '',
     revizeDegisim: (s.revision && s.revision.changes) || [],
     revizeEdilebilir: s.revision ? !!s.revision.can_revise : null,
+    /*
+     * --- SİPARİŞ BAZLI İSKONTO REVİZESİ (eklenti 2.21.0) ---
+     *
+     * `iskontoOrani`            : bu SİPARİŞE damgalı oran (revize penceresinin başlangıcı)
+     * `bayiProfilIskonto`       : bayinin SİSTEMDEKİ oranı — ikisi ayrı sorudur
+     * `iskontoRevizeEdilebilir` : durum + 10 İŞ GÜNÜ penceresi (karar SUNUCUDA)
+     * `iskontoKalanGun`         : geri sayım (panel kendi takvim hesabını yapmaz)
+     * `iskontoRevizeEdildi`     : sipariş kartındaki ⟳ rozeti
+     */
+    iskontoOrani: Number((s.revision && s.revision.discount_rate) || (s.pricing && s.pricing.order_rate) || 0),
+    bayiProfilIskonto: Number((bayi && bayi.discount_rate) || 0),
+    iskontoRevizeEdilebilir: !!(s.revision && s.revision.can_revise_discount),
+    iskontoKalanGun: Number((s.revision && s.revision.discount_days_left) || 0),
+    iskontoRevizeEdildi: !!(s.revision && s.revision.discount_revised),
+    iskontoRevize: (s.revision && s.revision.discount_revision) || null,
     kalemler: (s.items || []).map(function (k) {
       const adet = Number(k.quantity || 0);
       const toplam = Number(k.total || 0);
@@ -3452,17 +3553,62 @@ function revizeEdilebilirMi(s) {
 
 /** Sipariş kartındaki "revize edildi" rozeti. */
 function revizeRozetiHtml(s) {
-  if (!s || !s.revize) return '';
+  if (!s) return '';
 
-  const ipucu = s.revizeTarih
-    ? ' title="' + kacis('Depoda güncellendi: ' + tarihYaz(s.revizeTarih, true)) + '"'
-    : ' title="Sipariş adetleri depoda güncellendi"';
+  let html = '';
 
-  return '<span' + ipucu + ' class="inline-block mt-1 px-3 py-1 rounded-lg border-2 ' +
+  if (s.revize) {
+    const ipucu = s.revizeTarih
+      ? ' title="' + kacis('Depoda güncellendi: ' + tarihYaz(s.revizeTarih, true)) + '"'
+      : ' title="Sipariş adetleri depoda güncellendi"';
+
+    html += '<span' + ipucu + ' class="inline-block mt-1 px-3 py-1 rounded-lg border-2 ' +
+            'text-base font-bold whitespace-nowrap ' +
+            'bg-amber-100 text-amber-800 border-amber-300 ' +
+            'dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30">' +
+            ikon('kalem') + ' Revize Edildi</span>';
+  }
+
+  html += iskontoRevizeRozetiHtml(s);
+
+  return html;
+}
+
+/**
+ * "İskonto revize edilen sipariş" rozeti (Faz 15).
+ *
+ * Ürün sahibinin isteği: revize edilmiş siparişin kartında bunu anlatan bir
+ * simge olsun — hem yönetici hem pazarlamacı panelinde. Rozet ORANI da yazar
+ * ("⟳ %12"), çünkü "revize edildi" bilgisi tek başına "kaça?" sorusunu
+ * cevaplamıyor ve kullanıcıyı siparişi açmaya zorluyordu.
+ *
+ * ORTAK ÇİZİCİ: aynı rozeti `plasiyer-siparislerim.js` de kullanır; iki
+ * kopya olsaydı biri güncellenip diğeri kalırdı (bu depoda iki kez canımızı
+ * yakmış hata sınıfı).
+ *
+ * @param {object} s Sipariş (iç nesne ya da ham sunucu yükü).
+ * @returns {string}
+ */
+function iskontoRevizeRozetiHtml(s) {
+  if (!s) return '';
+
+  const kutuk = s.iskontoRevize || (s.revision && s.revision.discount_revision) || null;
+  const edildi = !!(s.iskontoRevizeEdildi || (s.revision && s.revision.discount_revised));
+
+  if (!edildi || !kutuk) return '';
+
+  const ilk = Number(kutuk.ilk || 0);
+  const yeni = Number(kutuk.yeni || 0);
+
+  const ipucu = 'İskonto bu siparişe özel revize edildi: %' + yuzdeYazi(ilk) + ' → %' + yuzdeYazi(yeni) +
+                (kutuk.zaman ? '\n' + tarihYaz(kutuk.zaman, true) : '') +
+                '\nBayinin tanımlı oranı değişmedi.';
+
+  return '<span title="' + kacis(ipucu) + '" class="inline-block mt-1 ml-1 px-3 py-1 rounded-lg border-2 ' +
          'text-base font-bold whitespace-nowrap ' +
-         'bg-amber-100 text-amber-800 border-amber-300 ' +
-         'dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30">' +
-         ikon('kalem') + ' Revize Edildi</span>';
+         'bg-violet-100 text-violet-800 border-violet-300 ' +
+         'dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30">' +
+         '⟳ İskonto %' + kacis(yuzdeYazi(yeni)) + '</span>';
 }
 
 /** Revize penceresini kapatır. */
@@ -3493,11 +3639,165 @@ function revizeSatirlariOku() {
       eskiAdet: Number(satir.dataset.eskiAdet || 0),
       birim: Number(satir.dataset.birim || 0),
       birimAra: Number(satir.dataset.birimAra || 0),
+      /* İSKONTOSUZ birim liste fiyatı (Faz 15): iskonto revizesi girildiğinde
+         yeni tutar BUNDAN hesaplanır — mevcut (iskontolu) birimden değil.
+         "%10'dan %20'ye çıkarken 90 TL'nin üstüne inilmez, 100'e dönülür." */
+      listeBirim: Number(satir.dataset.listeBirim || 0),
       /* Ürünün kendi KDV oranı: "KDV dâhil edilmesin" seçilince ters işlem
          bu oranla yapılır (birim / (1 + oran/100)). */
       kdvOrani: Number(satir.dataset.kdvOrani || 0)
     };
   });
+}
+
+/* ==========================================================================
+ *  BAYİYE ÖZEL İSKONTO — SİPARİŞ BAZLI REVİZE (Faz 15)
+ *
+ *  ÜRÜN SAHİBİNİN KURALI (birebir):
+ *    "%10 iskontolu bayi 100 liralık ürünü 90'a görüyor. %20 vermek
+ *     istediğimde 90 TL'nin ÜSTÜNE %20 düşmeyecek. Ürünün iskontosuz LİSTE
+ *     fiyatı neyse onu baz alıp %10 yerine %20 uygulayıp düşecek."
+ *
+ *  Yani 100 → 80. YANLIŞ olan 90 × 0,80 = 72.
+ *
+ *  Önizleme SUNUCUYA GİTMEZ (Registry §0 madde 3): hesap burada yapılır,
+ *  sunucu yalnızca YAYINLA anında konuşulur ve son sözü söyler.
+ * ======================================================================== */
+
+/**
+ * Kullanıcının girdiği iskonto oranı — ya da "dokunma" için null.
+ *
+ * DEĞİŞMEDİYSE null DÖNER: kutu siparişin mevcut oranıyla dolu açılır, o
+ * hâliyle bırakılırsa hiçbir şey gönderilmez. Aksi hâlde pencereyi açıp
+ * kapatmak bile siparişe bir revize kaydı düşürürdü.
+ *
+ * @returns {number|null}
+ */
+function revizeIskontoOrani() {
+  const el = $('#revizeIskontoOran');
+
+  if (!el || el.disabled) return null;
+
+  const ham = String(el.value).trim().replace(',', '.');
+
+  if (ham === '') return null;
+
+  const n = Number(ham);
+
+  if (!isFinite(n) || n < 0 || n >= 100) return null;
+
+  const baslangic = Number(el.dataset.baslangic || 0);
+
+  if (Math.abs(n - baslangic) < 0.005) return null;
+
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Satırın ETKİN birim fiyatı: iskonto revizesi girilmişse liste fiyatından
+ * yeniden hesaplanmış, girilmemişse siparişin mevcut birim fiyatı.
+ *
+ * Liste fiyatı künyesi YOKSA dokunulmaz — olmayan bir liste fiyatını
+ * uydurup fiyatı değiştirmek, sessiz bir para hatası olurdu. Sunucu da
+ * aynı durumda `b2b_discount_no_list_price` ile reddeder.
+ *
+ * @param {object} r revizeSatirlariOku() satırı.
+ * @param {number|null} oran Girilen oran.
+ * @returns {number}
+ */
+function revizeEtkinBirim(r, oran) {
+  if (null === oran || !(r.listeBirim > 0)) return r.birim;
+
+  return r.listeBirim * (1 - oran / 100);
+}
+
+/**
+ * İskonto kutusunu siparişe göre kurar (revize penceresi açılırken).
+ *
+ * Kapılar SUNUCUDAN gelir (`revision.can_revise_discount` /
+ * `discount_days_left`): 10 iş günü kuralı ve resmî tatil genişletmesi tek
+ * yerde, eklentide durur. Panel kendi takvim hesabını yapmaz.
+ *
+ * @param {object} s İç sipariş nesnesi.
+ */
+function revizeIskontoKutusunuCiz(s) {
+  const kutu = $('#revizeIskontoKutu');
+  const girdi = $('#revizeIskontoOran');
+  const kilit = $('#revizeIskontoKilit');
+  const kunye = $('#revizeIskontoKunye');
+  const onizleme = $('#revizeIskontoOnizleme');
+  const geri = $('#revizeIskontoGeri');
+
+  if (!kutu || !girdi) return;
+
+  onizleme.classList.add('hidden');
+  onizleme.innerHTML = '';
+
+  /*
+   * Liste fiyatı künyesi olmayan siparişte kutu HİÇ gösterilmez. Sebep:
+   * "önce liste fiyatına dön" adımı yapılamaz ve girilen oran sessizce
+   * etkisiz kalırdı. Kullanıcıya çalışmayan bir kutu göstermektense hiç
+   * göstermemek dürüsttür (Faz 11'deki "çalışan/çalışmayan ayar" reddi).
+   */
+  const listeVar = (s.kalemler || []).some(function (k) { return Number(k.listeBirim) > 0; });
+
+  if (!listeVar) {
+    kutu.classList.add('hidden');
+    girdi.disabled = true;
+    return;
+  }
+
+  kutu.classList.remove('hidden');
+
+  const mevcut = Number(s.iskontoOrani || 0);
+  const profil = Number(s.bayiProfilIskonto || 0);
+  const kalanGun = Number(s.iskontoKalanGun || 0);
+  const acik = !!s.iskontoRevizeEdilebilir;
+
+  /*
+   * NOKTALI yazılır, virgüllü DEĞİL. `<input type="number">` yerelden bağımsız
+   * olarak yalnızca nokta kabul eder; virgüllü bir değer atandığında alan
+   * sessizce BOŞALIR ve %12,5 iskontolu bir siparişte kutu boş açılırdı.
+   * (Okuyucu yine de virgülü kabul eder — kullanıcı elle yazarsa diye.)
+   */
+  girdi.value = String(Math.round(mevcut * 100) / 100);
+  girdi.dataset.baslangic = String(mevcut);
+  girdi.disabled = !acik;
+  if (geri) geri.disabled = !acik;
+
+  /* Künye: HANGİ bayi, sistemde tanımlı oranı ne, bu siparişe uygulanan ne. */
+  const parcalar = [];
+
+  parcalar.push('<b>' + kacis(s.firma || s.musteri || 'Müşteri') + '</b>');
+  parcalar.push('sistemde tanımlı oran: <b>%' + kacis(yuzdeYazi(profil)) + '</b>');
+
+  if (Math.abs(profil - mevcut) > 0.005) {
+    parcalar.push('bu siparişe uygulanan: <b>%' + kacis(yuzdeYazi(mevcut)) + '</b>');
+  }
+
+  kunye.innerHTML = parcalar.join(' &nbsp;·&nbsp; ');
+
+  /* Süre / kilit açıklaması. */
+  if (!acik) {
+    kilit.classList.remove('hidden');
+    kilit.className = 'mt-3 text-base font-bold text-red-700 dark:text-red-300';
+    kilit.innerHTML = '<svg class="ik" aria-hidden="true"><use href="#ik-kilit"></use></svg> ' +
+      (revizeEdilebilirMi(s)
+        ? 'İskonto revizesi için tanınan süre dolmuş (sipariş tarihinden itibaren 10 iş günü). Adet revizesi yapılabilir.'
+        : 'Kargoya verilmiş siparişin fiyatı değiştirilemez.');
+  } else {
+    kilit.classList.remove('hidden');
+    kilit.className = 'mt-3 text-base font-bold text-amber-800 dark:text-amber-300';
+    kilit.innerHTML = '<svg class="ik" aria-hidden="true"><use href="#ik-saat"></use></svg> ' +
+      'Kalan süre: <b>' + kalanGun + ' iş günü</b>';
+  }
+}
+
+/** Yüzdeyi Türkçe biçimde yazar (12,5 · 10). */
+function yuzdeYazi(n) {
+  const x = Math.round((Number(n) || 0) * 100) / 100;
+
+  return String(x).replace('.', ',');
 }
 
 /** Pencerenin altındaki canlı toplamı tazeler. */
@@ -3541,17 +3841,24 @@ function revizeToplamiTazele() {
   const satirlar = revizeSatirlariOku();
   const kdvDahil = revizeKdvDahilMi();
 
+  /* İskonto revizesi girildiyse satır fiyatları LİSTE fiyatından yeniden
+     kurulur; girilmediyse (null) siparişin mevcut fiyatı aynen kalır. */
+  const iskontoOran = revizeIskontoOrani();
+
   let toplam = 0;
   let degisen = 0;
   let kaldirilan = 0;
   let adetToplam = 0;
   let kdvToplam = 0;
+  let listeToplam = 0;
 
   satirlar.forEach(function (r) {
     /* Kaldırılan satır hiçbir toplama girmez — fişte de olmayacak. */
     if (r.kaldir) { kaldirilan++; return; }
 
-    const brut = r.birim * r.adet;
+    listeToplam += (r.listeBirim > 0 ? r.listeBirim : r.birim) * r.adet;
+
+    const brut = revizeEtkinBirim(r, iskontoOran) * r.adet;
 
     /* Ters işlem: net = brüt / (1 + oran/100). Oranı 0 olan ürün etkilenmez. */
     const net = (!kdvDahil && r.kdvOrani > 0) ? (brut / (1 + r.kdvOrani / 100)) : brut;
@@ -3564,7 +3871,7 @@ function revizeToplamiTazele() {
 
   /* Her satırın kendi tutarını da tazele */
   satirlar.forEach(function (r) {
-    const brut = r.birim * r.adet;
+    const brut = revizeEtkinBirim(r, iskontoOran) * r.adet;
     const net = (!kdvDahil && r.kdvOrani > 0) ? (brut / (1 + r.kdvOrani / 100)) : brut;
 
     const hucre = document.querySelector('[data-revize-satir="' + r.kalemId + '"] [data-revize-tutar]');
@@ -3607,6 +3914,42 @@ function revizeToplamiTazele() {
   });
 
   revizeKdvAnahtariCiz();
+
+  /* ---- İskonto revizesi canlı önizlemesi (Faz 15) ---- */
+  const onizleme = $('#revizeIskontoOnizleme');
+
+  if (onizleme) {
+    if (null === iskontoOran || listeToplam <= 0) {
+      onizleme.classList.add('hidden');
+      onizleme.innerHTML = '';
+    } else {
+      const s0 = durum.revizeSiparis || {};
+      const eskiOran = Number(s0.iskontoOrani || 0);
+      const yeniAra = listeToplam * (1 - iskontoOran / 100);
+      const indirim = listeToplam - yeniAra;
+      const eskiAra = listeToplam * (1 - eskiOran / 100);
+      const fark = yeniAra - eskiAra;
+
+      onizleme.classList.remove('hidden');
+      onizleme.innerHTML =
+        '<div class="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-lg font-bold text-amber-900 dark:text-amber-200">' +
+          '<span>Liste toplamı: <b class="font-black">' + kacis(para(listeToplam)) + '</b></span>' +
+          '<span>%' + kacis(yuzdeYazi(iskontoOran)) + ' iskonto: <b class="font-black">−' + kacis(para(indirim)) + '</b></span>' +
+          '<span class="ml-auto text-xl">Yeni ara toplam: <b class="font-black">' + kacis(para(yeniAra)) + '</b></span>' +
+        '</div>' +
+        '<div class="mt-1 text-base ' +
+          (Math.abs(fark) < 0.005
+            ? 'text-slate-500 dark:text-slate-400'
+            : (fark < 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-300')) + '">' +
+          (Math.abs(fark) < 0.005
+            ? 'Tutar değişmiyor.'
+            : (fark < 0
+                ? 'Müşteri ' + kacis(para(-fark)) + ' DAHA AZ ödeyecek (%' + kacis(yuzdeYazi(eskiOran)) + ' → %' + kacis(yuzdeYazi(iskontoOran)) + ').'
+                : 'Müşteri ' + kacis(para(fark)) + ' DAHA FAZLA ödeyecek (%' + kacis(yuzdeYazi(eskiOran)) + ' → %' + kacis(yuzdeYazi(iskontoOran)) + ').')) +
+          ' Ödeme yöntemi iskontosu varsa yeni tutar üzerinden sitede tazelenir.' +
+        '</div>';
+    }
+  }
 
   kutu.innerHTML =
     '<div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">' +
@@ -3698,6 +4041,8 @@ function revizeModaliAc(id) {
                 'data-eski-adet="' + k.adet + '" ' +
                 'data-birim="' + k.birim + '" ' +
                 'data-birim-ara="' + (k.adet > 0 ? (k.araToplam / k.adet) : k.birim) + '" ' +
+                /* İskontosuz birim liste fiyatı: iskonto revizesi bundan hesaplar. */
+                'data-liste-birim="' + (Number(k.listeBirim) || 0) + '" ' +
                 'data-kdv-orani="' + (Number(k.kdvOrani) || 0) + '" ' +
                 'class="border-t-2 border-slate-200 dark:border-slate-700 transition">' +
 
@@ -3788,6 +4133,9 @@ function revizeModaliAc(id) {
   $('#revizeHazirYap').checked = false;
   $('#revizeUyari').classList.add('hidden');
 
+  /* Bayiye özel iskonto kutusu: kapılar ve künye siparişten gelir (Faz 15). */
+  revizeIskontoKutusunuCiz(s);
+
   revizeToplamiTazele();
 
   $('#revizeModalKatman').classList.remove('hidden');
@@ -3826,11 +4174,36 @@ async function revizeyiOnayla(buton) {
   const kdvDahil = revizeKdvDahilMi();
   const kdvModu = (kdvDahil === !s.kdvHaric) ? '' : (kdvDahil ? 'include' : 'exclude');
 
-  if (!degisenler.length && !hazirYap && !kdvModu) {
+  /* Bayiye özel iskonto: DEĞİŞMEDİYSE null gider ve eklenti orana dokunmaz. */
+  const iskontoOran = revizeIskontoOrani();
+
+  if (!degisenler.length && !hazirYap && !kdvModu && null === iskontoOran) {
     const uyari = $('#revizeUyari');
-    uyari.textContent = 'Hiçbir adet değişmedi, KDV seçimi aynı ve durum güncellemesi de kapalı. Yapılacak bir işlem yok.';
+    uyari.textContent = 'Hiçbir adet değişmedi, KDV seçimi ve iskonto oranı aynı, durum güncellemesi de kapalı. Yapılacak bir işlem yok.';
     uyari.classList.remove('hidden');
     return;
+  }
+
+  /*
+   * İskonto revizesi tutarı DEĞİŞTİRİR: teyit istenir. Adet revizesinde
+   * böyle bir onay yok çünkü orada depocu zaten fiilen saydığı adedi
+   * giriyor; burada ise müşterinin ödeyeceği tutar elle değiştiriliyor.
+   */
+  if (null !== iskontoOran && !durum.ayarlar.demoModu) {
+    const eskiOran = Number(s.iskontoOrani || 0);
+    const eminMi = await onayla(
+      'İskonto Oranı Değiştirilecek',
+      '#' + s.numara + ' numaralı siparişin bayi iskontosu\n\n' +
+      '    %' + yuzdeYazi(eskiOran) + '   →   %' + yuzdeYazi(iskontoOran) + '\n\n' +
+      'olarak değiştirilecek. Fiyatlar LİSTE fiyatı üzerinden yeniden hesaplanır;\n' +
+      'mevcut iskontonun üstüne eklenmez.\n\n' +
+      'Bu değişiklik YALNIZCA bu siparişte geçerlidir — bayinin tanımlı oranı (%' +
+      yuzdeYazi(s.bayiProfilIskonto || 0) + ') değişmez.',
+      'EVET, UYGULA',
+      false
+    );
+
+    if (!eminMi) return;
   }
 
   /* Tümü sıfırlanmışsa bu bir iptal demektir; yanlışlıkla olmadığı teyit edilir. */
@@ -3932,15 +4305,22 @@ async function revizeyiOnayla(buton) {
         status: hedefDurum,
         note: not,
         notify: bildirilsinMi,
-        vat_mode: kdvModu
+        vat_mode: kdvModu,
+        /* '' = DOKUNMA. Eklenti 2.21.0 öncesi bu alanı yok sayar. */
+        discount_rate: null === iskontoOran ? '' : iskontoOran
       }
     });
-  } else if (kdvModu) {
-    /* KDV dönüşümü ürün başına oran gerektirir; bunu yalnızca eklenti bilir. */
+  } else if (kdvModu || null !== iskontoOran) {
+    /*
+     * KDV dönüşümü ürün başına oran, iskonto revizesi ise liste fiyatı
+     * künyesi gerektirir; ikisini de yalnızca eklenti bilir. WooCommerce
+     * çekirdeği üzerinden "yaklaşık" uygulamak sessiz para hatası olurdu.
+     */
     geriAl();
     const uyari = $('#revizeUyari');
-    uyari.textContent = 'KDV dâhil/hariç dönüşümü için B2B Core eklentisi gerekir.\n' +
-                        'Eklenti bulunamadı; KDV seçimini "EVET" yapıp tekrar deneyin.';
+    uyari.textContent = (kdvModu ? 'KDV dâhil/hariç dönüşümü' : 'Bayiye özel iskonto revizesi') +
+                        ' için B2B Core eklentisi gerekir.\n' +
+                        'Eklenti bulunamadı; bu seçimi geri alıp tekrar deneyin.';
     uyari.classList.remove('hidden');
     return;
   } else {
@@ -6605,7 +6985,22 @@ function siparisFinansOzeti(s) {
    * ama depo fişinin dört satırlık dökümünde YER ALMAZ: döküm yalnızca
    * ödenecek tutarı üreten kalemleri gösterir.
    */
-  const iskonto = Math.max(0, brutListe - netAra);
+  const satirIskonto = Math.max(0, brutListe - netAra);
+
+  /*
+   * ÜCRET SATIRI YEDEĞİ (2.21.0) — SAHA SİPARİŞİ.
+   *
+   * Saha siparişinde satır fiyatları LİSTE fiyatıdır; bayi iskontosu negatif
+   * bir ücret satırıdır. O akışta `brutListe − netAra` tanım gereği SIFIRDIR
+   * ve fiş "Liste − 0 − 0 = NET" diye kapanmayan bir çıkarma listesi basıyordu.
+   *
+   * İkisi YAPISAL OLARAK birbirini dışlar: iskonto ya satır fiyatının içinde
+   * ya ücret satırındadır. Bu yüzden toplanmaz, satır farkı varsa O kazanır —
+   * toplamak, iskonto revizesinden (2.21.0) sonra ücret satırı silinene kadar
+   * iskontoyu iki kez düşmek olurdu.
+   */
+  const ucretIskonto = Math.max(0, Number(s.bayiIskontoTutar || 0));
+  const iskonto = satirIskonto > 0.005 ? satirIskonto : ucretIskonto;
   const genelToplam = Number(s.tutar || 0);
   const kargo = Number(s.kargoTutar || 0);
   const revizeFarki = Math.max(0, Number(s.revizeFarki || 0));
@@ -6900,6 +7295,11 @@ function depoFisiHtml(s) {
 
   const ozetHtml = F.ozetBlogu(ozetGirdisi);
   const dipnot = F.kdvDipnotu(ozetGirdisi.kdv);
+  /* İskonto revizesi dipnotu KDV dipnotundan ÖNCE basılır: "fiyat neden
+     değişti" sorusu "vergi nasıl hesaplandı"dan önce sorulur. İki fiş AYNI
+     çiziciyi kullanır (F.iskontoDipnotu); ayrışsalardı müşteri iki belgede iki
+     farklı açıklama görürdü. Eski panel/motor ikilisinde fonksiyon olmayabilir. */
+  const iskDipnot = F.iskontoDipnotu ? F.iskontoDipnotu({ iskontoRevize: s.iskontoRevize }) : '';
 
   /* ---- Araç çubuğu: ORTAK (Yazdır · PDF · WhatsApp · Kapat) ---- */
   const arac = F.aracCubugu({
@@ -6980,6 +7380,7 @@ function depoFisiHtml(s) {
   const kapanis = '' +
     '<div class="kapanis">' +
       ozetHtml +
+      (iskDipnot ? '<div class="dipnot">' + kacis(iskDipnot) + '</div>' : '') +
       (dipnot ? '<div class="dipnot">' + kacis(dipnot) + '</div>' : '') +
       '<div class="alt-serit">' +
         '<div class="not"><span class="etiket">Sipariş Notu:</span> ' + kacis(s.notlar || '—') + '</div>' +
@@ -8055,6 +8456,21 @@ function olaylariBagla() {
     const anahtar = $('#revizeKdvDahil');
     anahtar.setAttribute('aria-checked', anahtar.getAttribute('aria-checked') === 'false' ? 'true' : 'false');
     revizeToplamiTazele();
+  });
+
+  /* BAYİYE ÖZEL İSKONTO — yazarken canlı önizleme (Faz 15).
+     Hesap İSTEMCİDE yapılır; sunucuya yalnızca ONAY anında gidilir. */
+  $('#revizeIskontoOran').addEventListener('input', revizeToplamiTazele);
+
+  $('#revizeIskontoGeri').addEventListener('click', function () {
+    const girdi = $('#revizeIskontoOran');
+    if (!girdi) return;
+
+    /* Siparişin mevcut oranına dön → revizeIskontoOrani() null döner → dokunma.
+       Nokta ile yazılır; bkz. revizeIskontoKutusunuCiz'deki gerekçe. */
+    girdi.value = String(Number(girdi.dataset.baslangic || 0));
+    revizeToplamiTazele();
+    girdi.focus();
   });
 
   $('#revizeModalKatman').addEventListener('mousedown', function (o) {

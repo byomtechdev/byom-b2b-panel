@@ -4509,6 +4509,57 @@
       <!-- Ürün satırları (renderer.js doldurur) -->
       <div id="revizeGovde"></div>
 
+      <!-- ==========================================================
+           BAYİYE ÖZEL İSKONTO — bu SİPARİŞE özel oran (Faz 15)
+           ----------------------------------------------------------
+           Bayinin profil iskontosu DEĞİŞMEZ; yalnızca bu siparişin
+           fiyatları liste fiyatı üzerinden yeniden hesaplanır.
+           Sunucu: B2B_Order_Revision::apply_discount_rate().
+           10 İŞ GÜNÜ penceresi dolmuşsa kutu KİLİTLİ açılır ve
+           sebebi yazılır (karar sunucuda, panel yalnız gösterir).
+           ========================================================== -->
+      <div id="revizeIskontoKutu"
+           class="hidden rounded-2xl border-2 border-amber-300 dark:border-amber-500/40
+                  bg-amber-50 dark:bg-amber-500/10 p-4">
+
+        <div class="flex flex-wrap items-start gap-4">
+          <div class="min-w-0 flex-1">
+            <div class="text-lg font-extrabold text-amber-900 dark:text-amber-200">
+              <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg>
+              BAYİYE ÖZEL İSKONTO
+            </div>
+            <div id="revizeIskontoKunye" class="mt-1 text-base font-bold text-amber-800 dark:text-amber-300"></div>
+            <div class="mt-1 text-base text-amber-700 dark:text-amber-400">
+              Fiyatlar <b>liste fiyatı</b> üzerinden yeniden hesaplanır &mdash;
+              mevcut iskontonun <b>üstüne eklenmez</b>. Değişiklik <b>yalnızca bu siparişte</b> geçerlidir.
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <label for="revizeIskontoOran" class="sr-only">Bu siparişe uygulanacak iskonto oranı</label>
+            <input id="revizeIskontoOran" type="number" min="0" max="99.99" step="0.5" inputmode="decimal"
+                   class="w-28 h-14 px-3 rounded-xl text-2xl font-black text-center
+                          bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-500/50
+                          focus:border-amber-600 focus:ring-4 focus:ring-amber-600/20 outline-none transition
+                          disabled:opacity-50 disabled:cursor-not-allowed" />
+            <span class="text-2xl font-black text-amber-900 dark:text-amber-200">%</span>
+            <button id="revizeIskontoGeri" type="button"
+                    title="Girilen oranı iptal et, siparişin mevcut oranına dön"
+                    class="h-14 px-4 rounded-xl text-base font-extrabold
+                           border-2 border-amber-300 dark:border-amber-500/40
+                           bg-white dark:bg-slate-900 text-amber-800 dark:text-amber-300
+                           hover:bg-amber-100 dark:hover:bg-amber-500/20 transition active:scale-95
+                           disabled:opacity-50 disabled:cursor-not-allowed">↩ VAZGEÇ</button>
+          </div>
+        </div>
+
+        <!-- Canlı önizleme (sunucuya GİTMEZ — Registry §0 madde 3) -->
+        <div id="revizeIskontoOnizleme" class="hidden mt-3 pt-3 border-t-2 border-dashed border-amber-300 dark:border-amber-500/40"></div>
+
+        <!-- Süre / kilit açıklaması -->
+        <div id="revizeIskontoKilit" class="hidden mt-3 text-base font-bold"></div>
+      </div>
+
       <!-- Canlı toplam -->
       <div id="revizeToplam"
            class="rounded-2xl border-2 border-slate-200 dark:border-slate-700
