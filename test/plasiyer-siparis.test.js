@@ -916,3 +916,59 @@ test('siparisGovdesi: KDV hariç kipte gövdedeki toplamlar da NET — sunucuyla
   assert.equal(g.toplamlar.kdv.dusulen, 18.18);
   assert.equal(g.kalemler[0].price, 100, 'satır fiyatı BRÜT gider; netleştirmeyi sunucu yapar');
 });
+
+/* =========================================================================
+ * FAZ 16-E — TESLİM ŞUBESİ (M5)
+ * -------------------------------------------------------------------------
+ *  "Sipariş TEMELDE ANA CARİYE yazılacak" — sepette müşteri DEĞİŞMEZ; şube
+ *  yalnızca ek bir alandır ve sunucuya `subeId` olarak gider.
+ * ====================================================================== */
+
+test('sepet: şube seçilebilir ve müşteri DEĞİŞMEZ', (t) => {
+  let sepet = M.musteriIskontosuUygula(M.sepetKur(), { id: 42, unvan: 'Ahmetler Ticaret', iskonto: 10 }, 100);
+  sepet = M.subeSec(sepet, 'sube_1');
+
+  assert.equal(sepet.subeId, 'sube_1');
+  assert.equal(sepet.musteri.id, 42, 'ANA müşteri değişmedi — cari orada kalır');
+});
+
+test('sepet: şube seçimi TEMİZLENEBİLİR', (t) => {
+  let sepet = M.subeSec(M.sepetKur(), 'sube_1');
+  sepet = M.subeSec(sepet, '');
+
+  assert.equal(sepet.subeId, '', 'şubesiz siparişe dönülebilir');
+});
+
+test('sepet: MÜŞTERİ DEĞİŞİNCE şube seçimi DÜŞER', (t) => {
+  let sepet = M.musteriIskontosuUygula(M.sepetKur(), { id: 42, unvan: 'A' }, 100);
+  sepet = M.subeSec(sepet, 'sube_1');
+  sepet = M.musteriIskontosuUygula(sepet, { id: 43, unvan: 'B' }, 100);
+
+  /*
+   * Şube BAYİYE aittir: eski müşterinin şubesi yeni müşteride yoktur ve
+   * sunucu onu 400 ile reddeder (B2B_Sube::siparise_damgala). Seçimi
+   * taşımak, plasiyerin fark etmediği bir hata olurdu.
+   */
+  assert.equal(sepet.subeId, '', 'müşteri değişince şube sıfırlanır');
+});
+
+test('sepet: AYNI müşteri yeniden seçilince şube KORUNUR', (t) => {
+  let sepet = M.musteriIskontosuUygula(M.sepetKur(), { id: 42, unvan: 'A' }, 100);
+  sepet = M.subeSec(sepet, 'sube_1');
+  sepet = M.musteriIskontosuUygula(sepet, { id: 42, unvan: 'A' }, 100);
+
+  assert.equal(sepet.subeId, 'sube_1', 'aynı müşteride seçim kaybolmaz');
+});
+
+test('siparisGovdesi: subeId taşınır, yoksa boş gider', (t) => {
+  let sepet = M.musteriIskontosuUygula(M.sepetKur(), { id: 42, unvan: 'A' }, 100);
+  sepet = M.ekle(sepet, { id: 1, ad: 'Vida', fiyat: 10, koli_ici_adet: 1 }, 1);
+  sepet = M.odemeSec(sepet, 'nakit', {});
+
+  const subesiz = M.siparisGovdesi(sepet, { id: 7 }, 100);
+  assert.equal(subesiz.subeId, '', 'şubesiz siparişte alan BOŞ');
+
+  const ile = M.siparisGovdesi(M.subeSec(sepet, 'sube_9'), { id: 7 }, 100);
+  assert.equal(ile.subeId, 'sube_9');
+  assert.equal(ile.musteriId, 42, 'sipariş yine ANA cariye yazılır');
+});

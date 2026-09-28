@@ -808,6 +808,9 @@
       vergiNo: ilkDolu(bayi.tax_number, fatura.tax_number, meta._b2b_tax_number, meta.b2b_tax_number),
       plasiyerId: ilkPozitif(k.plasiyer_id, meta._b2b_plasiyer_id),
       plasiyerAd: ilkDolu(k.plasiyer_ad, meta._b2b_plasiyer_ad),
+      /* Teslim subesi (Faz 16-E): once sunucunun kunye nesnesi, yoksa
+         siparis metasi — eski eklentide alan hic gelmez, o zaman bostur. */
+      sube: k.sube || { id: meta._b2b_sube_id, ad: meta._b2b_sube_ad, kunye: meta._b2b_sube_kunye },
       /*
        * Bayi oranı YALNIZCA ücret satırı tabanlı kaynaklardan okunur
        * (plasiyer_iskonto damgası, ücret satırı). `pricing.order_rate` bilerek
@@ -872,6 +875,7 @@
       vergiNo: ilkDolu(k.vergiNo, k.tcKimlik),
       plasiyerId: ilkPozitif(k.plasiyerId),
       plasiyerAd: metin(k.plasiyerAd),
+      sube: k.sube || k.sube_kunyesi || {},
       bayiOrani: ilkPozitif(k.bayiIskontoOrani, k.iskonto, k.iskontoOrani, ucret.bayiOran),
       bayiTutar: ilkPozitif(k.bayiIskontoTutar, ucret.bayi),
       odemeOrani: ilkPozitif(k.odemeIskontoOrani, k.odemeIskonto, ucret.odemeOran),
@@ -990,6 +994,10 @@
     var baglamPid = ilkPozitif(b.plasiyerId);
     var plasiyerAd = o.plasiyerAd || ((!siparisPid || siparisPid === baglamPid) ? metin(b.plasiyerAd) : '');
 
+    /* Sube: uc kaynak da (yonetici / saha / ham prepare_order) ayni anahtari
+       tasir; yoksa bos nesne — normalle ASLA null dondurmez. */
+    var sube = (o.sube && 'object' === typeof o.sube) ? o.sube : {};
+
     var tarih = tarihCoz(o.tarih);
     var logo = metin(b.logo);
 
@@ -1000,6 +1008,16 @@
       durumEtiketi: o.durumEtiketi,
       firma: { ad: metin(b.firmaAdi), logo: LOGO_SEMASI.test(logo) ? logo : '' },
       plasiyer: { id: siparisPid || baglamPid, ad: plasiyerAd },
+      /*
+       * TESLIM SUBESI (Faz 16-E). Siparis ANA cariye yazilir; sube yalnizca
+       * teslimat noktasidir ve fiste musteri kunyesine KARISMAZ, kendi
+       * satiri olur. Damga yoksa alanlar bos gelir — uydurulmaz.
+       */
+      sube: {
+        id: metin(sube.id),
+        ad: metin(sube.ad),
+        kunye: metin(sube.kunye) || metin(sube.ad)
+      },
       musteri: { unvan: o.unvan, yetkili: o.yetkili, telefon: o.telefon, il: o.il, vergiNo: o.vergiNo },
       kalemler: kalemler,
       cesit: kalemler.length,
@@ -1586,6 +1604,13 @@
 
     var siparisKutusu = '<div class="kutu"><h3>Sipariş</h3><dl>' +
       kunyeSatiri('Plasiyer', p.ad) +
+      /*
+       * TESLIM SUBESI AYRI SATIR (Faz 16-E). Musteri kunyesinin icine
+       * karistirmak, faturanin sube adina kesildigi izlenimi verirdi —
+       * oysa cari ANA musteridedir. Sube yoksa satir HIC basilmaz
+       * (kunyeSatiri bos degeri atlar).
+       */
+      kunyeSatiri('Teslim Şubesi', fis.sube && fis.sube.kunye) +
       kunyeSatiri('Ödeme', fis.odeme) +
       '<dt>Kalem</dt><dd>' + kacis(ozetMetni) + '</dd>' +
       '</dl></div>';
@@ -1908,6 +1933,8 @@
     if (firma.ad) bas.push('*Firma:* ' + tekSatir(firma.ad));
 
     bas.push('*Bayi:* ' + tekSatir(m.unvan || '—') + (m.yetkili ? ' (' + tekSatir(m.yetkili) + ')' : ''));
+
+    if (fis.sube && fis.sube.kunye) bas.push('*Teslim Şubesi:* ' + tekSatir(fis.sube.kunye));
 
     if (fis.tarihYazi) bas.push('*Tarih:* ' + fis.tarihYazi);
     if (fis.durumEtiketi) bas.push('*Durum:* ' + tekSatir(fis.durumEtiketi));

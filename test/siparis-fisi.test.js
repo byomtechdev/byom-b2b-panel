@@ -39,6 +39,10 @@ const FIS_ANAHTARLARI = [
      değildir: künye yokken { ilk: 0, yeni: 0 } gelir ve dipnot kendiliğinden
      susar ("asla NaN / undefined" sözü korunur). */
   'iskontoRevize',
+  /* Faz 16-E: teslim subesi. Siparis ANA cariye yazilir; sube fiste AYRI bir
+     kunye satiridir. ASLA null degildir: damga yokken { id:'', ad:'', kunye:'' }
+     gelir ve satir kendiliginden basilmaz. */
+  'sube',
   'net', 'odeme', 'not'
 ].sort();
 
@@ -1527,4 +1531,81 @@ test('KISALT sabitleri sütun genişliğinden türer ve DIŞARI VERİLİR', (t) 
   assert.equal(typeof F.KISALT_A4, 'number');
   assert.ok(F.KISALT_A4 >= 36 && F.KISALT_A4 <= 56, 'A4 siniri makul aralikta');
   assert.equal(F.KISALT_TERMAL, 0, 'termalde kisaltma KAPALI (0) — gerekce yukarida');
+});
+
+/* =========================================================================
+ * FAZ 16-E — TESLİM ŞUBESİ (M5)
+ * -------------------------------------------------------------------------
+ *  "Sipariş temelde ana cariye yazılacak ama sipariş fişinde/notunda 'Şube'
+ *  adı NET OLARAK AYRIŞTIRILACAK." Fişte şube, müşteri künyesinin içine
+ *  karışmaz; kendi satırı olur.
+ * ====================================================================== */
+
+test('normalle: şube künyesi taşınır, yoksa boş kalır', (t) => {
+  const ile = F.normalle({
+    id: 7, number: '7', total: 100,
+    sube: { id: 'sube_1', ad: 'Kocabıyık Şubesi', kunye: 'Kocabıyık Şubesi — İzmir / Konak' },
+    line_items: [{ name: 'Vida', quantity: 1, total: 100 }]
+  }, {});
+
+  assert.equal(ile.sube.ad, 'Kocabıyık Şubesi');
+  assert.equal(ile.sube.kunye, 'Kocabıyık Şubesi — İzmir / Konak');
+
+  const siz = F.normalle({ id: 8, number: '8', total: 100, line_items: [] }, {});
+
+  assert.equal(siz.sube.ad, '', 'şubesiz siparişte alan BOŞ — uydurulmaz');
+  assert.equal(siz.sube.kunye, '');
+});
+
+test('html: şube AYRI bir künye satırı olarak basılır', (t) => {
+  const fis = F.normalle({
+    id: 7, number: '7', total: 100,
+    billing: { company: 'Ahmetler Ticaret' },
+    sube: { id: 'sube_1', ad: 'Kocabıyık Şubesi', kunye: 'Kocabıyık Şubesi — İzmir / Konak' },
+    line_items: [{ name: 'Vida', quantity: 1, total: 100 }]
+  }, {});
+
+  const html = F.html(fis, { kagit: 'a4' });
+
+  assert.match(html, /Teslim Şubesi/, 'şube satırının ETİKETİ yok');
+  assert.match(html, /Kocabıyık Şubesi — İzmir \/ Konak/, 'şube künyesi basılmıyor');
+
+  /* Ana cari de duruyor: fatura ONUN adına. */
+  assert.match(html, /Ahmetler Ticaret/, 'ana müşteri künyesi kayboldu');
+});
+
+test('html: ŞUBESİZ siparişte şube satırı HİÇ basılmaz', (t) => {
+  const fis = F.normalle({
+    id: 8, number: '8', total: 100,
+    billing: { company: 'Ahmetler Ticaret' },
+    line_items: [{ name: 'Vida', quantity: 1, total: 100 }]
+  }, {});
+
+  const html = F.html(fis, { kagit: 'a4' });
+
+  assert.ok(html.indexOf('Teslim Şubesi') === -1, 'boş şube satırı basılmamalı');
+});
+
+test('html: şube adı HTML olarak yorumlanmaz', (t) => {
+  const fis = F.normalle({
+    id: 9, number: '9', total: 100,
+    sube: { id: 's', ad: '<img src=x onerror=alert(1)>', kunye: '<img src=x onerror=alert(1)>' },
+    line_items: [{ name: 'Vida', quantity: 1, total: 100 }]
+  }, {});
+
+  assert.ok(F.html(fis, { kagit: 'a4' }).indexOf('<img') === -1, 'şube künyesi kaçışlanmıyor');
+});
+
+test('whatsappMetni: şube varsa satırda görünür', (t) => {
+  const fis = F.normalle({
+    id: 7, number: '7', total: 100,
+    sube: { id: 's', ad: 'Kocabıyık Şubesi', kunye: 'Kocabıyık Şubesi — İzmir / Konak' },
+    line_items: [{ name: 'Vida', quantity: 1, total: 100 }]
+  }, {});
+
+  assert.match(F.whatsappMetni(fis), /Kocabıyık Şubesi/, 'WhatsApp fişinde şube yok');
+
+  const siz = F.normalle({ id: 8, number: '8', total: 100, line_items: [] }, {});
+
+  assert.ok(F.whatsappMetni(siz).indexOf('Teslim Şubesi') === -1, 'şubesizde satır basılmaz');
 });

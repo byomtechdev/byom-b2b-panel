@@ -141,6 +141,12 @@
       odeme: '',
       vadeNotu: '',
       siparisNotu: '',
+      /*
+       * TESLİM ŞUBESİ (Faz 16-E). Sipariş TEMELDE ANA CARİYE yazılır; bu alan
+       * yalnızca teslimat noktasını söyler ve sunucuya `subeId` olarak gider.
+       * Boş = şubesiz sipariş (çoğu müşterinin tek adresi vardır).
+       */
+      subeId: '',
       iskonto: 0,        // bayi iskontosu (%), tavana tabidir
       odemeIskonto: 0,   // ödeme yöntemi iskontosu (%) — bkz. odemeSec
       /*
@@ -431,6 +437,17 @@
    * fiyatı gösterir.
    */
   function musteriIskontosuUygula(sepet, musteri, tavan) {
+    /*
+     * MUSTERI DEGISINCE SUBE SECIMI DUSER. Sube BAYIYE aittir; eski
+     * musterinin subesi yenisinde yoktur ve sunucu onu 400 ile reddeder
+     * (B2B_Sube::siparise_damgala). Secimi tasimak, plasiyerin fark
+     * etmedigi bir hata olurdu. AYNI musteri yeniden secilirse korunur.
+     */
+    var eskiId = sepet.musteri ? String(sepet.musteri.id) : '';
+    var yeniId = musteri ? String(musteri.id) : '';
+
+    if (eskiId !== yeniId) sepet.subeId = '';
+
     sepet.musteri = musteri || null;
 
     if (!musteri) {
@@ -441,6 +458,21 @@
 
     sepet.iskonto = uygulanabilirIskonto(musteri.iskonto, tavan);
     sepet.odemeIskonto = odemeIskontosu(musteri, sepet.odeme);
+
+    return sepet;
+  }
+
+  /**
+   * Teslim şubesini seçer (boş = şubesiz).
+   *
+   * Müşteriyi DEĞİŞTİRMEZ: cari ana müşteride kalır.
+   *
+   * @param {object} sepet  Sepet.
+   * @param {string} subeId Şube kimliği.
+   * @returns {object}
+   */
+  function subeSec(sepet, subeId) {
+    sepet.subeId = String(subeId || '');
 
     return sepet;
   }
@@ -736,6 +768,8 @@
          tanımsızsa KDV'li sayılır: eski kuyruk kayıtları ve eski panel
          sürümleri sessizce KDV'siz siparişe dönüşmemeli. */
       kdvDahil: false !== sepet.kdvDahil,
+      /* Teslim şubesi (Faz 16-E) — sipariş yine ANA cariye yazılır. */
+      subeId: String(sepet.subeId || ''),
       vadeNotu: String(sepet.vadeNotu || ''),
       siparisNotu: String(sepet.siparisNotu || ''),
       iskontoOrani: t.iskontoOrani,
@@ -779,6 +813,7 @@
     odemeIskontosu: odemeIskontosu,
     odemeSec: odemeSec,
     musteriIskontosuUygula: musteriIskontosuUygula,
+    subeSec: subeSec,
     /* iskonto */
     tavaniOku: tavaniOku,
     uygulanabilirIskonto: uygulanabilirIskonto,

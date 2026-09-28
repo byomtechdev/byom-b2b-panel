@@ -257,6 +257,10 @@
           /* Faz 9 — bileşik iskontonun iki girdisi sunucudan gelir. */
           iskonto: Number(b.iskonto) || 0,
           odemeIskontolari: (b.odemeIskontolari && 'object' === typeof b.odemeIskontolari) ? b.odemeIskontolari : {},
+          /* TESLİM ŞUBELERİ (Faz 16-E) — bayi yükünde gelir; müşteri seçilir
+             seçilmez kutu dolsun diye ikinci istek atılmaz. Eski eklenti
+             alanı göndermez: boş dizi kalır ve kutu hiç basılmaz. */
+          subeler: Array.isArray(b.subeler) ? b.subeler : [],
           gecici: false
         };
       });
@@ -410,7 +414,8 @@
         '<button type="button" id="musteriYeni" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">+ Yeni Müşteri</button>' +
         kunye +
         (!secili ? '<span class="text-sm text-slate-500 dark:text-slate-400">Sipariş yazmak için müşteri seçin.</span>' : '') +
-      '</div>';
+      '</div>' +
+      subeSeridiHtml(secili);
 
     baglaSerit();
 
@@ -418,6 +423,160 @@
     if (!durumM.yuklendi && plasiyerMi()) {
       listeyiHazirla().then(seridiCiz).catch(function () { /* çevrimdışı: yereller yeter */ });
     }
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  TESLİM ŞUBESİ (Faz 16-E)
+   *  ---------------------------------------------------------------------
+   *  "Pazarlamacı ana müşteriye gidiyor ama malı onun alt şubesine teslim
+   *  edecek." Sipariş TEMELDE ANA CARİYE yazılır; şube yalnızca teslimat
+   *  noktasıdır ve sunucuya `subeId` olarak gider.
+   *
+   *  Şube listesi bayi yükünde GELİR (`/plasiyer/dealers → subeler`); müşteri
+   *  seçilir seçilmez kutu dolsun diye ikinci bir istek atılmaz.
+   * ------------------------------------------------------------------ */
+
+  /** Seçili müşterinin şubeleri. */
+  function subeleriAl(musteri) {
+    return (musteri && Array.isArray(musteri.subeler)) ? musteri.subeler : [];
+  }
+
+  /**
+   * Şube şeridi.
+   *
+   * ŞUBESİZ MÜŞTERİDE SEÇİM KUTUSU BASILMAZ: tek seçeneği "şubesiz" olan bir
+   * kutu ekranı kalabalıklaştırmaktan başka iş yapmaz. Ekleme yolu yine durur.
+   */
+  function subeSeridiHtml(secili) {
+    if (!secili) return '';
+
+    var subeler = subeleriAl(secili);
+    var sepet = window.PlasiyerVitrin ? window.PlasiyerVitrin.sepetAl() : null;
+    var seciliSube = (sepet && sepet.subeId) ? String(sepet.subeId) : '';
+
+    var kutu = '';
+
+    if (subeler.length) {
+      kutu =
+        '<select id="subeSecim" aria-label="Teslim şubesi" ' +
+                'class="max-w-xs px-3 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-600 ' +
+                       'bg-white dark:bg-slate-900 font-bold">' +
+          '<option value="">Şubesiz — merkeze teslim</option>' +
+          subeler.map(function (sb) {
+            return '<option value="' + kacis(String(sb.id)) + '"' +
+              (seciliSube === String(sb.id) ? ' selected' : '') + '>' +
+              kacis(subeKunyesi(sb)) + '</option>';
+          }).join('') +
+        '</select>';
+    }
+
+    return '<div class="flex items-center gap-2 flex-wrap mt-2">' +
+        '<span class="text-sm font-bold text-slate-500 dark:text-slate-400">🏭 Teslim Şubesi:</span>' +
+        kutu +
+        (subeler.length ? '' : '<span class="text-sm text-slate-500 dark:text-slate-400">Tanımlı şube yok — sipariş merkeze yazılır.</span>') +
+        '<button type="button" id="subeEkle" class="px-3 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">+ Şube</button>' +
+      '</div>';
+  }
+
+  /** "Kocabıyık Şubesi — İzmir / Konak" (sunucudaki kunye() ile aynı biçim). */
+  function subeKunyesi(sb) {
+    if (!sb || !sb.ad) return '';
+
+    var yer = [sb.il, sb.ilce].filter(Boolean).join(' / ');
+
+    return yer ? (sb.ad + ' — ' + yer) : String(sb.ad);
+  }
+
+  /** Şube perdesini açar (ekleme). */
+  function subePerdesiniAc() {
+    var secili = durumM.secili;
+
+    if (!secili) { bildir('Önce müşteri seçin.', 'hata'); return; }
+
+    var kap = el('satisPerde');
+
+    if (!kap) return;
+
+    var alan = function (id, etiket, ek) {
+      return '<label class="block mb-3"><span class="block font-bold mb-1">' + kacis(etiket) + '</span>' +
+        '<input id="' + id + '" ' + (ek || '') + ' class="w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900" /></label>';
+    };
+
+    kap.innerHTML =
+      '<div class="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">' +
+        '<div class="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-800 p-6 max-h-[90vh] overflow-auto">' +
+          '<div class="text-xl font-black mb-1">Yeni Şube</div>' +
+          '<div class="text-sm text-slate-500 dark:text-slate-400 mb-4">' +
+            kacis(secili.unvan || '') + ' — sipariş yine bu cariye yazılır, şube yalnızca teslimat noktasıdır.' +
+          '</div>' +
+          alan('subeAd', 'Şube adı *') +
+          alan('subeYetkili', 'Yetkili') +
+          alan('subeTelefon', 'Telefon (05XX XXX XX XX)', 'inputmode="tel"') +
+          alan('subeIl', 'İl') +
+          alan('subeIlce', 'İlçe') +
+          alan('subeAdres', 'Adres') +
+          '<div class="flex gap-2 justify-end mt-4">' +
+            '<button type="button" id="subeVazgec" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold">Vazgeç</button>' +
+            '<button type="button" id="subeKaydet" class="px-4 py-3 rounded-xl bg-marka-700 text-white font-extrabold">Kaydet</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    kap.hidden = false;
+
+    var kapat = function () { kap.innerHTML = ''; kap.hidden = true; };
+
+    var vazgec = el('subeVazgec');
+    if (vazgec) vazgec.addEventListener('click', kapat);
+
+    var kaydet = el('subeKaydet');
+
+    if (kaydet) {
+      kaydet.addEventListener('click', async function () {
+        var ad = (el('subeAd').value || '').trim();
+
+        /* ADSIZ KAYIT AĞA ÇIKMAZ: sunucu da reddeder ama sahadaki mobil
+           bağlantıda boş bir tur beklemek gereksiz. */
+        if (!ad) { bildir('Şube adı zorunludur.', 'hata'); return; }
+
+        kaydet.disabled = true;
+
+        var cevap;
+
+        try {
+          cevap = await ipcRenderer.invoke('sube:kaydet', {
+            musteriId: Number(secili.id) || 0,
+            ad: ad,
+            yetkili: (el('subeYetkili').value || '').trim(),
+            telefon: (el('subeTelefon').value || '').trim(),
+            il: (el('subeIl').value || '').trim(),
+            ilce: (el('subeIlce').value || '').trim(),
+            adres: (el('subeAdres').value || '').trim()
+          });
+        } catch (e) {
+          cevap = { ok: false, hata: (e && e.message) || 'Şube kaydedilemedi.' };
+        } finally {
+          kaydet.disabled = false;
+        }
+
+        var veri = (cevap && cevap.veri) || {};
+
+        if (!cevap || !cevap.ok || !veri.ok) {
+          bildir((veri && veri.message) || (cevap && cevap.hata) || 'Şube kaydedilemedi.', 'hata');
+          return;
+        }
+
+        /* Sunucunun döndürdüğü liste TEK doğruluk kaynağıdır. */
+        secili.subeler = Array.isArray(veri.subeler) ? veri.subeler : subeleriAl(secili);
+
+        kapat();
+        bildir('Şube eklendi: ' + ad, 'ok');
+        seridiCiz();
+      });
+    }
+
+    var adAlani = el('subeAd');
+    if (adAlani) adAlani.focus();
   }
 
   function baglaSerit() {
@@ -437,6 +596,19 @@
 
     var yeni = el('musteriYeni');
     if (yeni) yeni.addEventListener('click', yeniPerdesiniAc);
+
+    /* Teslim şubesi (Faz 16-E): seçim SEPETE yazılır, müşteri DEĞİŞMEZ. */
+    var subeKutu = el('subeSecim');
+
+    if (subeKutu) {
+      subeKutu.addEventListener('change', function () {
+        /* Motor SEPETE yazar; musteri alanina DOKUNMAZ (cari ana musteride). */
+        M().subeSec(sepet(), subeKutu.value);
+      });
+    }
+
+    var subeDugme = el('subeEkle');
+    if (subeDugme) subeDugme.addEventListener('click', subePerdesiniAc);
 
     var kopya = el('sonSiparisKopya');
     if (kopya) kopya.addEventListener('click', sonSiparisiKopyala);
@@ -2107,6 +2279,9 @@
     portfoyuCiz: portfoyuCiz,
     profiliCiz: profiliCiz,
     kuyrukSeridiniCiz: kuyrukSeridiniCiz,
+    /* Teslim şubesi (Faz 16-E) */
+    subePerdesiniAc: subePerdesiniAc,
+    subeKunyesi: subeKunyesi,
     anindaEsitle: anindaEsitle,
     yerelMusteriSil: yerelMusteriSil,
     /* Saha haritası bayi kartı kısayolları (Faz 12): aynı akış, ikinci kopya yok. */

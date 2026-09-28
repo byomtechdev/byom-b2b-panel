@@ -2238,6 +2238,44 @@ ipcMain.handle('musteri:guncelle', async function (olay, veri) {
   return plasiyerIstek('/plasiyer/musteri-guncelle', govde);
 });
 
+/* ==========================================================================
+ *  ALT ŞUBELER (Faz 16-E)
+ *  ---------------------------------------------------------------------------
+ *  Plasiyer müşterisinin teslimat şubelerini yönetir. Kimlik ve jeton ANA
+ *  SÜREÇ BELLEĞİNDEN eklenir — arayüzden gelen kimliğe güvenilmez (Faz 1
+ *  kuralı). Sunucu ayrıca şubenin plasiyerin PORTFÖYÜNDEKİ bir müşteriye ait
+ *  olduğunu doğrular.
+ *
+ *  ÇEVRİMDIŞI KUYRUK YOK: şube tanımlamak sipariş yazmak değildir ve internet
+ *  olmadan yapılamaz. Yarım bir yerel şube listesi tutmak, sunucuda olmayan
+ *  bir şubeye sipariş damgalamaya çalışmak demekti (M1'in kilitlenen kuyruk
+ *  hatası). Ağ yoksa kullanıcıya açıkça söylenir.
+ * ========================================================================*/
+
+/** Şube uçlarına ortak çağrı: kimlik ve jeton oturumdan. */
+function subeIstegi(yol, veri) {
+  if (!plasiyerOturumuGecerliMi()) {
+    return Promise.resolve({ ok: false, durum: 401, hata: 'Oturum kapalı. PIN ile giriş yapın.' });
+  }
+
+  return plasiyerIstek(yol, Object.assign({}, veri || {}, {
+    plasiyerId: plasiyerOturumu.id,
+    token: plasiyerOturumu.token
+  }));
+}
+
+ipcMain.handle('sube:liste', function (olay, veri) {
+  return subeIstegi('/plasiyer/subeler', { musteriId: Number((veri && veri.musteriId) || 0) || 0 });
+});
+
+ipcMain.handle('sube:kaydet', function (olay, veri) {
+  return subeIstegi('/plasiyer/sube', veri);
+});
+
+ipcMain.handle('sube:sil', function (olay, veri) {
+  return subeIstegi('/plasiyer/sube-sil', veri);
+});
+
 /** Ziyaret notunu yerel kuyruğa yazar (çevrimdışı yol). */
 ipcMain.handle('ziyaret:kuyruga', function (olay, veri) {
   veri = veri || {};

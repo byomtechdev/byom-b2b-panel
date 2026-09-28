@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.6.0** (Faz 16-D).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.7.0** (Faz 16-E).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -1867,6 +1867,32 @@ Panel tarafındaki iş küçük; asıl göç eklentide.
 
 ---
 
+## 4.24 Faz 16-E (M5) — Teslim şubesi
+
+Panel **2.7.0** · eklenti **2.24.0** → `../BYOM-REGISTRY.md §5.47`,
+kök `CLAUDE.md §10 Faz 16-E`.
+
+| Parça | Yer |
+|---|---|
+| Sepette `subeId` + `subeSec()`; **müşteri değişince düşer**, aynı müşteride korunur | `plasiyer-siparis-motor.js` |
+| Şube şeridi `🏭 Teslim Şubesi: [seçici] [+ Şube]` + şube perdesi | `plasiyer-musteri.js` |
+| Bayi normalleştiricisinde `subeler` (bayi yükünden) | aynı |
+| `sube:liste` · `sube:kaydet` · `sube:sil` — kimlik ve jeton **oturumdan** | `main.js` |
+
+### Bozmaman gereken sözler (Faz 16-E)
+- **Şube seçimi ANA MÜŞTERİYİ DEĞİŞTİRMEZ** — cari orada kalır.
+- **Müşteri değişince şube seçimi DÜŞER.** Şube bayiye aittir; eski müşterinin
+  şubesi yenisinde yoktur ve sunucu `400` ile reddeder. Seçimi taşımak
+  plasiyerin fark etmediği bir hata olurdu.
+- **Şubesiz müşteride seçim kutusu BASILMAZ** — tek seçeneği "şubesiz" olan bir
+  kutu ekranı kalabalıklaştırmaktan başka iş yapmaz.
+- **Şube için ÇEVRİMDIŞI KUYRUK KURULMAZ.** Yerel bir şube listesi, sunucuda
+  olmayan bir şubeye sipariş damgalamaya çalışmak demekti (M1'in kilitlenen
+  kuyruğu). Ağ yoksa açıkça söylenir.
+- Kimlik ve jeton **ana süreçte** eklenir; arayüz yalnızca `musteriId` söyler.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1874,7 +1900,7 @@ Panel tarafındaki iş küçük; asıl göç eklentide.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**896 test**: panel 369 + kök 527).
+İkisini birden `../scripts/check-all.js` koşar (**918 test**: panel 379 + kök 539).
 
 ```bash
 # Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
@@ -1930,6 +1956,8 @@ node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki ro
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
 node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
+node --test scripts/tests/sube-panel.dom.test.js      # 11 — Faz 16-E: şube seçici, ana müşteri değişmez, adsız kayıt ağa çıkmaz
+node --test scripts/tests/php-sube.test.js            # 65 iddia — Faz 16-E: şube motoru, fatura adresi değişmez (PHP)
 node --test scripts/tests/kunye-tablo.test.js         # 7  — Faz 16-D: uzun ad tabloyu taşırmaz, barkod SKU'dan ayrı
 node --test scripts/tests/php-kunye-gocu.test.js      # 50 iddia — Faz 16-D: ad göçü, paraya dokunmama (PHP)
 node --test scripts/tests/baglam-menusu.test.js       # 11 — Faz 16-C: sağ tık GERÇEKTEN kopyalar (wc.copy çağrılır), üç pencereye de bağlı
@@ -1948,7 +1976,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (896 test)
+# Bitirirken: üç katmanın tamamı (918 test)
 node scripts/check-all.js
 ```
 
@@ -2029,7 +2057,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 189 php / 113 js / 896 test
+cd .. && node scripts/check-all.js     # 0 hata / 191 php / 115 js / 918 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.
