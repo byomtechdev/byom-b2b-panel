@@ -1740,6 +1740,9 @@ function b2bSiparisNormalle(s) {
         urunId: Number(k.product_id || 0),
         ad: k.name || '',
         kod: k.sku || '-',
+        /* BARKOD (M4): sunucu urunden CANLI okur — gecmis sipariste de gunceldir,
+           goc gerekmez. SKU'dan AYRI alandir; ikisi de dolu olabilir. */
+        barkod: k.barkod || '',
         adet: adet,
         /* Koli künyesi: sipariş fişi "2 koli × 24 = 48" satırını bundan
            basar; taşınmadığında yönetici fişinde koli sütunu boş kalıyordu. */
@@ -1875,6 +1878,9 @@ function siparisNormalle(s) {
         urunId: Number(k.product_id || 0),
         ad: k.name,
         kod: k.sku || '-',
+        /* BARKOD (M4): sunucu urunden CANLI okur — gecmis sipariste de gunceldir,
+           goc gerekmez. SKU'dan AYRI alandir; ikisi de dolu olabilir. */
+        barkod: k.barkod || '',
         adet: adet,
         birim: birim,
         tutar: toplam,
@@ -3054,8 +3060,12 @@ function kalemSatiriHtml(k) {
       '<img src="' + kacis(k.gorsel || YEDEK_GORSEL) + '" alt="" loading="lazy" ' +
            'onerror="this.onerror=null;this.src=\'' + YEDEK_GORSEL + '\'" ' +
            'class="w-12 h-12 rounded-lg object-cover bg-slate-100 dark:bg-slate-700" /></td>' +
-    '<td class="py-2 pr-3 font-bold">' + kacis(k.ad) + '</td>' +
-    '<td class="py-2 pr-3 font-mono text-base text-slate-500 dark:text-slate-400 whitespace-nowrap">' + kacis(k.kod) + '</td>' +
+    /* Ad hucresi ESNEK sutundur ve SARAR: bolunemeyen uzun bir ad (bosluksuz
+       kod benzeri metin) 'whitespace-nowrap' tasiyan dort sayi sutunuyla
+       birlesince tabloyu kabinin disina tasiriyordu. */
+    '<td class="py-2 pr-3 font-bold break-words">' + kacis(k.ad) + '</td>' +
+    '<td class="py-2 pr-3 font-mono text-base text-slate-500 dark:text-slate-400 whitespace-nowrap">' +
+      kacis(k.kod) + (k.barkod ? ' · ' + kacis(k.barkod) : '') + '</td>' +
     '<td class="py-2 pr-3 text-right font-black whitespace-nowrap">' + k.adet + ' adet</td>' +
     '<td class="py-2 pr-3 text-right whitespace-nowrap">' + kacis(para(k.birim)) + '</td>' +
     '<td class="py-2 text-right font-black whitespace-nowrap">' + kacis(para(k.tutar)) + '</td>' +

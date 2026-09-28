@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.5.0** (Faz 16-C).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.6.0** (Faz 16-D).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -1844,6 +1844,29 @@ kapasitesi üçe bölünüyordu.
 
 ---
 
+## 4.23 Faz 16-D (M4) — Ürün künyesi ve sipariş kalem tablosu
+
+Panel **2.6.0** · eklenti **2.23.0** → `../BYOM-REGISTRY.md §5.46`,
+kök `CLAUDE.md §10 Faz 16-D`.
+
+Panel tarafındaki iş küçük; asıl göç eklentide.
+
+| Parça | Yer |
+|---|---|
+| `b2bSiparisNormalle` → `barkod` (sunucunun canlı alanı) | `renderer.js` |
+| Kalem tablosunda `SKU · barkod`; **barkod yoksa ayırıcı basılmaz** | `kalemSatiriHtml` |
+| Ad hücresine `break-words` — uzun ad tabloyu taşırmaz | aynı |
+
+### Bozmaman gereken sözler (Faz 16-D)
+- **Panel kalem adını KATALOGDAN çözmez.** Çözseydi 3 ay önceki bir fatura da
+  bugünkü adı gösterir ve eklentinin **10 günlük penceresi anlamsızlaşırdı**.
+  Ad her zaman sunucunun `name` alanından gelir.
+- Sayı sütunlarının `whitespace-nowrap`'i **korunur** — rakam bölünürse tablo
+  okunaksız olur.
+- Barkod **uydurulmaz**: alan gelmezse boş kalır.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1851,7 +1874,7 @@ kapasitesi üçe bölünüyordu.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**888 test**: panel 369 + kök 519).
+İkisini birden `../scripts/check-all.js` koşar (**896 test**: panel 369 + kök 527).
 
 ```bash
 # Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
@@ -1907,6 +1930,8 @@ node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki ro
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
 node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
+node --test scripts/tests/kunye-tablo.test.js         # 7  — Faz 16-D: uzun ad tabloyu taşırmaz, barkod SKU'dan ayrı
+node --test scripts/tests/php-kunye-gocu.test.js      # 50 iddia — Faz 16-D: ad göçü, paraya dokunmama (PHP)
 node --test scripts/tests/baglam-menusu.test.js       # 11 — Faz 16-C: sağ tık GERÇEKTEN kopyalar (wc.copy çağrılır), üç pencereye de bağlı
 node --test scripts/tests/hesap-birlesme.test.js      # 9  — Faz 16-B: notice iki temada da basılır (success'ten ÖNCE), üç kanal rozeti, etiket yoksa hiç basılmaz
 node --test scripts/tests/php-hesap-eslestirme.test.js # 89 iddia — Faz 16-B: eşleştirme kapısı, rol koruması, kanal rozetleri (PHP)
@@ -1923,7 +1948,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (888 test)
+# Bitirirken: üç katmanın tamamı (896 test)
 node scripts/check-all.js
 ```
 
@@ -2004,7 +2029,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 187 php / 111 js / 888 test
+cd .. && node scripts/check-all.js     # 0 hata / 189 php / 113 js / 896 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.
