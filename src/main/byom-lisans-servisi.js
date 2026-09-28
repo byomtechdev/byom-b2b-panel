@@ -332,7 +332,21 @@ async function aktive(bilgi) {
     license_revoked: 'revoked',
     invalid_hwid: 'invalid_hwid',
     license_not_found: 'not_found',
-    invalid_key_format: 'not_found'
+    invalid_key_format: 'not_found',
+    /*
+     * 🔴 KOLTUK DOLU — BU EŞLEME OLMADAN LİSANS ATLATILIYORDU.
+     *
+     * Hub koltuk dolduğunda `409 { code:'seat_limit_reached', status:'active' }`
+     * döner. Gövdedeki `status` ANA LİSANSIN durumudur ve gerçekten etkindir;
+     * dolan şey koltuktur. Kod eşlemesinde karşılığı yoksa akış `yanitiCoz`a
+     * düşüyor, oradan `active` okunuyor ve UYGULAMA AÇILIYORDU — yani koltuk
+     * sınırı, bir ÜRÜN SINIRI, sessizce delinmiş oluyordu.
+     */
+    seat_limit_reached: 'seat_limit_reached',
+    seat_limit: 'seat_limit_reached',
+    seats_exhausted: 'seat_limit_reached',
+    no_seats_available: 'seat_limit_reached',
+    koltuk_dolu: 'seat_limit_reached'
   };
 
   if (kodEslemesi[kod]) {

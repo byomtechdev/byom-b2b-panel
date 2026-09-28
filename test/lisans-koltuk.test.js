@@ -62,3 +62,95 @@ test('invalid_hwid mesajı DEĞİŞMEDİ (gerçek donanım taşıması hâlâ an
 test('bilinmeyen kod HÂLÂ bilinmiyora düşer (sessiz yutma yok)', () => {
   assert.equal(L.durumAciklamasi('uydurma_kod'), L.durumAciklamasi('bilinmiyor'));
 });
+
+/* ============================================================================
+ *  🔴 AKTİVASYONDA KOLTUK DOLU — LİSANS ATLATMA RİSKİ
+ *
+ *  Hub şartnamesi koltuk dolduğunda aktivasyona şunu döndürüyor:
+ *      HTTP 409  { success:false, code:'seat_limit_reached',
+ *                  error:'...', status:'active' }
+ *
+ *  `aktive()` hata yolunda ÖNCE `code` eşlemesine bakar; orada
+ *  `seat_limit_reached` yoksa gövdedeki `status` okunur — ve o gövdede
+ *  **"active"** yazmaktadır (ana lisans gerçekten etkindir, dolan şey
+ *  koltuktur). Sonuç: panel lisansı GEÇERLİ sayar ve uygulama AÇILIR.
+ *
+ *  Koltuk sayısı bir ÜRÜN SINIRIDIR; bu, ücretsiz ek kurulum demektir.
+ * ==========================================================================*/
+
+const api = require('../src/main/byom-api.js');
+
+/** `istekAt`i tek seferlik yanıtla değiştirir; sonra geri alır. */
+async function sahteYanitla(yanit, is) {
+  const gercek = api.istekAt;
+
+  api.istekAt = async () => yanit;
+
+  try {
+    return await is();
+  } finally {
+    api.istekAt = gercek;
+  }
+}
+
+const KOLTUK_DOLU_YANITI = {
+  ok: false,
+  agSorunu: false,
+  durum: 409,
+  veri: {
+    success: false,
+    code: 'seat_limit_reached',
+    error: 'Bu lisansın tüm koltukları dolu.',
+    /* Şartnamenin birebir gövdesi: ana lisans ETKİN, dolan koltuktur. */
+    status: 'active',
+  },
+  hata: 'Bu lisansın tüm koltukları dolu.',
+};
+
+test('AKTİVASYON: koltuk dolu yanıtı uygulamayı AÇMAZ', async () => {
+  const sonuc = await sahteYanitla(KOLTUK_DOLU_YANITI, () =>
+    L.aktive({ lisansAnahtari: 'BYOMP-4T8N-KV2R-7WQZ', hardwareId: 'hw-123', domain: 'x.com' })
+  );
+
+  assert.equal(sonuc.durum, 'seat_limit_reached', 'durum koltuk doluya çözülmeli');
+  assert.equal(L.acikMi(sonuc.durum), false, 'UYGULAMA AÇILMAMALI');
+  assert.equal(L.kilitliMi(sonuc.durum), true, 'kilit ekranı gösterilmeli');
+});
+
+test('AKTİVASYON: koltuk dolu kararı NET verilir (ağ sorunu sayılmaz)', async () => {
+  const sonuc = await sahteYanitla(KOLTUK_DOLU_YANITI, () =>
+    L.aktive({ lisansAnahtari: 'BYOMP-4T8N-KV2R-7WQZ', hardwareId: 'hw-123' })
+  );
+
+  assert.equal(sonuc.agSorunu, false, 'sunucu yanıt verdi — ağ sorunu DEĞİL');
+  assert.equal(sonuc.ok, true, 'karar nettir');
+  assert.match(String(sonuc.mesaj || ''), /koltuk/i, 'kullanıcıya SEBEP söylenir');
+});
+
+test('AKTİVASYON: gerçek donanım uyuşmazlığı hâlâ invalid_hwid', async () => {
+  const sonuc = await sahteYanitla(
+    {
+      ok: false, agSorunu: false, durum: 409,
+      veri: { success: false, code: 'invalid_hwid', error: 'Başka bilgisayara kayıtlı.', status: 'invalid_hwid' },
+      hata: 'Başka bilgisayara kayıtlı.',
+    },
+    () => L.aktive({ lisansAnahtari: 'K', hardwareId: 'hw-9' })
+  );
+
+  assert.equal(sonuc.durum, 'invalid_hwid');
+});
+
+test('DOĞRULAMA: koltuk dolu gövdesi de uygulamayı açmaz', async () => {
+  /* Hub bunu validate ucunda da döndürebilir (ana lisans etkin, koltuk yok). */
+  const sonuc = await sahteYanitla(
+    {
+      ok: false, agSorunu: false, durum: 409,
+      veri: { success: false, status: 'seat_limit_reached', code: 'seat_limit_reached' },
+      hata: 'koltuk dolu',
+    },
+    () => L.dogrula('BYOMP-4T8N-KV2R-7WQZ', 'hw-123', '2.8.0')
+  );
+
+  assert.equal(sonuc.durum, 'seat_limit_reached');
+  assert.equal(L.acikMi(sonuc.durum), false);
+});
