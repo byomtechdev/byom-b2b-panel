@@ -2129,6 +2129,11 @@ function bayiNormalle(b) {
     il: b.city || '',
     ilce: b.district || '',
     kaynak: b.musteri_kaynagi || '',
+    /* --- KANAL ROZETİ (M2) ---
+       Karar SUNUCUDA verilir (B2B_Hesap_Eslestirme::kanallar); panel yalnızca
+       çizer. Eski eklenti bu alanları GÖNDERMEZ — boş kalır, uydurulmaz. */
+    kanalEtiket: b.kanal_etiket || '',
+    kanal: (b.kanallar && b.kanallar.etiket) || '',
     plasiyerId: Number(b.assigned_plasiyer_id || 0) || 0,
     plasiyerAd: b.plasiyer_ad || b.plasiyerAd || b.assigned_plasiyer_ad || '',
     tarih: b.applied_at || b.registered || '',
@@ -5677,6 +5682,40 @@ function sahaMusterisiMi(u) {
  * Saha künyesi satırı: "İl · Sorumlu Pazarlamacı".
  * Patronun bu sekmedeki iki sorusu: müşteri nerede, kim getirdi.
  */
+/**
+ * Üyenin hangi kanallardan çalıştığı: Sadece Web / Sadece Saha / Hem Web Hem Saha.
+ *
+ * ETİKETİ SUNUCU SÖYLER. Panel kuralı kendi türetseydi eklenti ile ayrışırdı
+ * (bu depoda iki kez canımızı yakmış hata sınıfı). Alan gelmediğinde — eski
+ * eklenti sürümü — rozet HİÇ BASILMAZ; "undefined" yazan bir rozet,
+ * rozetsizlikten kötüdür.
+ *
+ * @param {object} u Normalleştirilmiş üye kaydı.
+ * @returns {string}
+ */
+function kanalRozetiHtml(u) {
+  var etiket = (u && u.kanalEtiket) ? String(u.kanalEtiket) : '';
+
+  if (!etiket) return '';
+
+  var kanal = (u && u.kanal) ? String(u.kanal) : '';
+
+  /* Üç rozet GÖRSEL OLARAK ayrılır: kart listesi gözle taranıyor. */
+  var sinif = 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+  var isaret = 'kure';
+
+  if ('saha' === kanal) {
+    sinif = 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200';
+    isaret = 'kamyon';
+  } else if ('ikisi' === kanal) {
+    sinif = 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200';
+    isaret = 'yildiz';
+  }
+
+  return '<span class="px-2 py-1 rounded-lg font-bold text-base ' + sinif + '" data-kanal="' +
+    kacis(kanal) + '">' + ikon(isaret, 'ik-sm') + ' ' + kacis(etiket) + '</span>';
+}
+
 function sahaKunyesiHtml(u) {
   if (!sahaMusterisiMi(u)) return '';
 
@@ -6191,6 +6230,10 @@ function uyeleriCiz() {
         '<span class="ml-auto shrink-0 px-3 py-1 rounded-lg border-2 text-base font-bold ' + d.sinif + '">' +
           kacis(d.etiket) + '</span>' +
       '</div>' +
+
+      /* Kanal rozeti (M2): Sadece Web / Sadece Saha / Hem Web Hem Saha.
+         Sunucu etiketi göndermezse hiçbir şey basılmaz. */
+      (kanalRozetiHtml(u) ? '<div class="flex flex-wrap gap-2">' + kanalRozetiHtml(u) + '</div>' : '') +
 
       /* Onay bekleyen KURUMSAL BAŞVURULARDA künye farklıdır: karar vermek için
          gereken alanlar (Firma Ünvanı · Vergi Dairesi · Vergi No · İl/İlçe ·

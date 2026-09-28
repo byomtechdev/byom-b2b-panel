@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.3.0** (Faz 16-A).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.4.0** (Faz 16-B).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -1774,6 +1774,30 @@ Satır `data-kuyruk="<yerelKimlik>"` taşır. Künye yoksa `[Yeniden Oluştur]`
 
 ---
 
+## 4.21 Faz 16-B (M2) — Web ↔ Saha hesap birleşmesi: üç rozet
+
+Panel **2.4.0** · eklenti **2.22.0** → `../BYOM-REGISTRY.md §5.44`,
+kök `CLAUDE.md §10 Faz 16-B`.
+
+Panel tarafındaki iş küçük ve tek kurallı: **rozeti sunucu söyler, panel çizer.**
+
+| Parça | Yer |
+|---|---|
+| `bayiNormalle` → `kanalEtiket` (`kanal_etiket`) + `kanal` (`kanallar.etiket`) | `renderer.js` |
+| `kanalRozetiHtml(u)` — üç rozet, üç ayrı renk/ikon (`kure` / `kamyon` / `yildiz`) | `renderer.js`, `sahaKunyesiHtml`in hemen üstünde |
+| Üye kartında rozet satırı | `uyeleriCiz` |
+
+### Bozmaman gereken sözler (Faz 16-B)
+- **Kural panelde TÜRETİLMEZ.** "Sahası var mı, webi var mı" kararını
+  `B2B_Hesap_Eslestirme::kanallar()` verir; panelin kendi türetmesi eklentiyle
+  ayrışırdı (bu depoda iki kez canımızı yakmış hata sınıfı).
+- **Etiket gelmezse rozet HİÇ BASILMAZ.** Eski eklenti sürümü alanı
+  göndermez; "undefined" yazan bir rozet rozetsizlikten kötüdür.
+- Üç rozet **görsel olarak ayrı** kalmalı — kart listesi gözle taranıyor.
+- Etiket **kaçışlanır** (sunucudan gelen metin).
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1781,7 +1805,7 @@ Satır `data-kuyruk="<yerelKimlik>"` taşır. Künye yoksa `[Yeniden Oluştur]`
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**849 test**: panel 353 + kök 496).
+İkisini birden `../scripts/check-all.js` koşar (**859 test**: panel 353 + kök 506).
 
 ```bash
 # Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
@@ -1837,6 +1861,8 @@ node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki ro
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
 node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
+node --test scripts/tests/hesap-birlesme.test.js      # 9  — Faz 16-B: notice iki temada da basılır (success'ten ÖNCE), üç kanal rozeti, etiket yoksa hiç basılmaz
+node --test scripts/tests/php-hesap-eslestirme.test.js # 89 iddia — Faz 16-B: eşleştirme kapısı, rol koruması, kanal rozetleri (PHP)
 node --test scripts/tests/fis-iskonto-zinciri.test.js # 13 — Faz 15: iki fiş motoru aynı rakam, çıkarma listesi KAPANIR, ücret yedeği toplanmaz
 node --test scripts/tests/fis-pencere.test.js         # 4  — Faz 14 (kaynak): fis:whatsapp offscreen+pano, plasiyer:siparis-* kimlik oturumdan, pencere()
 node --test scripts/tests/fis-sayfalayici.dom.test.js # 5  — Faz 14-B/C: sayfalayıcı betiği jsdom'da (offsetHeight taklidi) — 50 kalem 16/22/12 (sırayla dolu), 12 → 9+3, kapanış yalnızca sonda, termalde çalışmaz
@@ -1850,7 +1876,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (849 test)
+# Bitirirken: üç katmanın tamamı (859 test)
 node scripts/check-all.js
 ```
 
@@ -1922,6 +1948,7 @@ if (typeof window !== 'undefined') window.X = X;
 | **`.kapi-kart` düzen ezmeleri (index.html)** | Global `button { display:inline-flex; white-space:nowrap }` kuralını ezer. Biri (özellikle `white-space: normal`) kalkarsa giriş kartlarındaki metin tek satıra sıkışıp taşar (→ §4.11.4) |
 | **`scripts/tests/yardimci/sekme-ac-taklidi.js`** | DOM testlerinin `sekmeAc` taklidi. Üretimdeki `className` ATAMASINI birebir yapar; bu satır kaldırılırsa rol gizlemesi regresyonları yeniden görünmez olur (411 test bir kez böyle kaçırdı) |
 | **«kilitli cihaz ⇒ tanımlı PIN vardır» değişmezi** | `pinSifirla` PIN'i silerken cihaz kilidini DE kaldırır. Kilit bırakılırsa cihaz tuğlaya döner: kilidi açmak PIN ister, PIN yok, yeni PIN kurmak kilidi açmaz (→ §4.12) |
+| **Kanal rozeti kuralı (`kanalRozetiHtml` / `bayiNormalle`)** | Rozet kararı **sunucuda** verilir (`B2B_Hesap_Eslestirme::kanallar`). Panelde "saha mı web mi" türetmek eklentiyle ayrışır; özellikle **"web = saha değil"** kuralı YANLIŞTIR ve ilk yazılışta test yakaladı: web'den açılmış bir bayi plasiyere atandığında rozetinde "Sadece Saha" yazıyordu. Etiket gelmezse rozet **hiç basılmaz** (→ §4.21) |
 | **Köprü künyesi yedeği (`plasiyer-sync-motor.js → kimlikKoprusuKur`)** | `kayit.geciciMusteri = null` satırının yanındaki `satir.musteriKunyesi` yedeği ve `esitlenenMusterileriTemizle`nin ikinci argümanı **kurtarmanın tamamıdır**. İkisinden biri geri alınırsa sahadaki kriz aynen döner: köprüden sonra elde yalnızca bir sayı kalır, o kullanıcı silinince sipariş sonsuza dek kilitlenir ve **hiçbir test kırılmaz** diye düşünülmesin — `plasiyer-sync.test.js` ikisini de kilitler. Yedek **gövdeye** taşınamaz: gövde `/plasiyer/siparis` şemasıdır (→ §4.20.1) |
 | **`byom-yonetici-kilit.js` scrypt parametreleri** | `N=16384, r=8, p=1`. Düşürmenin tek kazancı ölçülemeyecek bir hız, bedeli 6 haneli PIN'e kaba kuvvetin kolaylaşması. Parametreler özetin **içinde** saklanır, yani ileride artırmak sahadaki PIN'leri geçersiz kılmaz |
 
@@ -1930,7 +1957,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 185 php / 107 js / 849 test
+cd .. && node scripts/check-all.js     # 0 hata / 187 php / 109 js / 859 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.
