@@ -77,7 +77,7 @@
   }
 
   /**
-   * Retin türü: 'gecici' | 'kalici' | 'onarim'.
+   * Retin türü: 'gecici' | 'kalici' | 'onarim' | 'yetki'.
    *
    * · 4xx = istek yanlış, tekrar denemek aynı sonucu verir → 'kalici'
    *   (409 HARİÇ: o "önce müşteriyi eşitle" demektir ve sıradaki turda düzelir).
@@ -85,6 +85,7 @@
    * · ONARIM_KODLARI'ndan biri = 'onarim' — sunucu haklı, veri yanlış; insan
    *   hedefi düzeltirse aynı kayıt gider. Tekrar denemek düzeltmez, ama
    *   "kalıcı" damgalamak da kullanıcıyı çaresiz bırakır.
+   * · 401 = 'yetki' — M7. AŞAĞIYA BAK.
    */
   function retTuru(cevap) {
     var durum = Number((cevap && cevap.durum) || 0);
@@ -93,6 +94,18 @@
     if (kod && ONARIM_KODLARI.indexOf(kod) !== -1) return 'onarim';
 
     if (409 === durum) return 'gecici';
+
+    /*
+     * 🔴 401 "İSTEK YANLIŞ" DEĞİLDİR — "ŞU AN KİMLİĞİN YOK" demektir ve
+     * PIN ile yeniden girilince kendiliğinden çözülür.
+     *
+     * Aynı plasiyer ikinci bir makinede giriş yaptığında sunucudaki jeton
+     * yuvası üzerine yazılır ve BİRİNCİ makinenin jetonu düşer. 401'i öteki
+     * 4xx'ler gibi 'kalici' saymak, kullanıcı aynı makinede yeniden giriş
+     * yapsa bile o siparişlerin BİR DAHA HİÇ denenmemesi demekti: sahada
+     * yazılmış gerçek siparişlerin sessiz kaybı.
+     */
+    if (401 === durum) return 'yetki';
 
     return (durum >= 400 && durum < 500) ? 'kalici' : 'gecici';
   }
@@ -125,6 +138,19 @@
      */
     if ('onarim' === tur) {
       kayit.durum = ONARIM_GEREKLI;
+
+      return kayit;
+    }
+
+    /*
+     * YETKİ (401): deneme hakkı YAKILMAZ ve kayıt BEKLİYOR kalır.
+     * Sayaç ilerleseydi kullanıcı oturumu tazelediğinde kayıt çoktan tavana
+     * dayanmış ve 'kalici_hata' olmuş olurdu — yani giriş yapmak bile
+     * kurtarmazdı. Ağa çıkılmaz: ana süreç oturum yokken isteği hiç atmadan
+     * sentetik 401 döner.
+     */
+    if ('yetki' === tur) {
+      kayit.durum = BEKLIYOR;
 
       return kayit;
     }
@@ -674,6 +700,7 @@
     geciciMi: geciciMi,
     retTuru: retTuru,
     kaliciRet: kaliciRet,
+    hataIsle: hataIsle,
     denenebilir: denenebilir,
     bildirilir: bildirilir,
     kayitOnar: kayitOnar,

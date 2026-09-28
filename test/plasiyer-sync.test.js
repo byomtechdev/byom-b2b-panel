@@ -82,10 +82,23 @@ test('geciciMi: temp_musteri_ önekini ayırır', (t) => {
   assert.equal(S.geciciMi('musteri_temp_x'), false, 'onek BASTA olmali');
 });
 
-test('kaliciRet: 4xx kalıcı, 409 ve 5xx geçici', (t) => {
-  [400, 401, 403, 404, 422].forEach((d) => {
+/*
+ * ⚠️ BİLİNÇLİ SÖZ DEĞİŞİKLİĞİ (M7, 2026-09-29): 401 bu listeden ÇIKARILDI.
+ *
+ * Faz 9'da "4xx = kalıcı" kuralı doğruydu; 401 o zaman yalnızca "jeton süresi
+ * doldu" demekti ve kullanıcı zaten giriş yapıyordu. Çoklu makine kullanımıyla
+ * birlikte 401 SIK ve GEÇİCİ bir hâle geldi: aynı plasiyer ikinci makinede
+ * giriş yapınca birincinin jetonu düşüyor. 401'i kalıcı saymak, o makinedeki
+ * bekleyen gerçek siparişleri kullanıcı yeniden giriş yapsa bile sonsuza dek
+ * gönderilemez yapıyordu. Gerekçe: BYOM-REGISTRY.md §5.50.
+ */
+test('kaliciRet: 4xx kalıcı (401 HARİÇ), 409 ve 5xx geçici', (t) => {
+  [400, 403, 404, 422].forEach((d) => {
     assert.equal(S.kaliciRet({ durum: d }), true, d + ' kalici');
   });
+
+  /* 401 = "şu an kimliğin yok" — PIN ile girince çözülür, kayıt beklemeli. */
+  assert.equal(S.kaliciRet({ durum: 401 }), false, '401 KALICI DEGIL (oturum yenilenir)');
 
   /* 409 = "once musteriyi esitle" — siradaki turda duzelebilir. */
   assert.equal(S.kaliciRet({ durum: 409 }), false, '409 GECICI (siradaki tur duzeltir)');
@@ -783,4 +796,65 @@ test('esitle: SAHA SENARYOSU — müşteri silinmişse sipariş onarılabilir ka
 
   assert.equal(ozet2.siparis.gonderilen, 1, 'onarimdan sonra GITTI');
   assert.equal(satir.durum, S.GONDERILDI);
+});
+
+/* ============================================================================
+ *  M7 — ÇOKLU CİHAZ: 401 "kalıcı" DEĞİLDİR
+ *
+ *  Aynı plasiyer ikinci bir makinede PIN ile girdiğinde sunucudaki jeton yuvası
+ *  üzerine yazılır ve BİRİNCİ makinenin jetonu düşer. O makinede bekleyen
+ *  çevrimdışı siparişler 401 alır. 401'i 4xx diye "kalıcı" saymak, kullanıcı
+ *  aynı makinede yeniden giriş yapsa bile o siparişlerin BİR DAHA HİÇ
+ *  denenmemesi demekti — sahada yazılmış gerçek siparişlerin sessiz kaybı.
+ *
+ *  401 ≠ "istek yanlış". 401 = "şu an kimliğin yok" ve PIN ile girince çözülür.
+ * ==========================================================================*/
+
+test('401 KALICI DEĞİL — oturum yenilenince gider', () => {
+  assert.equal(S.retTuru({ durum: 401 }), 'yetki');
+  assert.notEqual(S.retTuru({ durum: 401 }), 'kalici');
+});
+
+test('401 deneme hakkını YAKMAZ', () => {
+  const k = { durum: 'bekliyor', deneme: 0 };
+
+  S.hataIsle(k, { durum: 401, hata: 'Oturum süresi doldu.' });
+  S.hataIsle(k, { durum: 401, hata: 'Oturum süresi doldu.' });
+  S.hataIsle(k, { durum: 401, hata: 'Oturum süresi doldu.' });
+
+  assert.equal(k.deneme, 0, 'sayaç ilerlemedi');
+  assert.notEqual(k.durum, 'kalici_hata', 'kalıcı hataya DÜŞMEDİ');
+  assert.equal(S.denenebilir(k), true, 'yeniden denenebilir kaldı');
+});
+
+test('oturum kapalıyken TAVAN AŞILMAZ — giriş yapınca kayıt hâlâ gider', async () => {
+  /* Kullanıcı bir hafta boyunca kapalı oturumla dolaşsa bile. */
+  const k = { durum: 'bekliyor', deneme: 0 };
+
+  for (let i = 0; i < 20; i += 1) {
+    S.hataIsle(k, { durum: 401 });
+  }
+
+  assert.equal(S.denenebilir(k), true, '20 turdan sonra bile denenebilir');
+});
+
+test('401 mesajı SEBEBİ söyler (kullanıcı ne yapacağını bilsin)', () => {
+  const k = { durum: 'bekliyor', deneme: 0 };
+
+  S.hataIsle(k, { durum: 401, hata: 'Oturum süresi doldu. Tekrar PIN ile giriş yapın.' });
+
+  assert.match(String(k.hata), /oturum/i);
+});
+
+test('403 HÂLÂ kalıcı — o gerçekten "bu kaydı yazamazsın" demektir', () => {
+  assert.equal(S.retTuru({ durum: 403, kod: 'b2b_plasiyer_portfoy_disi' }), 'kalici');
+});
+
+test('400 HÂLÂ kalıcı (sözleşme korundu)', () => {
+  assert.equal(S.retTuru({ durum: 400 }), 'kalici');
+  assert.equal(S.kaliciRet({ durum: 400 }), true);
+});
+
+test('401 kalıcı SAYILMAZ — eski kaliciRet sözleşmesi de öyle der', () => {
+  assert.equal(S.kaliciRet({ durum: 401 }), false);
 });

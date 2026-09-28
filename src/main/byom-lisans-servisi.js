@@ -30,7 +30,7 @@ const api = require('./byom-api');
 const ACIK_DURUMLAR = ['active', 'expiring_soon'];
 
 /** Kilitlenmesi gereken, sunucunun kesin olarak "hayır" dediği durumlar. */
-const KILIT_DURUMLARI = ['expired', 'suspended', 'invalid_hwid', 'not_found', 'revoked', 'inactive', 'cancelled'];
+const KILIT_DURUMLARI = ['expired', 'suspended', 'invalid_hwid', 'seat_limit_reached', 'not_found', 'revoked', 'inactive', 'cancelled'];
 
 /* not_activated ne açar ne kilitler: lisans gerçek ama henüz bu cihaza
    mühürlenmemiş. Doğru davranış aktivasyon ekranını göstermektir. */
@@ -83,6 +83,11 @@ function durumuNormalize(ham, gecerliBayragi) {
     hardware_mismatch: 'invalid_hwid',
     device_mismatch: 'invalid_hwid',
     invalid_hardware_id: 'invalid_hwid',
+    /* Koltuk (alt lisans) tukendi — DONANIM sorunu DEGIL (M7). */
+    seat_limit: 'seat_limit_reached',
+    seats_exhausted: 'seat_limit_reached',
+    no_seats_available: 'seat_limit_reached',
+    koltuk_dolu: 'seat_limit_reached',
     notfound: 'not_found',
     missing: 'not_found',
     invalid: 'not_found',
@@ -174,6 +179,21 @@ const DURUM_ACIKLAMALARI = {
     aciklama: 'Bu lisans anahtarı BAŞKA bir bilgisayara kayıtlı. Bilgisayar değiştirdiyseniz ya da ' +
               'donanımınız yenilendiyse lisansın yeni cihaza taşınması gerekir. ' +
               'Aşağıdaki Donanım Kimliğini bize iletin, taşımayı biz yapalım.'
+  },
+  /*
+   * KOLTUK DOLU — invalid_hwid'den AYRI TUTULUR.
+   *
+   * Ikisi de "bu bilgisayarda acilmiyor" der ama SEBEPLERI ve COZUMLERI
+   * farklidir. invalid_hwid metnini burada da gostermek musteriyi donanim
+   * kimligini gonderip "tasiyin" demeye iter; oysa anahtar dogru, yalnizca
+   * firmanin koltuklari dolmustur. Yanlis teshise yonlendiren mesaj, mesaj
+   * olmamasindan pahalidir (Faz 7 dersi, §5.30).
+   */
+  seat_limit_reached: {
+    baslik: 'Lisans koltuklarınız dolu',
+    aciklama: 'Lisansınız geçerli ancak firmanıza tanımlı tüm koltuklar başka bilgisayarlarda kullanımda. ' +
+              'Kullanılmayan bir bilgisayarın koltuğunu boşaltabilir ya da ek koltuk talep edebilirsiniz. ' +
+              'Hangi bilgisayarların kayıtlı olduğunu size iletebiliriz.'
   },
   not_found: {
     baslik: 'Lisans anahtarı bulunamadı',
