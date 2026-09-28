@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.2.0** (Faz 15).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.3.0** (Faz 16-A).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -190,6 +190,7 @@ listeye **elle** eklemen gerekir.
 | `katalog:` | `main.js` § 3.7 | `katalog:guncelle` (sunucudan eşitle + görsel kuyruğu), `katalog:ara` (**AĞA ÇIKMAZ**, yerel indeks; **Faz 13:** yanıt `toplam` + `ofset` taşır → §4.17.2), `katalog:kategoriler`, `katalog:urun`, `katalog:barkod`, `katalog:durum` |
 | `gorsel:` | `main.js` § 3.7 | `gorsel:onbellege-al` (indirmeyi tetikle), `gorsel:yol` (yerel `file://` ya da uzak adres — **base64 DÖNMEZ**) |
 | `sync:` | `main.js` § 3.8 | `sync:esitle` (kuyruğu boşalt — **sıra: müşteri → köprü → sipariş → not**), `sync:durum` (bekleyen/hatalı sayıları) |
+| `siparis:` / `musteri:` **onarım** | `main.js` § 3.8 | **Faz 16-A:** `siparis:kuyruktan-sil` (kuyruktan düşür; gönderilmiş silinemez), `siparis:kuyrukta-yeniden-bagla` (hedefi değiştir + sayacı sıfırla; **geçici kimliğe bağlanamaz**), `musteri:kunyeden-dirilt` (künye yedeğinden yeni geçici müşteri açar, **aynı ölü kimliğe bağlı bütün** bekleyen sipariş/notu ona taşır; künye yoksa **reddeder**) |
 | `ziyaret:` | `main.js` § 3.8 | `ziyaret:kuyruga` (notu **önce diske** yaz) |
 | `siparis:` / `musteri:` | `main.js` § 3.8 | `siparis:kuyruga`, `musteri:kuyruga` (Faz 9: kuyruğa ekleme ana süreçte, oku-değiştir-yaz yarışı yok), **`musteri:esitle-tek`** (Faz 10: çevrimiçiyken tek müşteriyi hemen `POST /plasiyer/musteri-esitle`; başarıda `senkron/gercekId` işaretlenir, kayıt bir sonraki turda köprülenir/temizlenir), **`musteri:kuyruktan-sil`** (Faz 11: yalnızca `temp_musteri_` + eşitlenmemiş kayıt; bekleyen sipariş/not varsa RET), **`musteri:kuyrukta-guncelle`** (Faz 13: ÇEVRİMDIŞI kaydı cihazda düzenler — kimlik `GECICI_ONEK` ile başlamalı ve kayıt eşitlenmemiş olmalı; **beyaz listeli alanlar**, `id`/`gecici`/`senkron`/`gercekId` gövdeden ALINMAZ, mevcut kayıttan geri yazılır), **`musteri:guncelle`** (Faz 13: sunucudaki bayi → `POST /plasiyer/musteri-guncelle`; `plasiyerId`/`token` ana süreç belleğinden EZİLİR) |
 
@@ -1714,6 +1715,65 @@ ezmesi, onay özetindeki iskonto satırları, KDV döküm tablosu.
 
 ---
 
+## 4.20 Faz 16-A (M1) — Çevrimdışı kuyruk kurtarma
+
+Panel **2.3.0** · eklenti 2.21.0 **değişmedi** → `../BYOM-REGISTRY.md §5.43`,
+kök `CLAUDE.md §10 Faz 16-A`.
+
+### 4.20.1 🔴 Kuyruk onarılamaz hâle gelmişti — OKUMADAN DEĞİŞTİRME
+
+Sahada çevrimdışı açılan müşteri sunucuda silinip yeniden açılınca (42 → 44)
+köprülenmiş siparişler `404 Müşteri bulunamadı` aldı ve **kalıcı** damgalandı.
+Kuyruk şeridi onları "KİLİTLİ" gösteriyordu ama **yapacak bir şey sunmuyordu**;
+`ayarlar.json` elle temizlendi.
+
+Kök sebep 404 değil, **onarılamaz olmasıydı**. Köprü kurulurken kurtarma
+verisinin ikisi birden yok ediliyordu:
+
+```
+plasiyer-sync-motor.js   kayit.geciciMusteri = null;   // "sunucuda artık var"
+                         esitlenenMusterileriTemizle   // senkron müşteri listeden DÜŞER
+```
+
+**Bu iki satırı eski hâline döndürmek krizi geri getirir.** Künye artık
+`satir.musteriKunyesi` olarak yaşar ve temizleyici kuyruğu bilir.
+
+### 4.20.2 Dördüncü durum ve üç kanal
+
+| Ne | Kural |
+|---|---|
+| `ONARIM_GEREKLI = 'onarim_gerekli'` | Otomatik tur **dokunmaz** (`denenebilir` false); şerit düğme basar |
+| `retTuru(cevap)` → `gecici`/`kalici`/`onarim` | Ayrım **KOD** ile (`ONARIM_KODLARI`). Kodsuz 404 hâlâ kalıcı — çözülemeyecek bir düğme gösterme |
+| `hataIsle` onarımda **sayaç yakmaz** | Yoksa kullanıcı onardığında kayıt zaten tavana dayanmış olurdu |
+| `kayitOnar(kayit)` | `bekliyor` + sayaç 0 + hata temizle; **gönderilmişe dokunmaz** (mükerrer sipariş) |
+| `kaliciRet` | `retTuru`ya **devreder** — Faz 9'dan beri kilitli boolean söz korunur |
+| `siparis:kuyruktan-sil` | Gönderilmiş silinemez; **kimliksiz istek bütün kuyruğu silmez**; reddedilen istek **diske yazmaz** |
+| `siparis:kuyrukta-yeniden-bagla` | Hedef **GEÇİCİ olamaz** (sipariş "müşteri henüz eşitlenmedi" halkasına girerdi); `≤0` reddedilir |
+| `musteri:kunyeden-dirilt` | Künye yoksa **reddeder**; **aynı ölü kimliğe bağlı bütün** bekleyen sipariş/not taşınır; ölü `gercekId` **taşınmaz** (yoksa eşitleme köprüyü yine silinmiş kullanıcıya kurardı) |
+| `sync:durum` | `onarim` ayrı sayılır **ve** `hatali`ya dâhildir — saymasak oto-eşitleme dakikada bir boşa istek atardı |
+
+### 4.20.3 Şerit
+
+```
+onarim_gerekli →  [🔄 Müşteriyi Yeniden Oluştur]  [select ▾] [🔗 Bu Müşteriye Bağla]  [🗑️ Siparişi Sil]
+kalici_hata    →  [⟳ Tekrar Dene]                                                     [🗑️ Siparişi Sil]
+bekliyor       →  (hiçbiri)
+```
+
+Satır `data-kuyruk="<yerelKimlik>"` taşır. Künye yoksa `[Yeniden Oluştur]`
+**basılmaz**. Hedef listesinde **yalnızca sunucudaki bayiler** olur. Silme
+**onay ister** ve müşteri · kalem · tutarı söyler.
+
+### Bozmaman gereken sözler (Faz 16-A)
+- Künye **satırda** yedeklenir, **gövdede değil** — gövde sunucu şemasıdır.
+- `esitlenenMusterileriTemizle` ikinci argümanı **isteğe bağlı** kalmalı.
+- Durum metni şeritte **sabit yazılmaz**, `Sync.ONARIM_GEREKLI` okunur.
+- Onarım kanalları kimliği **gövdeden** alır ama yalnızca `yerelKimlik`;
+  kuyruk mutasyonu **ana süreçtedir**.
+- Künyesi olmayan eski kayıt için dirilt düğmesi **görünmez**.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1721,7 +1781,7 @@ ezmesi, onay özetindeki iskonto satırları, KDV döküm tablosu.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**806 test**: panel 324 + kök 482).
+İkisini birden `../scripts/check-all.js` koşar (**849 test**: panel 353 + kök 496).
 
 ```bash
 # Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
@@ -1737,6 +1797,8 @@ node --test test/harita-notlar.test.js      # 46 — 81 il kutugu, TR il kodlari
                                             #      harita-yollar.js (81 gercek sinir, Natural Earth)
 node --test test/cihaz-kilidi.test.js       # 52 — Master PIN hash/kilit, cihaz tahsisi, PIN SIFIRLAMA, KAYNAK denetimi
 node --test test/rest-adres.test.js         # 13 — restYoluKur, tabanAdresiTemizle, sorgu korunmasi
+node --test test/kuyruk-onarim.test.js      # 15 — Faz 16-A: uc onarim IPC kanali (sil / yeniden bagla / kunyeden dirilt),
+                                            #      sync:durum onarim sayaci; handler govdeleri main.js KAYNAGINDAN cikarilip kosturulur
 node --test test/siparis-fisi.test.js       # 41 — kurumsal fis motoru: normalle (3 kaynak), A4/termal HTML, WhatsApp metni,
                                             #      Faz 14: sayfalaraBol, ozetBlogu (6 sabit satir), fisOzeti, pencere/aracCubugu
 node --test --test-name-pattern="AbortSignal" test/telemetri.test.js
@@ -1774,6 +1836,7 @@ node --test scripts/tests/yonetici-arayuz.dom.test.js # 18 — Faz 11-13: sipari
 node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki rol iki harita, renk/il formu, saha kısayolları, bayi profili kapısı
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
+node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
 node --test scripts/tests/fis-iskonto-zinciri.test.js # 13 — Faz 15: iki fiş motoru aynı rakam, çıkarma listesi KAPANIR, ücret yedeği toplanmaz
 node --test scripts/tests/fis-pencere.test.js         # 4  — Faz 14 (kaynak): fis:whatsapp offscreen+pano, plasiyer:siparis-* kimlik oturumdan, pencere()
 node --test scripts/tests/fis-sayfalayici.dom.test.js # 5  — Faz 14-B/C: sayfalayıcı betiği jsdom'da (offsetHeight taklidi) — 50 kalem 16/22/12 (sırayla dolu), 12 → 9+3, kapanış yalnızca sonda, termalde çalışmaz
@@ -1787,7 +1850,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (806 test)
+# Bitirirken: üç katmanın tamamı (849 test)
 node scripts/check-all.js
 ```
 
@@ -1859,6 +1922,7 @@ if (typeof window !== 'undefined') window.X = X;
 | **`.kapi-kart` düzen ezmeleri (index.html)** | Global `button { display:inline-flex; white-space:nowrap }` kuralını ezer. Biri (özellikle `white-space: normal`) kalkarsa giriş kartlarındaki metin tek satıra sıkışıp taşar (→ §4.11.4) |
 | **`scripts/tests/yardimci/sekme-ac-taklidi.js`** | DOM testlerinin `sekmeAc` taklidi. Üretimdeki `className` ATAMASINI birebir yapar; bu satır kaldırılırsa rol gizlemesi regresyonları yeniden görünmez olur (411 test bir kez böyle kaçırdı) |
 | **«kilitli cihaz ⇒ tanımlı PIN vardır» değişmezi** | `pinSifirla` PIN'i silerken cihaz kilidini DE kaldırır. Kilit bırakılırsa cihaz tuğlaya döner: kilidi açmak PIN ister, PIN yok, yeni PIN kurmak kilidi açmaz (→ §4.12) |
+| **Köprü künyesi yedeği (`plasiyer-sync-motor.js → kimlikKoprusuKur`)** | `kayit.geciciMusteri = null` satırının yanındaki `satir.musteriKunyesi` yedeği ve `esitlenenMusterileriTemizle`nin ikinci argümanı **kurtarmanın tamamıdır**. İkisinden biri geri alınırsa sahadaki kriz aynen döner: köprüden sonra elde yalnızca bir sayı kalır, o kullanıcı silinince sipariş sonsuza dek kilitlenir ve **hiçbir test kırılmaz** diye düşünülmesin — `plasiyer-sync.test.js` ikisini de kilitler. Yedek **gövdeye** taşınamaz: gövde `/plasiyer/siparis` şemasıdır (→ §4.20.1) |
 | **`byom-yonetici-kilit.js` scrypt parametreleri** | `N=16384, r=8, p=1`. Düşürmenin tek kazancı ölçülemeyecek bir hız, bedeli 6 haneli PIN'e kaba kuvvetin kolaylaşması. Parametreler özetin **içinde** saklanır, yani ileride artırmak sahadaki PIN'leri geçersiz kılmaz |
 
 ---
@@ -1866,7 +1930,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 185 php / 105 js / 806 test
+cd .. && node scripts/check-all.js     # 0 hata / 185 php / 107 js / 849 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

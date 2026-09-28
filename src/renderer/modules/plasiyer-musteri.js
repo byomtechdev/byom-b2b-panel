@@ -1458,8 +1458,23 @@
    *  KENDİ SİPARİŞLERİM — ÇEVRİMDIŞI KUYRUK ŞERİDİ (Faz 9)
    * ------------------------------------------------------------------ */
 
-  function kuyrukMusteriAdi(kayit) {
-    if (!kayit) return '—';
+  /**
+   * Kuyruk satırının müşteri adı.
+   *
+   * SIRA ÖNEMLİ — künye yedeği (M1) en önce: köprü kurulduktan sonra
+   * `kayit.geciciMusteri` `null`'lanır ve müşteri sunucuda silinmişse
+   * `musteriBul` da bulamaz. Yedek olmasaydı plasiyer ekranda "Müşteri #42"
+   * görür ve hangi siparişi onardığını bilemezdi.
+   *
+   * @param {object} satir Kuyruk satırı (kayıt DEĞİL — yedek satırda durur).
+   * @returns {string}
+   */
+  function kuyrukMusteriAdi(satir) {
+    if (!satir) return '—';
+
+    var kayit = satir.kayit || satir;   // eski çağrı biçimi (doğrudan kayıt) da çalışsın
+
+    if (satir.musteriKunyesi && satir.musteriKunyesi.unvan) return satir.musteriKunyesi.unvan;
     if (kayit.geciciMusteri && kayit.geciciMusteri.unvan) return kayit.geciciMusteri.unvan;
 
     var m = musteriBul(kayit.musteriId);
@@ -1475,12 +1490,223 @@
     } catch (e) { return ''; }
   }
 
+  /* ------------------------------------------------------------------ *
+   *  KUYRUK ONARIMI (M1)
+   *  ---------------------------------------------------------------------
+   *  Sahada çevrimdışı açılan müşteri sunucuda silinip yeniden açılınca
+   *  (42 → 44) köprülenmiş siparişler `404 Müşteri bulunamadı` aldı ve şerit
+   *  onları "KİLİTLİ" diye gösterdi — ama YAPACAK BİR ŞEY SUNMADI. Tek çıkış
+   *  `ayarlar.json`'u elle düzenlemekti.
+   *
+   *  Üç eylem, hepsi ana süreçte (kuyruk mutasyonu eşitleme turuyla yarışır):
+   *    · Müşteriyi Yeniden Oluştur — künye yedeğinden yeni geçici müşteri
+   *    · Başka Müşteriye Bağla     — portföydeki GERÇEK bayiye taşı
+   *    · Siparişi Sil              — onayla
+   * ------------------------------------------------------------------ */
+
+  /** Motorun durum sabitleri — metin SABİT YAZILMAZ, tek kaynak motordur. */
+  function S() {
+    return window.PlasiyerSyncMotor;
+  }
+
+  function onarimBekliyorMu(satir) {
+    var Sync = S();
+
+    return !!Sync && Sync.ONARIM_GEREKLI === (satir && satir.durum);
+  }
+
+  function kaliciHataliMi(satir) {
+    var Sync = S();
+
+    return !!Sync && Sync.KALICI_HATA === (satir && satir.durum);
+  }
+
+  /**
+   * Hedef seçici — YALNIZCA sunucudaki bayiler.
+   *
+   * Geçici müşteriye bağlamak siparişi "müşteri henüz eşitlenmedi" halkasına
+   * sokardı (sync motoru onu göndermez, kullanıcı yine kilitli sanır).
+   */
+  function hedefSeciciHtml() {
+    var secenekler = (durumM.musteriler || [])
+      .filter(function (m) { return m && !M().geciciMi(m.id) && Number(m.id) > 0; })
+      .map(function (m) {
+        return '<option value="' + kacis(m.id) + '">' + kacis(m.unvan || ('#' + m.id)) + '</option>';
+      })
+      .join('');
+
+    return '<select class="kuyruk-hedef px-2 py-1 rounded-lg border-2 border-slate-300 dark:border-slate-600 dark:bg-slate-900 text-sm font-semibold">' +
+      '<option value="">Müşteri seçin…</option>' + secenekler +
+      '</select>';
+  }
+
+  /** Bir kuyruk satırının işaretlemesi. */
+  function kuyrukSatiriHtml(satir) {
+    var onarim = onarimBekliyorMu(satir);
+    var kalici = kaliciHataliMi(satir);
+    var sorunlu = onarim || kalici;
+    var t = (satir.kayit && satir.kayit.toplamlar) || {};
+    var kalem = (satir.kayit.kalemler || []).length;
+
+    var rozet = onarim ? 'ONARIM GEREKLİ' : (kalici ? 'KİLİTLİ' : 'BEKLİYOR');
+    var rozetSinif = onarim
+      ? 'bg-orange-500 text-white'
+      : (kalici ? 'bg-red-600 text-white' : 'bg-amber-400 text-amber-950');
+    var zemin = sorunlu ? 'bg-red-50 dark:bg-red-950/30' : 'bg-amber-50 dark:bg-amber-950/30';
+
+    var eylemler = '';
+
+    if (onarim) {
+      /* Künye yedeği YOKSA düğme hiç basılmaz: 2.2.0 öncesi köprülenen
+         kayıtlarda yedek yoktur ve boş bir müşteri açmak isimsiz cari üretirdi
+         (Faz 11'in "çalışan/çalışmayan ayar" reddiyle aynı ilke). */
+      var dirilt = (satir.musteriKunyesi && satir.musteriKunyesi.unvan)
+        ? '<button type="button" class="kuyruk-dirilt px-3 py-1.5 rounded-lg bg-marka-700 text-white text-xs font-extrabold hover:bg-marka-600 transition">🔄 Müşteriyi Yeniden Oluştur</button>'
+        : '';
+
+      eylemler =
+        '<div class="w-full flex items-center gap-2 flex-wrap pt-2 mt-1 border-t border-red-200 dark:border-red-900">' +
+          dirilt +
+          hedefSeciciHtml() +
+          '<button type="button" class="kuyruk-bagla px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-extrabold hover:bg-slate-600 transition">🔗 Bu Müşteriye Bağla</button>' +
+          '<button type="button" class="kuyruk-sil ml-auto px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-extrabold hover:bg-red-500 transition">🗑️ Siparişi Sil</button>' +
+        '</div>';
+    } else if (kalici) {
+      eylemler =
+        '<div class="w-full flex items-center gap-2 flex-wrap pt-2 mt-1 border-t border-red-200 dark:border-red-900">' +
+          '<button type="button" class="kuyruk-tekrar px-3 py-1.5 rounded-lg bg-marka-700 text-white text-xs font-extrabold hover:bg-marka-600 transition">⟳ Tekrar Dene</button>' +
+          '<button type="button" class="kuyruk-sil ml-auto px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-extrabold hover:bg-red-500 transition">🗑️ Siparişi Sil</button>' +
+        '</div>';
+    }
+
+    return '<div data-kuyruk="' + kacis(satir.kayit.yerelKimlik || '') + '" class="flex items-start gap-3 flex-wrap px-3 py-2 rounded-xl ' + zemin + '">' +
+      '<div class="min-w-0 flex-1">' +
+        '<div class="font-bold">' + kacis(kuyrukMusteriAdi(satir)) +
+          ' <span class="text-xs font-semibold text-slate-500">' + kacis(zamanYaz(satir.zaman)) + '</span></div>' +
+        '<div class="text-sm text-slate-600 dark:text-slate-300">' +
+          kalem + ' kalem · net ' + kacis(paraYaz(t.genelToplam || 0)) +
+          ' · ' + kacis(M().ODEME_ETIKET[satir.kayit.odeme] || satir.kayit.odeme || '') +
+        '</div>' +
+        (satir.hata ? '<div class="text-xs font-semibold ' + (sorunlu ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300') + '">' + (sorunlu ? '⛔ ' : '⏳ ') + kacis(satir.hata) + '</div>' : '') +
+      '</div>' +
+      '<span class="px-2 py-1 rounded-lg text-xs font-black ' + rozetSinif + '">' + rozet + '</span>' +
+      eylemler +
+    '</div>';
+  }
+
+  /** Şeritten sonra çizilir; satır bulunamazsa sessizce döner. */
+  async function onarimIstegi(kanal, yuk, basariMesaji) {
+    var cevap;
+
+    try {
+      cevap = await ipcRenderer.invoke(kanal, yuk);
+    } catch (e) {
+      cevap = { ok: false, hata: (e && e.message) || 'İşlem tamamlanamadı.' };
+    }
+
+    if (!cevap || !cevap.ok) {
+      bildir((cevap && cevap.hata) || 'İşlem tamamlanamadı.', 'hata');
+      return null;
+    }
+
+    if (basariMesaji) bildir(basariMesaji(cevap), 'ok');
+
+    await kuyrukSeridiniCiz();
+
+    return cevap;
+  }
+
+  /** Onarım düğmelerini şerit kabına bağlar (her çizimde yeniden). */
+  function onarimOlaylariniBagla(kap) {
+    kap.querySelectorAll('[data-kuyruk]').forEach(function (sat) {
+      var yerel = sat.getAttribute('data-kuyruk');
+
+      var dirilt = sat.querySelector('.kuyruk-dirilt');
+      var bagla = sat.querySelector('.kuyruk-bagla');
+      var tekrar = sat.querySelector('.kuyruk-tekrar');
+      var sil = sat.querySelector('.kuyruk-sil');
+
+      if (dirilt) {
+        dirilt.addEventListener('click', function () {
+          onarimIstegi('musteri:kunyeden-dirilt', { yerelKimlik: yerel }, function (c) {
+            return '“' + (c.unvan || 'Müşteri') + '” yeniden oluşturuldu; ' +
+              (Number(c.siparis) || 0) + ' sipariş ona bağlandı. Eşitlemede merkeze gidecek.';
+          });
+        });
+      }
+
+      if (bagla) {
+        bagla.addEventListener('click', function () {
+          var sec = sat.querySelector('.kuyruk-hedef');
+          var hedef = sec ? String(sec.value || '') : '';
+
+          if (!hedef) {
+            bildir('Önce siparişin bağlanacağı müşteriyi seçin.', 'hata');
+            return;
+          }
+
+          onarimIstegi('siparis:kuyrukta-yeniden-bagla', { yerelKimlik: yerel, musteriId: Number(hedef) }, function () {
+            return 'Sipariş yeni müşteriye bağlandı; eşitlemede merkeze gidecek.';
+          });
+        });
+      }
+
+      if (tekrar) {
+        tekrar.addEventListener('click', function () {
+          /* Hedef DEĞİŞMEZ; amaç yalnızca deneme sayacını sıfırlayıp kaydı
+             yeniden kuyruğa almaktır (aynı kanal, mevcut kimlikle). */
+          var satirVerisi = sonKuyruk.filter(function (x) {
+            return x && x.kayit && String(x.kayit.yerelKimlik) === String(yerel);
+          })[0];
+
+          var hedef = satirVerisi ? Number(satirVerisi.kayit.musteriId) : 0;
+
+          if (!hedef) {
+            bildir('Bu kaydın hedefi çözülemedi; müşteriyi seçip bağlayın.', 'hata');
+            return;
+          }
+
+          onarimIstegi('siparis:kuyrukta-yeniden-bagla', { yerelKimlik: yerel, musteriId: hedef }, function () {
+            return 'Sipariş yeniden kuyruğa alındı.';
+          });
+        });
+      }
+
+      if (sil) {
+        sil.addEventListener('click', async function () {
+          var satirVerisi = sonKuyruk.filter(function (x) {
+            return x && x.kayit && String(x.kayit.yerelKimlik) === String(yerel);
+          })[0];
+
+          var kalem = satirVerisi ? (satirVerisi.kayit.kalemler || []).length : 0;
+          var tutar = satirVerisi ? ((satirVerisi.kayit.toplamlar || {}).genelToplam || 0) : 0;
+
+          /* Ne kaybedileceği AÇIKÇA söylenir — silme geri alınamaz. */
+          var onay = await onayla(
+            'Bu sipariş kuyruktan SİLİNECEK ve merkeze hiç gitmeyecek.\n\n' +
+            kuyrukMusteriAdi(satirVerisi) + ' · ' + kalem + ' kalem · ' + paraYaz(tutar) + '\n\n' +
+            'Bu işlem geri alınamaz. Silinsin mi?'
+          );
+
+          if (!onay) return;
+
+          onarimIstegi('siparis:kuyruktan-sil', { yerelKimlik: yerel }, function () {
+            return 'Sipariş kuyruktan silindi.';
+          });
+        });
+      }
+    });
+  }
+
+  /** Şeridin son okuduğu kuyruk — onarım düğmeleri künyeyi buradan okur. */
+  var sonKuyruk = [];
+
   /**
    * Bekleyen / hatalı siparişleri Kendi Siparişlerim'in tepesine yazar.
    *
    * Kaynak `ayarlar.json → plasiyerSiparisKuyrugu`; gönderilenler zaten
-   * düşmüş olur (main.js § 3.8). Kalıcı hatalı kayıt SEBEBİYLE görünür —
-   * sahadaki plasiyer "gitti sandım" demesin.
+   * düşmüş olur (main.js § 3.8). Kalıcı hatalı ve ONARIM BEKLEYEN kayıt
+   * SEBEBİYLE görünür — sahadaki plasiyer "gitti sandım" demesin.
    */
   async function kuyrukSeridiniCiz() {
     var kap = el('plasiyerKuyrukKab');
@@ -1502,6 +1728,8 @@
     var Sync = window.PlasiyerSyncMotor;
     var bekleyen = kuyruk.filter(function (k) { return k && k.kayit && (!Sync || Sync.GONDERILDI !== k.durum); });
 
+    sonKuyruk = bekleyen;
+
     if (!bekleyen.length) {
       kap.innerHTML =
         '<div class="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-50 text-emerald-800 border-2 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900 font-bold">' +
@@ -1510,7 +1738,7 @@
       return;
     }
 
-    var hatali = bekleyen.filter(function (k) { return Sync && Sync.KALICI_HATA === k.durum; }).length;
+    var hatali = bekleyen.filter(function (k) { return Sync && Sync.bildirilir(k); }).length;
 
     kap.innerHTML =
       '<div class="rounded-2xl border-2 ' + (hatali ? 'border-red-300 dark:border-red-800' : 'border-amber-300 dark:border-amber-700') + ' bg-white dark:bg-slate-800 p-4">' +
@@ -1520,26 +1748,11 @@
           '<button type="button" id="kuyrukEsitle" class="ml-auto px-4 py-2 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600 transition">⟳ Şimdi Eşitle</button>' +
         '</div>' +
         '<div class="flex flex-col gap-2">' +
-          bekleyen.map(function (k) {
-            var kalici = Sync && Sync.KALICI_HATA === k.durum;
-            var t = (k.kayit && k.kayit.toplamlar) || {};
-
-            return '<div class="flex items-start gap-3 flex-wrap px-3 py-2 rounded-xl ' + (kalici ? 'bg-red-50 dark:bg-red-950/30' : 'bg-amber-50 dark:bg-amber-950/30') + '">' +
-              '<div class="min-w-0 flex-1">' +
-                '<div class="font-bold">' + kacis(kuyrukMusteriAdi(k.kayit)) +
-                  ' <span class="text-xs font-semibold text-slate-500">' + kacis(zamanYaz(k.zaman)) + '</span></div>' +
-                '<div class="text-sm text-slate-600 dark:text-slate-300">' +
-                  ((k.kayit.kalemler || []).length) + ' kalem · net ' + kacis(paraYaz(t.genelToplam || 0)) +
-                  ' · ' + kacis(M().ODEME_ETIKET[k.kayit.odeme] || k.kayit.odeme || '') +
-                '</div>' +
-                (k.hata ? '<div class="text-xs font-semibold ' + (kalici ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300') + '">' + (kalici ? '⛔ ' : '⏳ ') + kacis(k.hata) + '</div>' : '') +
-              '</div>' +
-              '<span class="px-2 py-1 rounded-lg text-xs font-black ' + (kalici ? 'bg-red-600 text-white' : 'bg-amber-400 text-amber-950') + '">' +
-                (kalici ? 'KİLİTLİ' : 'BEKLİYOR') + '</span>' +
-            '</div>';
-          }).join('') +
+          bekleyen.map(kuyrukSatiriHtml).join('') +
         '</div>' +
       '</div>';
+
+    onarimOlaylariniBagla(kap);
 
     var dugme = el('kuyrukEsitle');
 

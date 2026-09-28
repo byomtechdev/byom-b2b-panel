@@ -554,3 +554,233 @@ test('esitle: notlar da kopruden gecer — musteri esitlenince not gercek kimlik
   assert.deepEqual(gidenNotlar, [501], 'not GERCEK kimlikle gitti (0 degil)');
   assert.equal(notlar[0].durum, S.GONDERILDI);
 });
+
+/* =========================================================================
+ * 8. ONARIM — SİLİNMİŞ MÜŞTERİ VE KİLİTLİ KUYRUK (M1)
+ * -------------------------------------------------------------------------
+ *  Sahada yaşanan kriz: plasiyer çevrimdışı müşteri açtı, 2 sipariş yazdı;
+ *  müşteri sunucuda silinip yeniden açılınca (42 → 44) köprülenmiş siparişler
+ *  "404 Müşteri bulunamadı" aldı. 404 kalıcı sayıldığı için kayıtlar
+ *  `kalici_hata`ya düştü, `esitlemeGerekliMi` bir daha ağa çıkmadı ve
+ *  onaracak hiçbir yol olmadığı için `ayarlar.json` elle temizlendi.
+ *
+ *  Kökü İKİ veri yok etmesiydi:
+ *   · köprü kurulurken `kayit.geciciMusteri = null` (künye siliniyordu)
+ *   · `esitlenenMusterileriTemizle` senkron müşteriyi listeden düşürüyordu
+ *  Köprüden sonra elde yalnızca bir sayı kalıyordu; o sayı ölünce kurtarma
+ *  verisi de ölüyordu.
+ * ====================================================================== */
+
+/** Müşterisi silinmiş sipariş yanıtı — sunucunun GERÇEK kodu. */
+function musteriSilinmis() {
+  return async function () {
+    return { ok: false, durum: 404, kod: 'b2b_plasiyer_musteri_yok', hata: 'Müşteri bulunamadı.' };
+  };
+}
+
+test('retTuru: müşterisi silinmiş sipariş KALICI DEĞİL, ONARIM ister', (t) => {
+  assert.equal(S.retTuru({ durum: 404, kod: 'b2b_plasiyer_musteri_yok' }), 'onarim');
+
+  /*
+   * KOD OLMADAN 404 hala KALICI: "bilmedigim bir 404" icin onarim kapisi
+   * acmak, kullaniciya cozemeyecegi bir dugme gostermek olurdu.
+   */
+  assert.equal(S.retTuru({ durum: 404 }), 'kalici', 'kodsuz 404 kalici KALIR');
+  assert.equal(S.retTuru({ durum: 400, kod: 'b2b_plasiyer_bos_siparis' }), 'kalici');
+  assert.equal(S.retTuru({ durum: 409 }), 'gecici', '409 = once musteriyi esitle');
+  assert.equal(S.retTuru({ durum: 0 }), 'gecici', 'ag hatasi');
+  assert.equal(S.retTuru({ durum: 503 }), 'gecici');
+  assert.equal(S.retTuru(null), 'gecici');
+});
+
+test('kaliciRet: onarılabilir ret KALICI SAYILMAZ (eski sözleşme korunur)', (t) => {
+  assert.equal(S.kaliciRet({ durum: 404, kod: 'b2b_plasiyer_musteri_yok' }), false);
+
+  /* Faz 9'dan beri kilitli olan söz aynen duruyor. */
+  assert.equal(S.kaliciRet({ durum: 404 }), true);
+  assert.equal(S.kaliciRet({ durum: 403 }), true);
+});
+
+test('denenebilir: onarım bekleyen kayıt OTOMATİK turda denenmez', (t) => {
+  assert.equal(S.denenebilir({ durum: S.ONARIM_GEREKLI, deneme: 0 }), false);
+});
+
+test('siparisleriGonder: müşterisi silinmiş sipariş ONARIM_GEREKLI olur, sayaç YANMAZ', async (t) => {
+  const kuyruk = [siparis(42)];
+
+  const ozet = await S.siparisleriGonder(kuyruk, musteriSilinmis());
+
+  assert.equal(kuyruk[0].durum, S.ONARIM_GEREKLI, 'kalici_hata DEGIL');
+  assert.equal(kuyruk[0].deneme || 0, 0, 'insan karari bekleyen kayit deneme hakki YAKMAZ');
+  assert.match(kuyruk[0].hata, /Müşteri bulunamadı/);
+  assert.equal(ozet.gonderilen, 0);
+  assert.equal(ozet.kalan, 1);
+  assert.equal(ozet.hatalar.length, 1, 'kullaniciya sebebiyle bildirilir');
+  assert.equal(ozet.hatalar[0].onarim, true, 'onarilabilir oldugu isaretlenir');
+});
+
+test('siparisleriGonder: onarım bekleyen kayıt İKİNCİ turda tekrar denenmez', async (t) => {
+  const kuyruk = [siparis(42)];
+  let cagri = 0;
+
+  const gonder = async function () {
+    cagri++;
+    return { ok: false, durum: 404, kod: 'b2b_plasiyer_musteri_yok', hata: 'Müşteri bulunamadı.' };
+  };
+
+  await S.siparisleriGonder(kuyruk, gonder);
+  await S.siparisleriGonder(kuyruk, gonder);
+
+  assert.equal(cagri, 1, 'ikinci turda AGA HIC CIKILMADI');
+});
+
+test('kayitOnar: onarılan kayıt BEKLİYOR durumuna döner ve deneme sayacı SIFIRLANIR', (t) => {
+  const k = { durum: S.ONARIM_GEREKLI, deneme: 3, hata: 'Müşteri bulunamadı.' };
+
+  assert.equal(S.kayitOnar(k), true);
+  assert.equal(k.durum, S.BEKLIYOR);
+  assert.equal(k.deneme, 0, 'sayac sifirlanmazsa iki denemede yine kilitlenirdi');
+  assert.equal(k.hata, '');
+
+  /* Kalici hatali kayit da elle tekrar denenebilir. */
+  const kh = { durum: S.KALICI_HATA, deneme: S.EN_COK_DENEME, hata: 'HTTP 400' };
+  assert.equal(S.kayitOnar(kh), true);
+  assert.equal(kh.durum, S.BEKLIYOR);
+  assert.equal(kh.deneme, 0);
+});
+
+test('kayitOnar: GÖNDERİLMİŞ kayda dokunmaz', (t) => {
+  const k = { durum: S.GONDERILDI, deneme: 0, siparisId: 900 };
+
+  assert.equal(S.kayitOnar(k), false, 'gonderilmis siparis yeniden gonderilirse MUKERRER olur');
+  assert.equal(k.durum, S.GONDERILDI);
+  assert.equal(S.kayitOnar(null), false);
+});
+
+test('kimlikKoprusuKur: müşteri künyesi YEDEKLENİR (kurtarma verisi yok edilmez)', (t) => {
+  const g = S.GECICI_ONEK + 'yyy';
+  const satir = siparis(g);
+
+  satir.kayit.geciciMusteri = { id: g, unvan: 'Ahmetler Ticaret', telefon: '05321112233', il: 'İzmir' };
+
+  const kopru = {};
+  kopru[g] = 44;
+
+  S.kimlikKoprusuKur([satir], kopru);
+
+  assert.equal(satir.kayit.musteriId, 44, 'kopru kuruldu');
+  assert.equal(satir.kayit.geciciKimlik, g, 'iz duruyor');
+
+  /* KÜNYE SATIRDA yedek kalır — müşteri sonradan silinse bile diriltilebilir. */
+  assert.ok(satir.musteriKunyesi, 'kunye yedegi YOK EDILMEDI');
+  assert.equal(satir.musteriKunyesi.unvan, 'Ahmetler Ticaret');
+  assert.equal(satir.musteriKunyesi.telefon, '05321112233');
+});
+
+test('kimlikKoprusuKur: gövde (kayit) SUNUCUYA GİDEN biçimini korur', (t) => {
+  const g = S.GECICI_ONEK + 'zzz';
+  const satir = siparis(g);
+
+  satir.kayit.geciciMusteri = { id: g, unvan: 'Kocabiyik' };
+
+  const kopru = {};
+  kopru[g] = 55;
+
+  S.kimlikKoprusuKur([satir], kopru);
+
+  /*
+   * Yedek KUYRUK SATIRINDA durur, govdede DEGIL: govde `/plasiyer/siparis`
+   * semasidir ve `geciciMusteri` diye bir alani yoktur. Yedek govdeye
+   * konsaydi sunucu sozlesmesi sessizce buyumus olurdu.
+   */
+  assert.equal(satir.kayit.geciciMusteri, null, 'govde temiz kaldi');
+  assert.equal(satir.kayit.odeme, 'nakit', 'diger govde alanlari degismedi');
+  assert.equal(satir.kayit.plasiyerId, 7);
+  assert.equal(satir.kayit.kalemler.length, 1);
+});
+
+test('esitlenenMusterileriTemizle: bekleyen SİPARİŞİ olan senkron müşteri DÜŞMEZ', (t) => {
+  const liste = [
+    { id: 'temp_musteri_a', senkron: true, gercekId: 44 },
+    { id: 'temp_musteri_b', senkron: true, gercekId: 45 }
+  ];
+
+  /* a'nin siparisi kopruden gecti ama HENUZ GONDERILMEDI. */
+  const siparisler = [
+    { durum: S.ONARIM_GEREKLI, kayit: { musteriId: 44, geciciKimlik: 'temp_musteri_a' } }
+  ];
+
+  const temiz = S.esitlenenMusterileriTemizle(liste, { siparisler: siparisler, notlar: [] });
+
+  assert.equal(temiz.length, 1, 'yalnizca b dustu');
+  assert.equal(temiz[0].id, 'temp_musteri_a', 'bekleyen kaydi olan musteri KALDI');
+});
+
+test('esitlenenMusterileriTemizle: bekleyen NOTU olan senkron müşteri de düşmez', (t) => {
+  const liste = [{ id: 'temp_musteri_c', senkron: true, gercekId: 46 }];
+  const notlar = [{ durum: S.BEKLIYOR, musteriId: 46, geciciKimlik: 'temp_musteri_c' }];
+
+  const temiz = S.esitlenenMusterileriTemizle(liste, { siparisler: [], notlar: notlar });
+
+  assert.equal(temiz.length, 1);
+});
+
+test('esitlenenMusterileriTemizle: gönderilmiş kayıt müşteriyi TUTMAZ', (t) => {
+  const liste = [{ id: 'temp_musteri_d', senkron: true, gercekId: 47 }];
+  const siparisler = [{ durum: S.GONDERILDI, kayit: { musteriId: 47, geciciKimlik: 'temp_musteri_d' } }];
+
+  const temiz = S.esitlenenMusterileriTemizle(liste, { siparisler: siparisler, notlar: [] });
+
+  assert.equal(temiz.length, 0, 'isi biten musteri listeyi sisirmez');
+});
+
+test('esitlenenMusterileriTemizle: İKİNCİ ARGÜMANSIZ çağrı eski davranışı korur', (t) => {
+  const liste = [
+    { id: 'temp_musteri_e', senkron: true },
+    { id: 'temp_musteri_f', senkron: false }
+  ];
+
+  const temiz = S.esitlenenMusterileriTemizle(liste);
+
+  assert.equal(temiz.length, 1);
+  assert.equal(temiz[0].id, 'temp_musteri_f');
+});
+
+test('esitle: SAHA SENARYOSU — müşteri silinmişse sipariş onarılabilir kalır', async (t) => {
+  const g = S.GECICI_ONEK + 'saha';
+  const m = geciciMusteri('saha', 'Ahmetler Ticaret');
+  const satir = siparis(g, 3);
+
+  satir.kayit.geciciMusteri = { id: g, unvan: 'Ahmetler Ticaret', telefon: '05321112233' };
+
+  /* 1. tur: müşteri 42 olarak açılır, sipariş köprülenir ama sunucu 42'yi silmiştir. */
+  const ozet = await S.esitle(
+    { musteriler: [m], siparisler: [satir], notlar: [] },
+    {
+      musteri: async () => ({ ok: true, durum: 200, veri: { user_id: 42 } }),
+      siparis: musteriSilinmis()
+    }
+  );
+
+  assert.equal(ozet.koprulenen, 1);
+  assert.equal(satir.durum, S.ONARIM_GEREKLI, 'siparis KILITLENMEDI, onarilabilir');
+  assert.equal(satir.deneme || 0, 0);
+
+  /* Kurtarma verisi iki yerde birden hayatta: künye yedeği + yerel müşteri. */
+  assert.equal(satir.musteriKunyesi.unvan, 'Ahmetler Ticaret');
+
+  const kalanMusteriler = S.esitlenenMusterileriTemizle([m], { siparisler: [satir], notlar: [] });
+  assert.equal(kalanMusteriler.length, 1, 'musteri kaydi da KALDI (kopru haritasi yasiyor)');
+
+  /* 2. tur: kullanıcı onardı (yeni müşteriye bağladı) → sipariş gider. */
+  satir.kayit.musteriId = 44;
+  S.kayitOnar(satir);
+
+  const ozet2 = await S.esitle(
+    { musteriler: [], siparisler: [satir], notlar: [] },
+    { siparis: async () => ({ ok: true, durum: 200, veri: { siparisId: 777 } }) }
+  );
+
+  assert.equal(ozet2.siparis.gonderilen, 1, 'onarimdan sonra GITTI');
+  assert.equal(satir.durum, S.GONDERILDI);
+});

@@ -1788,9 +1788,20 @@ ipcMain.handle('sync:esitle', async function () {
       }
     );
 
-    /* Gönderilenler düşer; KALICI HATALI KAYITLAR KALIR (kullanıcı görsün). */
+    /*
+     * Gönderilenler düşer; KALICI HATALI ve ONARIM BEKLEYEN KAYITLAR KALIR
+     * (kullanıcı görsün ve onarabilsin).
+     *
+     * Müşteri temizliğine KUYRUKLAR VERİLİR (M1): bekleyen siparişi/notu olan
+     * eşitlenmiş müşteri listede kalır. Argümansız çağrıda köprü haritası
+     * ölüyor ve sunucudaki kullanıcı sonradan silinirse siparişi hangi
+     * müşteriye bağlayacağımızı söyleyecek hiçbir veri kalmıyordu.
+     */
     ayarlariYaz({
-      plasiyerYerelMusteriler: syncMotor.esitlenenMusterileriTemizle(musteriler),
+      plasiyerYerelMusteriler: syncMotor.esitlenenMusterileriTemizle(musteriler, {
+        siparisler: siparisler,
+        notlar: notlar
+      }),
       plasiyerSiparisKuyrugu: syncMotor.gonderilenleriTemizle(siparisler),
       plasiyerZiyaretKuyrugu: syncMotor.gonderilenleriTemizle(notlar)
     });
@@ -1811,9 +1822,21 @@ ipcMain.handle('sync:durum', function () {
     return Array.isArray(liste) ? liste.length : 0;
   };
 
+  /*
+   * ONARIM BEKLEYEN DE "hatali" SAYILIR (M1). `esitlemeGerekliMi` hepsi
+   * hatalıysa ağa çıkmaz; onarım bekleyeni saymazsak oto-eşitleme dakikada bir
+   * boşa istek atar (sahadaki mobil veriyi yakar) ve kuyruk yine boşalmaz.
+   * Ayrı `onarim` sayacı arayüz içindir: düğme basılacak mı?
+   */
   const hatali = function (liste) {
     return Array.isArray(liste)
-      ? liste.filter(function (k) { return k && syncMotor.KALICI_HATA === k.durum; }).length
+      ? liste.filter(function (k) { return syncMotor.bildirilir(k); }).length
+      : 0;
+  };
+
+  const onarimli = function (liste) {
+    return Array.isArray(liste)
+      ? liste.filter(function (k) { return k && syncMotor.ONARIM_GEREKLI === k.durum; }).length
       : 0;
   };
 
@@ -1824,6 +1847,7 @@ ipcMain.handle('sync:durum', function () {
     siparis: say(a.plasiyerSiparisKuyrugu),
     not: say(a.plasiyerZiyaretKuyrugu),
     hatali: hatali(a.plasiyerSiparisKuyrugu) + hatali(a.plasiyerZiyaretKuyrugu) + hatali(a.plasiyerYerelMusteriler),
+    onarim: onarimli(a.plasiyerSiparisKuyrugu) + onarimli(a.plasiyerZiyaretKuyrugu) + onarimli(a.plasiyerYerelMusteriler),
     son: sonEsitleme
   };
 });
@@ -1931,6 +1955,195 @@ ipcMain.handle('musteri:kuyruktan-sil', function (olay, veri) {
   ayarlariYaz({ plasiyerYerelMusteriler: kalan });
 
   return { ok: true, bekleyen: kalan.length };
+});
+
+/* ==========================================================================
+ *  KUYRUK ONARIMI (M1) — "KİLİTLİ" KAYDIN ÇIKIŞ KAPISI
+ *  ---------------------------------------------------------------------------
+ *  Sahada yaşanan kriz: çevrimdışı açılan müşteri sunucuda silinip yeniden
+ *  açıldı (42 → 44); köprülenmiş siparişler `404 Müşteri bulunamadı` aldı ve
+ *  kuyrukta KİLİTLİ kaldı. O ana kadar kuyruğa dokunan tek kanal `siparis:kuyruga`
+ *  (ekleme) idi — kaydı silmenin ya da hedefini düzeltmenin hiçbir yolu yoktu,
+ *  `ayarlar.json` ELLE temizlendi.
+ *
+ *  Üç çıkış: künyeden dirilt (tek tık) · başka müşteriye bağla · sil.
+ *  Mutasyonlar burada, ana süreçte: eşitleme turu aynı diziyi temizliyor ve
+ *  renderer'ın oku-değiştir-yaz'ı gönderilmiş siparişi diriltirdi (§3.8).
+ * ========================================================================*/
+
+/** Kuyruk satırını yerel kimliğiyle bulur. */
+function kuyrukSatiriBul(kuyruk, yerelKimlik) {
+  const aranan = String(yerelKimlik || '');
+
+  if (!aranan) return null;
+
+  return (Array.isArray(kuyruk) ? kuyruk : []).find(function (s) {
+    return s && s.kayit && String(s.kayit.yerelKimlik) === aranan;
+  }) || null;
+}
+
+/** Yeni geçici müşteri kimliği — `temp_musteri_<uuid v4>` (panel motoruyla aynı biçim). */
+function geciciMusteriKimligi() {
+  const d = function () { return Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1); };
+
+  return 'temp_musteri_' +
+    d() + d() + '-' + d() + '-4' + d().slice(1) + '-' +
+    ((8 + Math.floor(Math.random() * 4)).toString(16)) + d().slice(1) + '-' + d() + d() + d();
+}
+
+/**
+ * Kuyruktaki siparişi SİLER.
+ *
+ * Gönderilmiş kayıt silinemez: o artık sunucuda yaşayan bir siparişin yerel
+ * makbuzudur ve `gonderilenleriTemizle` onu zaten sıradaki turda düşürür.
+ */
+ipcMain.handle('siparis:kuyruktan-sil', function (olay, veri) {
+  const yerel = String((veri && veri.yerelKimlik) || '');
+
+  if (!yerel) return { ok: false, hata: 'Sipariş kimliği yok.' };
+
+  const a = ayarlariOku();
+  const kuyruk = Array.isArray(a.plasiyerSiparisKuyrugu) ? a.plasiyerSiparisKuyrugu : [];
+  const satir = kuyrukSatiriBul(kuyruk, yerel);
+
+  if (!satir) return { ok: false, durum: 404, hata: 'Kayıt bulunamadı (zaten silinmiş olabilir).' };
+
+  if (syncMotor.GONDERILDI === satir.durum) {
+    return { ok: false, hata: 'Bu sipariş merkeze iletilmiş; kuyruktan silinemez.' };
+  }
+
+  const kalan = kuyruk.filter(function (s) { return s !== satir; });
+
+  ayarlariYaz({ plasiyerSiparisKuyrugu: kalan });
+
+  return { ok: true, bekleyen: kalan.length };
+});
+
+/**
+ * Kuyruktaki siparişi BAŞKA (sunucudaki) müşteriye bağlar.
+ *
+ * Hedef GEÇİCİ olamaz: geçici kimliğe bağlamak siparişi "müşteri henüz
+ * eşitlenmedi" halkasına sokardı. Onarım düğmesi kullanıcıya portföyünden
+ * GERÇEK bir bayi seçtirir.
+ */
+ipcMain.handle('siparis:kuyrukta-yeniden-bagla', function (olay, veri) {
+  const yerel = String((veri && veri.yerelKimlik) || '');
+  const hedefHam = (veri && veri.musteriId);
+
+  if (!yerel) return { ok: false, hata: 'Sipariş kimliği yok.' };
+
+  if (syncMotor.geciciMi(hedefHam)) {
+    return { ok: false, hata: 'Çevrimdışı bir müşteriye bağlanamaz; sunucudaki bir bayi seçin.' };
+  }
+
+  const hedef = Number(hedefHam) || 0;
+
+  if (hedef <= 0) return { ok: false, hata: 'Geçerli bir müşteri seçilmedi.' };
+
+  const a = ayarlariOku();
+  const kuyruk = Array.isArray(a.plasiyerSiparisKuyrugu) ? a.plasiyerSiparisKuyrugu : [];
+  const satir = kuyrukSatiriBul(kuyruk, yerel);
+
+  if (!satir) return { ok: false, durum: 404, hata: 'Kayıt bulunamadı.' };
+
+  if (syncMotor.GONDERILDI === satir.durum) {
+    return { ok: false, hata: 'Bu sipariş merkeze iletilmiş; hedefi değiştirilemez.' };
+  }
+
+  satir.kayit.musteriId = hedef;
+  syncMotor.kayitOnar(satir);
+
+  ayarlariYaz({ plasiyerSiparisKuyrugu: kuyruk });
+
+  return { ok: true, musteriId: hedef };
+});
+
+/**
+ * Silinmiş müşteriyi KÜNYE YEDEĞİNDEN yeniden açar — saha senaryosunun cevabı.
+ *
+ * Künye `kimlikKoprusuKur` tarafından satıra yedeklenir. Yeni bir geçici
+ * müşteri kaydı üretilir ve AYNI ölü kimliğe bağlı bütün bekleyen sipariş ve
+ * notlar ona taşınır; sıradaki eşitleme turu müşteriyi sunucuda açıp hepsini
+ * kendiliğinden köprüler. Sunucuda değişiklik gerekmez: `musteri_esitle`'nin
+ * teklik koruması silinmiş kullanıcıyı bulamayacağı için yeni kayıt açar.
+ *
+ * KÜNYE YOKSA REDDEDER. 2.2.0 öncesinde köprülenen kayıtlarda yedek yoktur;
+ * boş bir müşteri açmak "Ahmetler Ticaret" yerine isimsiz bir cari üretirdi.
+ */
+ipcMain.handle('musteri:kunyeden-dirilt', function (olay, veri) {
+  const yerel = String((veri && veri.yerelKimlik) || '');
+
+  if (!yerel) return { ok: false, hata: 'Sipariş kimliği yok.' };
+
+  const a = ayarlariOku();
+  const kuyruk = Array.isArray(a.plasiyerSiparisKuyrugu) ? a.plasiyerSiparisKuyrugu : [];
+  const notlar = Array.isArray(a.plasiyerZiyaretKuyrugu) ? a.plasiyerZiyaretKuyrugu : [];
+  const yereller = Array.isArray(a.plasiyerYerelMusteriler) ? a.plasiyerYerelMusteriler : [];
+
+  const satir = kuyrukSatiriBul(kuyruk, yerel);
+
+  if (!satir) return { ok: false, durum: 404, hata: 'Kayıt bulunamadı.' };
+
+  const kunye = satir.musteriKunyesi;
+
+  if (!kunye || !kunye.unvan) {
+    return {
+      ok: false,
+      hata: 'Bu siparişte müşteri künyesi yedeği yok (eski sürümde kuyruğa girmiş). ' +
+            'Siparişi portföyünüzdeki bir bayiye bağlayın ya da silin.'
+    };
+  }
+
+  /* Ölü hedef: bu satırın şu an gösterdiği kimlik. Aynı kimliğe bağlı her
+     bekleyen kayıt aynı hatayı alacağı için hepsi birlikte taşınır. */
+  const oluHedef = String(satir.kayit.musteriId);
+  const yeniKimlik = geciciMusteriKimligi();
+
+  const yeniMusteri = Object.assign({}, kunye, {
+    id: yeniKimlik,
+    gecici: true,
+    senkron: false,
+    durum: syncMotor.BEKLIYOR,
+    deneme: 0,
+    hata: ''
+  });
+
+  /* Ölü kimlik TAŞINMAZ — yoksa eşitleme onu "zaten eşitlenmiş" sayıp
+     köprüyü yine silinmiş kullanıcıya kurardı. */
+  delete yeniMusteri.gercekId;
+
+  let tasinanSiparis = 0;
+  let tasinanNot = 0;
+
+  kuyruk.forEach(function (s) {
+    if (!s || !s.kayit || syncMotor.GONDERILDI === s.durum) return;
+    if (String(s.kayit.musteriId) !== oluHedef) return;
+
+    s.kayit.musteriId = yeniKimlik;
+    s.kayit.geciciKimlik = yeniKimlik;
+    syncMotor.kayitOnar(s);
+    tasinanSiparis++;
+  });
+
+  notlar.forEach(function (n) {
+    if (!n || syncMotor.GONDERILDI === n.durum) return;
+    if (String(n.musteriId) !== oluHedef) return;
+
+    n.musteriId = yeniKimlik;
+    n.geciciKimlik = yeniKimlik;
+    syncMotor.kayitOnar(n);
+    tasinanNot++;
+  });
+
+  yereller.unshift(yeniMusteri);
+
+  ayarlariYaz({
+    plasiyerYerelMusteriler: yereller,
+    plasiyerSiparisKuyrugu: kuyruk,
+    plasiyerZiyaretKuyrugu: notlar
+  });
+
+  return { ok: true, musteriId: yeniKimlik, unvan: String(kunye.unvan), siparis: tasinanSiparis, not: tasinanNot };
 });
 
 /**

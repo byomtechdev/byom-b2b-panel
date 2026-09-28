@@ -44,6 +44,25 @@
   var GONDERILDI = 'gonderildi';
   var KALICI_HATA = 'kalici_hata';
 
+  /**
+   * Sunucu reddetti ama İNSAN KARARIYLA düzeltilebilir (M1).
+   *
+   * `kalici_hata`dan farkı: o "bu kayıt bir daha asla gitmeyecek" demektir ve
+   * kullanıcıya yapacak bir şey bırakmaz. Bu durum ise "hedefi göster, gitsin"
+   * der — kuyruk şeridi onarım düğmelerini YALNIZCA bu durumda basar.
+   */
+  var ONARIM_GEREKLI = 'onarim_gerekli';
+
+  /**
+   * Hangi sunucu hata KODLARI onarılabilir sayılır.
+   *
+   * KOD ŞARTTIR, durum kodu tek başına yetmez: "bilmediğim bir 404" için
+   * onarım kapısı açmak, kullanıcıya çözemeyeceği bir düğme göstermek olurdu.
+   * Bugün tek üye: müşterisi sunucudan silinmiş sipariş
+   * (B2B_REST_Plasiyer::siparis_olustur → 404 b2b_plasiyer_musteri_yok).
+   */
+  var ONARIM_KODLARI = ['b2b_plasiyer_musteri_yok'];
+
   /* ------------------------------------------------------------------ *
    *  YARDIMCILAR
    * ------------------------------------------------------------------ */
@@ -58,24 +77,36 @@
   }
 
   /**
-   * Yanıt KALICI bir ret mi?
+   * Retin türü: 'gecici' | 'kalici' | 'onarim'.
    *
-   * 4xx = istek yanlış, tekrar denemek aynı sonucu verir (409 HARİÇ: o
-   * "önce müşteriyi eşitle" demektir ve sıradaki turda düzelebilir).
-   * 0 / 5xx / ağ hatası = geçici, beklemeye devam.
+   * · 4xx = istek yanlış, tekrar denemek aynı sonucu verir → 'kalici'
+   *   (409 HARİÇ: o "önce müşteriyi eşitle" demektir ve sıradaki turda düzelir).
+   * · 0 / 5xx / ağ hatası = 'gecici', beklemeye devam.
+   * · ONARIM_KODLARI'ndan biri = 'onarim' — sunucu haklı, veri yanlış; insan
+   *   hedefi düzeltirse aynı kayıt gider. Tekrar denemek düzeltmez, ama
+   *   "kalıcı" damgalamak da kullanıcıyı çaresiz bırakır.
    */
-  function kaliciRet(cevap) {
+  function retTuru(cevap) {
     var durum = Number((cevap && cevap.durum) || 0);
+    var kod = String((cevap && cevap.kod) || '');
 
-    if (409 === durum) return false;
+    if (kod && ONARIM_KODLARI.indexOf(kod) !== -1) return 'onarim';
 
-    return durum >= 400 && durum < 500;
+    if (409 === durum) return 'gecici';
+
+    return (durum >= 400 && durum < 500) ? 'kalici' : 'gecici';
   }
 
-  /** Kayıt bir daha denenmeli mi? */
+  /** Yanıt KALICI bir ret mi? (eski sözleşme — `retTuru`ye devreder) */
+  function kaliciRet(cevap) {
+    return 'kalici' === retTuru(cevap);
+  }
+
+  /** Kayıt bir daha OTOMATİK denenmeli mi? */
   function denenebilir(kayit) {
     if (!kayit) return false;
     if (KALICI_HATA === kayit.durum) return false;
+    if (ONARIM_GEREKLI === kayit.durum) return false;
     if (GONDERILDI === kayit.durum) return false;
 
     return (Number(kayit.deneme) || 0) < EN_COK_DENEME;
@@ -83,15 +114,71 @@
 
   /** Kaydı başarısız işaretler ve gerektiğinde kalıcı hataya düşürür. */
   function hataIsle(kayit, cevap) {
-    kayit.deneme = (Number(kayit.deneme) || 0) + 1;
+    var tur = retTuru(cevap);
+
     kayit.hata = String((cevap && cevap.hata) || 'Gönderilemedi.');
+
+    /*
+     * ONARIM: deneme hakkı YAKILMAZ. Sebep insanın düzeltmesini beklemek;
+     * sayaç ilerleseydi kullanıcı hedefi düzelttiğinde kayıt zaten tavana
+     * dayanmış olur ve "onardım ama yine gitmiyor" derdi.
+     */
+    if ('onarim' === tur) {
+      kayit.durum = ONARIM_GEREKLI;
+
+      return kayit;
+    }
+
+    kayit.deneme = (Number(kayit.deneme) || 0) + 1;
     kayit.durum = BEKLIYOR;
 
-    if (kaliciRet(cevap) || kayit.deneme >= EN_COK_DENEME) {
+    if ('kalici' === tur || kayit.deneme >= EN_COK_DENEME) {
       kayit.durum = KALICI_HATA;
     }
 
     return kayit;
+  }
+
+  /** Kullanıcıya bildirilecek (yani otomatik turun çözemeyeceği) kayıt mı? */
+  function bildirilir(kayit) {
+    return !!kayit && (KALICI_HATA === kayit.durum || ONARIM_GEREKLI === kayit.durum);
+  }
+
+  /** Özet listesine giren hata kaydı — onarılabilir olan işaretlenir. */
+  function hataKaydi(tip, kayit, ek) {
+    var k = { tip: tip, hata: kayit.hata };
+
+    if (ONARIM_GEREKLI === kayit.durum) k.onarim = true;
+
+    if (ek) {
+      Object.keys(ek).forEach(function (ad) { k[ad] = ek[ad]; });
+    }
+
+    return k;
+  }
+
+  /**
+   * Kaydı yeniden denenebilir hâle getirir (kullanıcı onardı).
+   *
+   * Deneme sayacı SIFIRLANIR: onarım öncesi yanmış haklar onarımdan sonraki
+   * ilk iki denemede kaydı yine kilitlerdi.
+   *
+   * GÖNDERİLMİŞ kayda dokunmaz — onu yeniden göndermek mükerrer sipariş
+   * demektir (sunucunun `yerelKimlik` koruması yakalar ama buraya kadar
+   * getirmenin anlamı yok).
+   *
+   * @param {object} kayit Kuyruk satırı.
+   * @returns {boolean} Onarıldı mı?
+   */
+  function kayitOnar(kayit) {
+    if (!kayit) return false;
+    if (GONDERILDI === kayit.durum) return false;
+
+    kayit.durum = BEKLIYOR;
+    kayit.deneme = 0;
+    kayit.hata = '';
+
+    return true;
   }
 
   /* ------------------------------------------------------------------ *
@@ -123,7 +210,7 @@
       }
 
       if (!denenebilir(m)) {
-        if (KALICI_HATA === m.durum) hatalar.push({ tip: 'musteri', id: m.id, hata: m.hata });
+        if (bildirilir(m)) hatalar.push(hataKaydi('musteri', m, { id: m.id }));
         continue;
       }
 
@@ -148,7 +235,7 @@
       } else {
         hataIsle(m, cevap);
 
-        if (KALICI_HATA === m.durum) hatalar.push({ tip: 'musteri', id: m.id, hata: m.hata });
+        if (bildirilir(m)) hatalar.push(hataKaydi('musteri', m, { id: m.id }));
       }
     }
 
@@ -192,6 +279,24 @@
 
       if (Object.prototype.hasOwnProperty.call(kopru, kayit.musteriId)) {
         kayit.geciciKimlik = kayit.musteriId;   // izi sakla (teşhis)
+
+        /*
+         * --- KURTARMA VERİSİ YOK EDİLMEZ (M1) ---
+         *
+         * Künye SATIRDA yedeklenir, GÖVDEDE değil: gövde `/plasiyer/siparis`
+         * şemasıdır ve `geciciMusteri` diye bir alanı yoktur — yedeği oraya
+         * koymak sunucu sözleşmesini sessizce büyütürdü.
+         *
+         * Eskiden burada künye `null`lanıyor, yerel müşteri kaydı da
+         * `esitlenenMusterileriTemizle` ile düşüyordu; geriye yalnızca bir
+         * sayı kalıyordu. O sayının gösterdiği kullanıcı sunucuda silinince
+         * (sahada oldu) elde HİÇBİR ŞEY kalmıyor ve sipariş sonsuza dek
+         * kilitleniyordu.
+         */
+        if (kayit.geciciMusteri && !satir.musteriKunyesi) {
+          satir.musteriKunyesi = kayit.geciciMusteri;
+        }
+
         kayit.musteriId = Number(kopru[kayit.musteriId]);
         kayit.geciciMusteri = null;             // sunucuda artık var
         koprulenen++;
@@ -260,7 +365,7 @@
       if (GONDERILDI === satir.durum) continue;
 
       if (!denenebilir(satir)) {
-        if (KALICI_HATA === satir.durum) hatalar.push({ tip: 'siparis', hata: satir.hata });
+        if (bildirilir(satir)) hatalar.push(hataKaydi('siparis', satir, { yerelKimlik: satir.kayit && satir.kayit.yerelKimlik }));
         continue;
       }
 
@@ -287,7 +392,7 @@
       } else {
         hataIsle(satir, cevap);
 
-        if (KALICI_HATA === satir.durum) hatalar.push({ tip: 'siparis', hata: satir.hata });
+        if (bildirilir(satir)) hatalar.push(hataKaydi('siparis', satir, { yerelKimlik: satir.kayit && satir.kayit.yerelKimlik }));
       }
     }
 
@@ -321,7 +426,7 @@
       if (GONDERILDI === not.durum) continue;
 
       if (!denenebilir(not)) {
-        if (KALICI_HATA === not.durum) hatalar.push({ tip: 'not', hata: not.hata });
+        if (bildirilir(not)) hatalar.push(hataKaydi('not', not, { yerelKimlik: not.yerelKimlik }));
         continue;
       }
 
@@ -341,7 +446,7 @@
       } else {
         hataIsle(not, cevap);
 
-        if (KALICI_HATA === not.durum) hatalar.push({ tip: 'not', hata: not.hata });
+        if (bildirilir(not)) hatalar.push(hataKaydi('not', not, { yerelKimlik: not.yerelKimlik }));
       }
     }
 
@@ -370,9 +475,64 @@
     return dizi(liste).filter(function (k) { return k && GONDERILDI !== k.durum; });
   }
 
-  /** Eşitlenmiş müşterileri yerel listeden düşürür. */
-  function esitlenenMusterileriTemizle(liste) {
-    return dizi(liste).filter(function (m) { return m && !m.senkron; });
+  /**
+   * Kuyrukta HÂLÂ bekleyen kayıtların bağlı olduğu geçici kimlikler.
+   *
+   * Hem köprülenmiş satırın izini (`geciciKimlik`) hem henüz köprülenmemiş
+   * satırın kimliğini (`musteriId`) toplar.
+   *
+   * @param {object} kuyruklar { siparisler, notlar }
+   * @returns {object} { 'temp_musteri_x': true }
+   */
+  function bagliKimlikler(kuyruklar) {
+    var harita = {};
+
+    function isaretle(deger) {
+      if (geciciMi(deger)) harita[String(deger)] = true;
+    }
+
+    dizi(kuyruklar && kuyruklar.siparisler).forEach(function (satir) {
+      if (!satir || GONDERILDI === satir.durum || !satir.kayit) return;
+
+      isaretle(satir.kayit.geciciKimlik);
+      isaretle(satir.kayit.musteriId);
+    });
+
+    dizi(kuyruklar && kuyruklar.notlar).forEach(function (not) {
+      if (!not || GONDERILDI === not.durum) return;
+
+      isaretle(not.geciciKimlik);
+      isaretle(not.musteriId);
+    });
+
+    return harita;
+  }
+
+  /**
+   * Eşitlenmiş müşterileri yerel listeden düşürür.
+   *
+   * KUYRUKLAR VERİLİRSE, bekleyen siparişi/notu olan eşitlenmiş müşteri
+   * KALIR (M1). Sebep: kayıt düşünce `temp → gerçek kimlik` köprü haritası da
+   * ölüyor; sunucudaki kullanıcı sonradan silinirse (sahada oldu) siparişi
+   * hangi müşteriye bağlayacağımızı söyleyecek hiçbir veri kalmıyordu.
+   * İşi biten müşteri yine düşer — liste şişmez.
+   *
+   * İkinci argüman verilmezse eski davranış aynen sürer (geriye uyum).
+   *
+   * @param {Array}  liste     Yerel müşteri listesi.
+   * @param {object} [kuyruklar] { siparisler, notlar }
+   * @returns {Array}
+   */
+  function esitlenenMusterileriTemizle(liste, kuyruklar) {
+    var tutulan = kuyruklar ? bagliKimlikler(kuyruklar) : null;
+
+    return dizi(liste).filter(function (m) {
+      if (!m) return false;
+      if (!m.senkron) return true;
+      if (!tutulan) return false;
+
+      return true === tutulan[String(m.id)];
+    });
   }
 
   /* ------------------------------------------------------------------ *
@@ -512,14 +672,20 @@
     ozetMesaji: ozetMesaji,
     /* saf yardımcılar */
     geciciMi: geciciMi,
+    retTuru: retTuru,
     kaliciRet: kaliciRet,
     denenebilir: denenebilir,
+    bildirilir: bildirilir,
+    kayitOnar: kayitOnar,
+    bagliKimlikler: bagliKimlikler,
     /* sabitler */
     EN_COK_DENEME: EN_COK_DENEME,
     GECICI_ONEK: GECICI_ONEK,
     BEKLIYOR: BEKLIYOR,
     GONDERILDI: GONDERILDI,
-    KALICI_HATA: KALICI_HATA
+    KALICI_HATA: KALICI_HATA,
+    ONARIM_GEREKLI: ONARIM_GEREKLI,
+    ONARIM_KODLARI: ONARIM_KODLARI
   };
 
   if (typeof module !== 'undefined' && module.exports && typeof window === 'undefined') {
