@@ -7250,7 +7250,15 @@ function depoFisiHtml(s) {
      fiş de aynı anda değişsin (kaynak tek: markaLogosu). */
   const logo = markaLogosu();
 
-  const satirHtml = function (k) {
+  /*
+     AKILLI AD KISALTMA (Faz 16-C) — ORTAK motordan.
+     Depo fisinde ad sutunu ≈68 mm; siparis fisininkinden (≈62 mm) genis olsa da
+     AYNI sabit kullanilir. Iki fis icin iki sayi tutmak, ayni siparisin iki
+     belgede farkli basilmasi demektir (Faz 15'in dersi). Kisaltma GOSTERIM
+     katmanidir: k.ad dokunulmaz, WhatsApp metni ve ozet tam adi okur. */
+  const kisaAdlar = F.kisaltListe(s.kalemler.map(function (k) { return k.ad; }), F.KISALT_A4);
+
+  const satirHtml = function (k, sira) {
     const f = kalemFiyatKunyesi(k);
     const indirimliMi = f.indirim > 0.005;
 
@@ -7262,7 +7270,7 @@ function depoFisiHtml(s) {
         '</td>' +
         '<td class="s-tik"><span class="tik-kutu"></span></td>' +
         /* Ürün adı TAM yazılır — kırpma yok; yükseklik sayfalamada ölçülür. */
-        '<td class="s-ad">' + kacis(k.ad) + '</td>' +
+        '<td class="s-ad">' + kacis(kisaAdlar[sira] || k.ad) + '</td>' +
         '<td class="s-kod">' + kacis(k.kod) + '</td>' +
         '<td class="s-adet">' + k.adet + '</td>' +
         /* Liste birim fiyatı iskonto varsa ÜSTÜ ÇİZİLİ basılır: depocu hangi

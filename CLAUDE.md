@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.4.0** (Faz 16-B).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.5.0** (Faz 16-C).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -59,6 +59,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/main/byom-telemetri.js`** | **Telemetri (sessiz hata avcısı) · ana süreç.** Bkz. §4 |
 | **`src/main/byom-katalog-depo.js`** | **Çevrimdışı katalog deposu** (Faz 2). `<userData>/byom-data/katalog.json` + bellekte SKU/barkod/ad/kategori indeksleri. SQLite DEĞİL — gerekçe dosya başlığında. `kur({ dizin })` ile test edilebilir | — |
 | **`src/main/byom-gorsel-onbellek.js`** | **Görsel indirme kuyruğu** (Faz 2). `<userData>/byom-gorseller/`, SHA-256 dosya adı ile tekrar indirme yok, en çok 3 eşzamanlı | — |
+| **`src/main/byom-baglam-menusu.js`** | **Sağ tık menüsü** (Faz 16-C): Kopyala / Yapıştır / Kes / Tümünü Seç / Geri Al / Yinele. `role` DEĞİL açık `click` — komut çağrılan pencerenin `webContents`i üzerinde çalışır. Electron **tepe seviyesinde istenmez** (yalnızca `bagla()` içinde) → `node --test` altında doğrudan require edilir. Üç pencere de bağlanır: ana + fiş (`main.js`), **lisans** (`byom.js`) → §4.22 |
 | **`src/main/byom-yonetici-kilit.js`** | **Yönetici Master PIN + cihaz (saha terminali) kilidi** (Faz 5). Tuzlu scrypt özeti, 3 deneme/60 sn kilit, cihaz rolü geçişleri, **ayar maskeleme/süzme**. DOM'suz + Electron'suz → `node --test` altında koşar. Bkz. §4.9 | — |
 
 `main.js` bölüm haritasına eklenenler:
@@ -1798,6 +1799,51 @@ Panel tarafındaki iş küçük ve tek kurallı: **rozeti sunucu söyler, panel 
 
 ---
 
+## 4.22 Faz 16-C (M3) — Fişte akıllı ad kısaltma + sağ tık menüsü
+
+Panel **2.5.0** → `../BYOM-REGISTRY.md §5.45`, kök `CLAUDE.md §10 Faz 16-C`.
+
+### 4.22.1 Akıllı ad kısaltma — `siparis-fisi.js`
+
+A4'te ad sütununa **≈62 mm** (≈44 karakter) kalıyor; ad tam yazıldığı için üç
+satıra sarıyor ve **14-B sayfalayıcısı yüksekliği ÖLÇTÜĞÜ için** sayfa
+kapasitesi üçe bölünüyordu.
+
+```
+74 → 41  BOSCH GBH 2-26 DFR … MATKAP SDS-PLUS 800W
+73 → 40  PASLANMAZ ÇELİK … 100x60 CM SAĞ DAMLALIK
+35 → 35  Çelik Vida 4x40 mm (1000 Adet Kutu)   ← DOKUNULMADI
+```
+
+| Kural | Neden |
+|---|---|
+| Sığan ad **asla** değiştirilmez | Kısaltma bir çözümdür, süs değil |
+| **Dolgu** sözcükleri sessizce düşer, `…` konmaz | Kaybedilen bilgi yok |
+| Sonra **ortadan dışa** atılır + `…` | Türkçede ürünü adlandıran sözcük sona yakındır; ortadan başlamak onu **en son** atar |
+| Rakamlı sözcük **ve ardındaki kısa birim** atılmaz | `100x60` tek başına eksik |
+| **Baştaki iki / sondaki iki** sözcük atılmaz | Marka+model ve bitiş niteleyicisi (`SAĞ DAMLALIK`) |
+| `kisaltListe`: iki AYRI ürün aynı metne inmez | Depocu yanlış rafa gider; çakışmaktansa taşmak yeğdir |
+| **Termalde KAPALI** (`KISALT_TERMAL = 0`) | Rulo sürekli kâğıt — sayfa taşması yok; dar sütunda kısaltmak ölçüyü yok ederdi |
+
+### 4.22.2 Sağ tık menüsü — `src/main/byom-baglam-menusu.js`
+
+| Karar | Neden |
+|---|---|
+| **Ayrı modül** | Ana + fiş penceresi `main.js`'te, **lisans** penceresi `src/main/byom.js`'te. main.js'te tutmak dairesel bağımlılık, kopyalamak iki depo olurdu |
+| **`role` değil açık `click`** | `role` odaktaki pencereye göre davranır; ikincil pencerede sessizce yanlış belgeye iş yapardı. Açık çağrı **test edilebilir** |
+| **Electron tepe seviyesinde istenmez** | `Menu` yalnızca `bagla()` içinde → `node --test` altında doğrudan require |
+| Yapılamayan madde **devre dışı**, gizli değil | Menü her sağ tıkta aynı görünsün |
+
+### Bozmaman gereken sözler (Faz 16-C)
+- **Sessiz kırpma yasağı sürüyor**: `line-clamp` / CSS ellipsis **yok**;
+  kısaltma `…` ile **işaretlidir**.
+- **İki fiş tek çizici, tek sabit** — depo fişi kendi kısaltma mantığını yazmaz.
+- Kısaltma **gösterim** katmanıdır: `k.ad` tam kalır.
+- Sağ tık menüsü **üç pencereye de** bağlanır; lisans penceresi unutulamaz.
+- Modül Electron'u **tepe seviyesinde** istemez.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1805,7 +1851,7 @@ Panel tarafındaki iş küçük ve tek kurallı: **rozeti sunucu söyler, panel 
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**859 test**: panel 353 + kök 506).
+İkisini birden `../scripts/check-all.js` koşar (**888 test**: panel 369 + kök 519).
 
 ```bash
 # Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
@@ -1861,6 +1907,7 @@ node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki ro
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
 node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
+node --test scripts/tests/baglam-menusu.test.js       # 11 — Faz 16-C: sağ tık GERÇEKTEN kopyalar (wc.copy çağrılır), üç pencereye de bağlı
 node --test scripts/tests/hesap-birlesme.test.js      # 9  — Faz 16-B: notice iki temada da basılır (success'ten ÖNCE), üç kanal rozeti, etiket yoksa hiç basılmaz
 node --test scripts/tests/php-hesap-eslestirme.test.js # 89 iddia — Faz 16-B: eşleştirme kapısı, rol koruması, kanal rozetleri (PHP)
 node --test scripts/tests/fis-iskonto-zinciri.test.js # 13 — Faz 15: iki fiş motoru aynı rakam, çıkarma listesi KAPANIR, ücret yedeği toplanmaz
@@ -1876,7 +1923,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (859 test)
+# Bitirirken: üç katmanın tamamı (888 test)
 node scripts/check-all.js
 ```
 
@@ -1957,7 +2004,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 187 php / 109 js / 859 test
+cd .. && node scripts/check-all.js     # 0 hata / 187 php / 111 js / 888 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

@@ -1342,3 +1342,189 @@ test('whatsappMetni Faz 14: iskonto varken "İskontolu Ara Toplam" satırı, alt
   const sade = F.whatsappMetni(F.normalle({ numara: '5', tutar: 100, kalemler: [{ ad: 'A', adet: 1, tutar: 100 }] }, {}));
   assert.ok(!sade.includes('İskontolu Ara Toplam') && !sade.includes('İskonto Tutarı') && !sade.includes('Sipariş İskontosu'), 'boş iskonto satırları WhatsApp\x27a girmez');
 });
+
+/* =========================================================================
+ * FAZ 16-C — AKILLI AD KISALTMA
+ * -------------------------------------------------------------------------
+ *  Saha geri bildirimi: "Uzun ürün isimleri yüzünden 10 kalemlik bir sipariş
+ *  2 sayfaya taşıyor. Tabloyu genişlettiğimizde ise isimler alt alta 2-3
+ *  satır kaplıyor."
+ *
+ *  Kök: `.s-ad` sütununa A4'te ≈62 mm kalıyor (≈44 karakter) ve ad TAM
+ *  yazılıyordu; 14-B sayfalayıcısı satır yüksekliğini ÖLÇTÜĞÜ için 3 satırlık
+ *  bir ad sayfa kapasitesini üçe bölüyordu.
+ *
+ *  Sözleşme: ürünün ANLAMINI ve AYIRT EDİCİLİĞİNİ bozmadan kısalt.
+ *   · Sığan ad ASLA değiştirilmez.
+ *   · Rakam taşıyan sözcük (ölçü/model) ve birimi ASLA atılmaz.
+ *   · İlk ve son sözcük ASLA atılmaz (marka/malzeme ve bitiş niteleyicisi).
+ *   · Önce bilgi taşımayan DOLGU sözcükleri düşer (sessizce, "…" konmaz).
+ *   · Sonra ortadan dışa doğru atılır ve yerine "…" konur — kısaltıldığı
+ *     GÖRÜLÜR; sessizce kırpma yoktur.
+ *   · Aynı fişte iki AYRI ürün asla aynı metne inmez (çakışma açılır).
+ * ====================================================================== */
+
+test('kisaltAd: SIĞAN ad asla değiştirilmez', (t) => {
+  const kisa = 'Çelik Vida 4x40 mm (1000 Adet Kutu)';
+
+  assert.equal(F.kisaltAd(kisa, 44), kisa, 'sigan ad DOKUNULMAZ');
+  assert.equal(F.kisaltAd('NYA Elektrik Kablosu 2.5 mm (100 m Makara)', 44),
+    'NYA Elektrik Kablosu 2.5 mm (100 m Makara)', 'tam sinirdaki ad da dokunulmaz');
+  assert.equal(F.kisaltAd('Vida', 44), 'Vida');
+});
+
+test('kisaltAd: bozuk / boş girdi çökertmez', (t) => {
+  assert.equal(F.kisaltAd('', 44), '');
+  assert.equal(F.kisaltAd(null, 44), '');
+  assert.equal(F.kisaltAd(undefined, 44), '');
+  assert.equal(F.kisaltAd('   Çift    boşluk   ', 44), 'Çift boşluk', 'bosluklar normalize edilir');
+  assert.equal(F.kisaltAd('Vida', 0), 'Vida', 'anlamsiz limit adi yok etmez');
+});
+
+test('kisaltAd: DOLGU sözcükleri sessizce düşer — "…" konmaz', (t) => {
+  const ad = 'ORİJİNAL PROFESYONEL KALİTELİ Darbeli Matkap 710W Mandren';
+  const c = F.kisaltAd(ad, 44);
+
+  assert.ok(c.length <= 44, 'sigdi: ' + c);
+  assert.ok(c.indexOf('Darbeli') !== -1, 'urun sozcugu korundu');
+  assert.ok(c.indexOf('710W') !== -1, 'olcu korundu');
+  assert.ok(c.indexOf('PROFESYONEL') === -1, 'dolgu sozcugu dustu');
+  assert.ok(c.indexOf('KALİTELİ') === -1, 'dolgu sozcugu dustu');
+});
+
+test('kisaltAd: RAKAMLI sözcük ve BİRİMİ asla atılmaz', (t) => {
+  const ad = 'PASLANMAZ ÇELİK MUTFAK EVYESİ TEK GÖZLÜ DAMLALIKLI 100x60 CM SAĞ DAMLALIK';
+  const c = F.kisaltAd(ad, 44);
+
+  assert.ok(c.length <= 44, 'sigdi: ' + c);
+  assert.ok(c.indexOf('100x60') !== -1, 'OLCU atilamaz — urunu ayirt eden sey odur');
+  assert.ok(c.indexOf('CM') !== -1, 'olcunun BIRIMI de atilamaz ("100x60" tek basina eksik)');
+  assert.ok(c.indexOf('PASLANMAZ') === 0, 'ilk sozcuk (malzeme/marka) korunur');
+  assert.ok(/DAMLALIK$/.test(c), 'son sozcuk korunur');
+  assert.ok(c.indexOf('…') !== -1, 'atilan orta icin ISARET konur');
+});
+
+test('kisaltAd: MARKA ve MODEL korunur (ikinci sözcük atılmaz)', (t) => {
+  const ad = 'ORİJİNAL BOSCH GBH 2-26 DFR PROFESYONEL KIRICI DELİCİ MATKAP SDS-PLUS 800W';
+  const c = F.kisaltAd(ad, 44);
+
+  assert.ok(c.indexOf('BOSCH') !== -1, 'MARKA atilirsa fis ise yaramaz');
+  assert.ok(c.indexOf('GBH') !== -1, 'model ailesi korunur');
+  assert.ok(c.indexOf('2-26') !== -1, 'model numarasi korunur');
+  assert.ok(c.indexOf('800W') !== -1, 'guc korunur');
+  assert.ok(c.length <= 46, 'makul uzunluga indi: ' + c.length + ' — ' + c);
+});
+
+test('kisaltAd: sözcük ARASINDAN kesilmez, rakam bölünmez', (t) => {
+  const ad = 'Alüminyum Kompozit Panel Levha Dekoratif Kaplama 1220x2440 mm';
+  const c = F.kisaltAd(ad, 44);
+
+  assert.ok(c.indexOf('1220x2440') !== -1, 'olcu BOLUNMEDI');
+  assert.ok(!/\d…/.test(c), 'rakamin ortasindan kesilmedi');
+  assert.ok(!/[A-Za-zÇĞİÖŞÜçğıöşü]…[A-Za-zÇĞİÖŞÜçğıöşü]/.test(c.replace(/ … /g, ' ')),
+    'sozcuk ortasindan kesilmedi');
+});
+
+test('kisaltAd: TEK sözcüklü çok uzun ad son çare olarak kırpılır', (t) => {
+  const ad = 'Polikarbonatkompozitalüminyumlevhakaplamamalzemesi';
+  const c = F.kisaltAd(ad, 20);
+
+  assert.ok(c.length <= 20, 'sigdi');
+  assert.ok(/…$/.test(c), 'kirpildigi ISARETLENIR — sessiz kirpma yok');
+});
+
+test('kisaltAd: hepsi korumalıysa daha fazla bozmaz (dürüst duruş)', (t) => {
+  /* Iki sozcuk: ikisi de korumali (ilk + son). Atacak sey yok. */
+  const ad = 'Kompozitalüminyumlevha 1220x2440';
+  const c = F.kisaltAd(ad, 20);
+
+  assert.ok(c.indexOf('1220x2440') !== -1, 'olcu yine korunur');
+});
+
+/* ---------------------------------------------------------------------- *
+ *  LİSTE — AYIRT EDİCİLİK
+ * ---------------------------------------------------------------------- */
+
+test('kisaltListe: iki AYRI ürün asla aynı metne inmez', (t) => {
+  const adlar = [
+    'PASLANMAZ ÇELİK MUTFAK EVYESİ TEK GÖZLÜ DAMLALIKLI 100x60 CM SAĞ DAMLALIK',
+    'PASLANMAZ ÇELİK MUTFAK EVYESİ ÇİFT GÖZLÜ DAMLALIKLI 100x60 CM SAĞ DAMLALIK'
+  ];
+
+  const c = F.kisaltListe(adlar, 44);
+
+  assert.equal(c.length, 2);
+  assert.notEqual(c[0], c[1], 'AYIRT EDICILIK BOZULDU — iki urun ayni metne indi');
+});
+
+test('kisaltListe: AYNI ürün iki kez geçerse aynı metni alır', (t) => {
+  const ad = 'ORİJİNAL BOSCH GBH 2-26 DFR PROFESYONEL KIRICI DELİCİ MATKAP SDS-PLUS 800W';
+  const c = F.kisaltListe([ad, ad], 44);
+
+  assert.equal(c[0], c[1], 'ayni urun ayni metin — cakisma degil');
+});
+
+test('kisaltListe: çakışma yoksa tek tek kısaltmayla AYNI sonuç', (t) => {
+  const adlar = ['Darbeli Matkap 600W (13 mm Mandren)', 'Çelik Vida 4x40 mm (1000 Adet Kutu)'];
+
+  assert.deepEqual(F.kisaltListe(adlar, 44), adlar.map((a) => F.kisaltAd(a, 44)));
+});
+
+test('kisaltListe: bozuk girdi çökertmez', (t) => {
+  assert.deepEqual(F.kisaltListe(null, 44), []);
+  assert.deepEqual(F.kisaltListe([null, ''], 44), ['', '']);
+});
+
+/* ---------------------------------------------------------------------- *
+ *  FİŞE BAĞLANMASI
+ * ---------------------------------------------------------------------- */
+
+test('normalle: kalem TAM adı da taşır (kısaltma gösterim katmanıdır)', (t) => {
+  const uzun = 'ORİJİNAL BOSCH GBH 2-26 DFR PROFESYONEL KIRICI DELİCİ MATKAP SDS-PLUS 800W';
+
+  const fis = F.normalle({
+    id: 1, number: '1', total: 100,
+    line_items: [{ name: uzun, quantity: 1, total: 100, sku: 'BSH-226' }]
+  }, {});
+
+  assert.equal(fis.kalemler[0].ad, uzun, 'ad alani TAM kalir — kisaltma cizim aninda yapilir');
+});
+
+test('html: A4 fişte uzun ad KISALTILMIŞ basılır', (t) => {
+  const uzun = 'ORİJİNAL BOSCH GBH 2-26 DFR PROFESYONEL KIRICI DELİCİ MATKAP SDS-PLUS 800W';
+
+  const fis = F.normalle({
+    id: 1, number: '1', total: 100,
+    line_items: [{ name: uzun, quantity: 1, total: 100, sku: 'BSH-226' }]
+  }, {});
+
+  const html = F.html(fis, { kagit: 'a4' });
+
+  assert.ok(html.indexOf(uzun) === -1, 'TAM ad basildi — kisaltma BAGLANMAMIS');
+  assert.ok(html.indexOf('BOSCH') !== -1, 'marka fiste duruyor');
+  assert.ok(html.indexOf('BSH-226') !== -1, 'kod/barkod sutunu kesin kimligi tasimaya devam eder');
+});
+
+test('html: TERMAL fişte ad KISALTILMAZ — rulo sürekli kâğıttır', (t) => {
+  const ad = 'Alüminyum Kompozit Panel Levha Dekoratif Kaplama 1220x2440 mm';
+
+  const fis = F.normalle({
+    id: 1, number: '1', total: 100,
+    line_items: [{ name: ad, quantity: 1, total: 100 }]
+  }, {});
+
+  /*
+   * Kisaltma bir SAYFA TASMASI cozumudur ve o sorun yalnizca A4'te vardir.
+   * 80 mm rulo SUREKLI kagittir: ad iki satira sarsa kagit iki satir uzar,
+   * baska hicbir sey olmaz. O dar sutunda (~20 mm) kisaltmak ise OLCUYU yok
+   * etmek pahasina olurdu — "ayirt ediciligi bozma" sozune aykiri.
+   */
+  assert.ok(F.html(fis, { kagit: 'termal' }).indexOf(ad) !== -1, 'termalde ad TAM basilir');
+  assert.ok(F.html(fis, { kagit: 'a4' }).indexOf(ad) === -1, 'A4te kisaltilir');
+});
+
+test('KISALT sabitleri sütun genişliğinden türer ve DIŞARI VERİLİR', (t) => {
+  assert.equal(typeof F.KISALT_A4, 'number');
+  assert.ok(F.KISALT_A4 >= 36 && F.KISALT_A4 <= 56, 'A4 siniri makul aralikta');
+  assert.equal(F.KISALT_TERMAL, 0, 'termalde kisaltma KAPALI (0) — gerekce yukarida');
+});

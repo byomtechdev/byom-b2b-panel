@@ -357,6 +357,13 @@ function lisansPenceresiniAc(baslangicEkrani) {
 
   lisansPenceresi.setMenuBarVisibility(false);
 
+  /*
+   * Sağ tık menüsü (Faz 16-C). Bu pencerede EN KRİTİK madde YAPIŞTIR'dır:
+   * lisans anahtarı e-postadan kopyalanıp buraya yapıştırılıyor ve menü
+   * olmadan Ctrl+V dışında bir yolu yoktu.
+   */
+  require('./byom-baglam-menusu').bagla(lisansPenceresi);
+
   lisansPenceresi.loadFile(path.join(__dirname, '..', '..', 'lisans', 'lisans.html')).catch(function (e) {
     console.error('[BYOM] Lisans ekranı yüklenemedi:', e);
     dialog.showErrorBox('BYOM Lisans ekranı açılamadı', String((e && e.message) || e));

@@ -125,6 +125,251 @@
     return metin(x).replace(/\s+/g, ' ');
   }
 
+  /* ------------------------------------------------------------------ *
+   *  AKILLI AD KISALTMA (Faz 16-C)
+   *  -------------------------------------------------------------------
+   *  Saha: "Uzun ürün isimleri yüzünden 10 kalemlik sipariş 2 sayfaya
+   *  taşıyor; tabloyu genişlettiğimizde isimler alt alta 2-3 satır kaplıyor."
+   *
+   *  A4'te ad sütununa 210 − 24 (kenar) − 121 (sabit sayı sütunları) = 65 mm,
+   *  hücre dolgusu düşünce ≈62 mm kalır; 10.5px Segoe UI'da ≈44 karakter.
+   *  Ad TAM yazıldığı için 3 satıra sarıyor ve 14-B sayfalayıcısı satır
+   *  yüksekliğini ÖLÇTÜĞÜ için sayfa kapasitesi üçe bölünüyordu.
+   *
+   *  SÖZLEŞME — anlamı ve ayırt ediciliği bozma:
+   *   1. Sığan ad ASLA değiştirilmez.
+   *   2. Rakam taşıyan sözcük (ölçü/model) ve hemen ardındaki kısa birim
+   *      ASLA atılmaz — ürünü ayırt eden şey odur.
+   *   3. Baştaki iki ve sondaki iki sözcük ASLA atılmaz (marka/malzeme ve
+   *      bitiş niteleyicisi: "SAĞ DAMLALIK", "SDS-PLUS 800W").
+   *   4. Önce bilgi taşımayan DOLGU sözcükleri düşer — onlar için "…" konmaz,
+   *      çünkü kaybedilen bir bilgi yoktur.
+   *   5. Sonra ORTADAN DIŞA doğru atılır ve boşluğa "…" konur: kısaltıldığı
+   *      GÖRÜLÜR. Ortadan başlamak, ürün adını taşıyan sözcüğün (Türkçede
+   *      çoğu zaman sona yakın) en son atılmasını sağlar.
+   *   6. Son çare sözcüğü kırpmaktır (4 harf + "…"), rakamlı sözcük HARİÇ.
+   *
+   *  Kesin kimlik yandaki **Kod / Barkod** sütunundadır; ad insan için bir
+   *  doğrulamadır. Bu yüzden kısaltmak güvenlidir, kodu kırpmak olmazdı.
+   * ------------------------------------------------------------------ */
+
+  /** A4'te ad sütununa sığan karakter sayısı. */
+  var KISALT_A4 = 44;
+
+  /**
+   * 80 mm termalde kısaltma KAPALI (0).
+   *
+   * Kısaltma bir SAYFA TAŞMASI çözümüdür ve o sorun yalnızca A4'te vardır:
+   * rulo sürekli kâğıttır, ad iki satıra sararsa kâğıt iki satır uzar ve
+   * başka hiçbir şey olmaz. O dar sütunda (~20 mm) kısaltmak ise ölçüyü yok
+   * etmek pahasına olurdu.
+   */
+  var KISALT_TERMAL = 0;
+
+  /**
+   * Bilgi taşımayan dolgu sözcükleri (Türkçe büyük harfle karşılaştırılır).
+   *
+   * Liste BİLİNÇLİ OLARAK KISA: "ne işe yaradığı belirsiz" sözcükleri buraya
+   * eklemek, gerçekten ayırt edici bir sözcüğü sessizce atmak demektir.
+   * Paketleme sözcükleri (ADET, KUTU, PAKET) burada YOKTUR — çünkü genelde
+   * bir rakamın ardından gelirler ve o hâlde zaten korunurlar.
+   */
+  var DOLGU = [
+    'ORİJİNAL', 'ORIJINAL', 'PROFESYONEL', 'KALİTELİ', 'KALITELI',
+    'SÜPER', 'SUPER', 'EKSTRA', 'PREMIUM', 'PREMİUM', 'STANDART',
+    'EKONOMİK', 'EKONOMIK', 'GARANTİLİ', 'GARANTILI', 'MARKA'
+  ];
+
+  /** Türkçe büyük harf (i → İ, ı → I). */
+  function buyuk(s) {
+    return String(s || '').replace(/i/g, 'İ').replace(/ı/g, 'I').toUpperCase();
+  }
+
+  function rakamliMi(s) {
+    return /\d/.test(String(s || ''));
+  }
+
+  /**
+   * Ürün adını verilen karakter sınırına akıllıca indirir.
+   *
+   * @param {string} ad    Ürün adı.
+   * @param {number} limit Karakter sınırı (0 / geçersiz → kısaltma yok).
+   * @returns {string}
+   */
+  function kisaltAd(ad, limit) {
+    var metin = tekSatir(ad).trim();
+
+    limit = Number(limit) || 0;
+
+    if (!metin || limit < 8 || metin.length <= limit) return metin;
+
+    var sozcukler = metin.split(' ');
+
+    /*
+     * --- 1) Dolgu sözcükleri: kaybedilen bilgi yok, işaret de konmaz. ---
+     *
+     * UÇLAR DA SÜZÜLÜR. "ORİJİNAL BOSCH GBH 2-26 …" adında baştaki ORİJİNAL
+     * korunursa marka+model ikilisi (BOSCH GBH) baş korumasının dışında kalır
+     * ve MODEL AİLESİ atılır — fişin ayırt ediciliği tam da orada kırılıyordu.
+     * Dolgunun yeri değil, bilgi taşımaması önemlidir.
+     */
+    if (sozcukler.length > 2) {
+      var suzulmus = sozcukler.filter(function (s) {
+        return DOLGU.indexOf(buyuk(s)) === -1;
+      });
+
+      if (suzulmus.length >= 2) sozcukler = suzulmus;
+    }
+
+    if (sozcukler.join(' ').length <= limit) return sozcukler.join(' ');
+
+    /* --- 2) Koruma kümesi --- */
+    var n = sozcukler.length;
+    var korumali = {};
+
+    [0, 1, n - 2, n - 1].forEach(function (i) {
+      if (i >= 0 && i < n) korumali[i] = true;
+    });
+
+    sozcukler.forEach(function (s, i) {
+      if (!rakamliMi(s)) return;
+
+      korumali[i] = true;
+
+      /* Ölçünün BİRİMİ de korunur: "100x60" tek başına eksiktir. */
+      if (i + 1 < n && sozcukler[i + 1].length <= 4 && !rakamliMi(sozcukler[i + 1])) {
+        korumali[i + 1] = true;
+      }
+    });
+
+    /* --- 3) Ortadan dışa doğru at --- */
+    var atilabilir = [];
+
+    for (var i = 0; i < n; i++) {
+      if (!korumali[i]) atilabilir.push(i);
+    }
+
+    /* Orta indise yakınlık sırası: ürün adını taşıyan sözcük en son atılsın. */
+    var orta = (n - 1) / 2;
+
+    atilabilir.sort(function (a, b) {
+      return Math.abs(a - orta) - Math.abs(b - orta) || a - b;
+    });
+
+    var atilan = {};
+
+    for (var k = 0; k < atilabilir.length; k++) {
+      if (kur(sozcukler, atilan).length <= limit) break;
+
+      atilan[atilabilir[k]] = true;
+    }
+
+    var sonuc = kur(sozcukler, atilan);
+
+    if (sonuc.length <= limit) return sonuc;
+
+    /* --- 4) Son çare: rakamsız sözcükleri kırp --- */
+    var kalanlar = sozcukler.map(function (s, i) { return atilan[i] ? null : i; })
+      .filter(function (i) { return null !== i; })
+      .filter(function (i) { return !rakamliMi(sozcukler[i]) && sozcukler[i].length > 5; })
+      .sort(function (a, b) { return sozcukler[b].length - sozcukler[a].length; });
+
+    for (var j = 0; j < kalanlar.length; j++) {
+      sozcukler[kalanlar[j]] = sozcukler[kalanlar[j]].slice(0, 4) + '…';
+
+      if (kur(sozcukler, atilan).length <= limit) break;
+    }
+
+    sonuc = kur(sozcukler, atilan);
+
+    /*
+     * Tek sözcüklü ad: atacak ya da kısaltacak başka sözcük yok, kırpmaktan
+     * başka çare kalmaz. Çok sözcüklüde DURULUR — daha fazla bozmak yerine
+     * biraz taşmasına izin vermek dürüsttür.
+     */
+    if (sonuc.length > limit && 1 === sozcukler.length) {
+      sonuc = sonuc.slice(0, Math.max(1, limit - 1)).replace(/…$/, '') + '…';
+    }
+
+    return sonuc;
+  }
+
+  /** Atılanları çıkarıp bitişik boşluklara tek "…" koyar. */
+  function kur(sozcukler, atilan) {
+    var parcalar = [];
+    var bosluk = false;
+
+    sozcukler.forEach(function (s, i) {
+      if (atilan[i]) { bosluk = true; return; }
+
+      if (bosluk) { parcalar.push('…'); bosluk = false; }
+
+      parcalar.push(s);
+    });
+
+    return parcalar.join(' ');
+  }
+
+  /**
+   * Bir fişin TÜM adlarını kısaltır ve AYIRT EDİCİLİĞİ korur.
+   *
+   * İki AYRI ürün aynı metne inerse depocu yanlış rafa gider; o yüzden
+   * çakışan grubun sınırı açılır (8'er karakter) ta ki ayrışana kadar.
+   * En kötü hâlde orijinal adlara dönülür — çakışmaktansa taşmak yeğdir.
+   *
+   * @param {string[]} adlar Ürün adları.
+   * @param {number}   limit Karakter sınırı.
+   * @returns {string[]}
+   */
+  function kisaltListe(adlar, limit) {
+    var liste = Array.isArray(adlar) ? adlar : [];
+    var sinir = liste.map(function () { return Number(limit) || 0; });
+
+    function ciz() {
+      return liste.map(function (a, i) { return kisaltAd(a, sinir[i]); });
+    }
+
+    var cikti = ciz();
+
+    for (var tur = 0; tur < 12; tur++) {
+      var sayac = {};
+
+      cikti.forEach(function (c, i) {
+        var anahtar = c + '\u0000' + '';
+
+        sayac[c] = sayac[c] || [];
+        sayac[c].push(i);
+
+        return anahtar;
+      });
+
+      var cakisan = false;
+
+      Object.keys(sayac).forEach(function (c) {
+        var indisler = sayac[c];
+
+        if (indisler.length < 2) return;
+
+        /* AYNI ürün iki kez geçiyorsa çakışma değildir. */
+        var ozgun = {};
+
+        indisler.forEach(function (i) { ozgun[tekSatir(liste[i]).trim()] = true; });
+
+        if (Object.keys(ozgun).length < 2) return;
+
+        cakisan = true;
+
+        indisler.forEach(function (i) { sinir[i] += 8; });
+      });
+
+      if (!cakisan) break;
+
+      cikti = ciz();
+    }
+
+    return cikti;
+  }
+
   /** İlk dolu metin (argüman sırasıyla). */
   function ilkDolu() {
     for (var i = 0; i < arguments.length; i++) {
@@ -1348,11 +1593,23 @@
     var kunye = '<section class="kunye">' + bayiKutusu + siparisKutusu + '</section>';
 
     /* --- Kalem satırları --- */
-    function a4Satir(k) {
+
+    /*
+     * AKILLI AD KISALTMA (Faz 16-C) — YALNIZCA A4.
+     *
+     * Kısaltma bir GÖSTERİM katmanıdır: `k.ad` dokunulmaz, fiş nesnesi tam adı
+     * taşımaya devam eder (WhatsApp metni ve depo fişi özeti onu okur).
+     * Liste hâlinde çağrılır ki aynı fişte iki AYRI ürün aynı metne inmesin.
+     */
+    var kisaAdlar = termal
+      ? kalemler.map(function (k) { return k.ad; })
+      : kisaltListe(kalemler.map(function (k) { return k.ad; }), KISALT_A4);
+
+    function a4Satir(k, sira) {
       var iskontolu = k.listeBirim > k.birim + 0.004;
 
       return '<tr>' +
-        '<td class="s-ad">' + kacis(k.ad || YOK) + '</td>' +
+        '<td class="s-ad">' + kacis(kisaAdlar[sira] || k.ad || YOK) + '</td>' +
         '<td class="s-sku">' + kacis(k.sku || YOK) + '</td>' +
         '<td class="s-adet sayi">' + kacis(koliAdetYazi(k)) + '</td>' +
         '<td class="s-liste sayi">' + kacis(para(k.listeBirim)) + '</td>' +
@@ -1788,7 +2045,12 @@
     sayfalaraBol: sayfalaraBol,
     sayfalayiciBetigi: sayfalayiciBetigi,
     aracCubugu: aracCubugu,
+    /* Faz 16-C — akilli ad kisaltma (depo fisi de ayni ciziciyi cagirir) */
+    kisaltAd: kisaltAd,
+    kisaltListe: kisaltListe,
     /* sabitler */
+    KISALT_A4: KISALT_A4,
+    KISALT_TERMAL: KISALT_TERMAL,
     PARA_BIRIMI: PARA_BIRIMI,
     WA_EN_COK_KALEM: WA_EN_COK_KALEM,
     WA_EN_COK_KARAKTER: WA_EN_COK_KARAKTER,

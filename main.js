@@ -95,6 +95,18 @@ function macAnaPencereSecenekleri() {
   };
 }
 
+/*
+ * Sağ tık menüsü ORTAK modüldedir: aynı menüyü lisans penceresi de ister ve
+ * o pencere `src/main/byom.js` içinde açılır. Menüyü burada tutup oraya
+ * vermek dairesel bağımlılık, kopyalamak ise aynı kural için iki depo olurdu.
+ */
+const baglamMenusu = require('./src/main/byom-baglam-menusu');
+
+/** Bir pencereye sağ tık menüsünü bağlar (Kopyala / Yapıştır / Kes / Tümünü Seç). */
+function baglamMenusunuBagla(pencere) {
+  return baglamMenusu.bagla(pencere);
+}
+
 /**
  * macOS menü çubuğu.
  *
@@ -721,6 +733,7 @@ ipcMain.handle('fis:onizleme', async (olay, veri) => {
     });
 
     pencere.setMenuBarVisibility(false);
+    baglamMenusunuBagla(pencere);   // sag tik: Kopyala / Yapistir / Kes / Tumunu Sec
     gecikoDosyalar.set(pencere.id, gecikoYol);
 
     pencereyiKesinGoster(pencere, false);
@@ -2524,6 +2537,9 @@ function anaPencereyiOlustur() {
   /* ---- AÇILIŞ HATALARINI YAKALA ---- */
 
   // index.html hiç yüklenemezse sessizce boş pencerede kalmasın, sebebini söylesin.
+  /* Sag tik: Kopyala / Yapistir / Kes / Tumunu Sec (Faz 16-C). */
+  baglamMenusunuBagla(anaPencere);
+
   anaPencere.webContents.on('did-fail-load', function (olay, kod, aciklama, url, anaCerceve) {
     if (!anaCerceve || kod === -3) return; // -3 = kullanıcı iptali, önemsiz
     console.error('Sayfa yüklenemedi:', kod, aciklama, url);
