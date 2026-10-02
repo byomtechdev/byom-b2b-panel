@@ -78,6 +78,11 @@
     return document.getElementById(id);
   }
 
+  /** Çizgi ikon (index.html › window.ikon). Yoksa boş — emoji yedeği yok (Faz 20). */
+  function ikonHtml(ad) {
+    return 'function' === typeof window.ikon ? window.ikon(ad) : '';
+  }
+
   function paraYaz(n) {
     if ('function' === typeof window.para) {
       try { return window.para(n); } catch (e) { /* yedek */ }
@@ -361,7 +366,7 @@
                    'class="px-3 py-2 rounded-xl border-2 ' + (durumH.tarih ? 'border-marka-700' : 'border-slate-200 dark:border-slate-600') +
                    ' bg-white dark:bg-slate-900 font-bold" />' +
             (durumH.tarih
-              ? '<button type="button" id="' + kimlik('TarihSil') + '" class="px-2 py-2 rounded-lg font-black hover:bg-slate-100 dark:hover:bg-slate-700" title="Tarihi temizle">✕</button>'
+              ? '<button type="button" id="' + kimlik('TarihSil') + '" class="dg dg-ikincil dg-k dg-kare" title="Tarihi temizle" aria-label="Tarihi temizle">' + ikonHtml('carpi') + '</button>'
               : '') +
           '</label>' +
 
@@ -385,7 +390,7 @@
               : '') +
           '</div>' +
 
-          '<button type="button" id="' + kimlik('Yenile') + '" class="px-4 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition" title="Yenile">⟳</button>' +
+          '<button type="button" id="' + kimlik('Yenile') + '" class="dg dg-ikincil dg-k dg-kare" title="Yenile" aria-label="Yenile">' + ikonHtml('yenile') + '</button>' +
         '</div>' +
         lejant();
     }
@@ -715,7 +720,7 @@
 
       k.innerHTML =
         '<div class="flex items-center gap-3 mb-4 flex-wrap">' +
-          '<button type="button" id="' + kimlik('Geri') + '" class="px-4 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">' +
+          '<button type="button" id="' + kimlik('Geri') + '" class="dg dg-ikincil">' +
             '← Türkiye Haritasına Dön' +
           '</button>' +
           '<div class="text-2xl font-black">' + kacis(il.ad) + ' (' + il.plaka + ')' +
@@ -939,8 +944,8 @@
               (yetkili ? '<span class="truncate">' + kacis(yetkili) + '</span>' : '') +
               (telefon
                 ? '<span class="font-semibold">' + kacis(telefon) + '</span>' +
-                  '<button type="button" class="bk-ara px-2 py-0.5 rounded-md border border-slate-300 dark:border-slate-600 text-xs font-bold hover:bg-white dark:hover:bg-slate-800" data-tel="' + kacis(telefon) + '" title="Numarayı ara / kopyala">📞 Ara</button>' +
-                  (wa ? '<button type="button" class="bk-wa px-2 py-0.5 rounded-md bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700" data-wa="' + kacis(wa) + '" data-unvan="' + kacis(b.unvan || '') + '" title="WhatsApp ile yaz">📲 WhatsApp</button>' : '')
+                  '<button type="button" class="dg dg-ikincil dg-k bk-ara" data-tel="' + kacis(telefon) + '" title="Numarayı ara / kopyala">' + ikonHtml('telefon') + ' Ara</button>' +
+                  (wa ? '<button type="button" class="dg dg-onay dg-k bk-wa" data-wa="' + kacis(wa) + '" data-unvan="' + kacis(b.unvan || '') + '" title="WhatsApp ile yaz">' + ikonHtml('gonder') + ' WhatsApp</button>' : '')
                 : '') +
             '</div>'
           : '') +
@@ -952,7 +957,7 @@
                 : '') +
               (sahada
                 ? '<span class="bk-saha px-2 py-0.5 rounded-md bg-marka-100 text-marka-800 dark:bg-marka-900/40 dark:text-marka-200" ' +
-                  'title="Bu kayıt sahada, pazarlamacı panelinden açıldı">💼 Sahada açıldı</span>'
+                  'title="Bu kayıt sahada, pazarlamacı panelinden açıldı">' + ikonHtml('kamyon') + ' Sahada açıldı</span>'
                 : '') +
             '</div>'
           : '') +
@@ -975,8 +980,8 @@
           ? '<div class="bk-ipucu mt-2 text-xs font-bold text-marka-700 dark:text-marka-300">' +
               '📄 Profili aç — sipariş geçmişi, fiş, iskonto, açık bakiye</div>'
           : '<div class="mt-2 flex gap-2 flex-wrap">' +
-              '<button type="button" class="bk-siparis px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600" data-bayi="' + kacis(String(b.id || '')) + '">🛍️ Bu Bayiye Sipariş Aç</button>' +
-              '<button type="button" class="bk-not px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-bayi="' + kacis(String(b.id || '')) + '">📝 Ziyaret Notu Bırak</button>' +
+              '<button type="button" class="dg dg-birincil dg-k bk-siparis" data-bayi="' + kacis(String(b.id || '')) + '">' + ikonHtml('sepet') + ' Bu Bayiye Sipariş Aç</button>' +
+              '<button type="button" class="dg dg-ikincil dg-k bk-not" data-bayi="' + kacis(String(b.id || '')) + '">' + ikonHtml('not') + ' Ziyaret Notu Bırak</button>' +
             '</div>') +
       '</div>';
     }
@@ -1068,12 +1073,12 @@
         (ADMIN
           ? '<div class="mt-3 flex gap-2 flex-wrap">' +
               (sonraki
-                ? '<button type="button" class="not-durum px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600 transition" ' +
+                ? '<button type="button" class="not-durum dg dg-birincil dg-k" ' +
                   'data-id="' + n.id + '" data-durum="' + sonraki + '">' +
                   ('gorundu' === sonraki ? 'Gördüm / İşleme Aldım' : 'Çözüme Kavuştu') +
                   '</button>'
                 : '') +
-              '<button type="button" class="not-yanit px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700 transition" ' +
+              '<button type="button" class="not-yanit dg dg-ikincil dg-k" ' +
                 'data-id="' + n.id + '">Yanıt Yaz</button>' +
             '</div>'
           : '') +

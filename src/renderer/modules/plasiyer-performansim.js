@@ -242,7 +242,10 @@
     bagli = true;
 
     var yenileDugme = el('performansimYenile');
-    if (yenileDugme) yenileDugme.addEventListener('click', yenile);
+    /* Meşgul durumuyla (Faz 20): iş bitene kadar ikon döner, ikinci basış yeni tur açmaz.
+       Modül yoksa düz tıklama (zarif düşüş). */
+    if (yenileDugme && window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.bagla) window.ArayuzDugme.bagla(yenileDugme, yenile);
+    else if (yenileDugme) yenileDugme.addEventListener('click', yenile);
 
     /* `sekmeAc` SARILIR (renderer.js'e dokunmadan). */
     if ('function' === typeof window.sekmeAc) {

@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.10.0** (Faz 19).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.11.0** (Faz 20).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -126,6 +126,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 ```
 src/renderer/telemetry.js   ← <head>:16, EN ÖNCE: sonraki her betiğin hatasını yakalar
 vendor/tailwind.js                                    (49)
+src/renderer/arayuz-dugme.js ← Faz 20: meşgul durumu + etiket biçimi; renderer.js'ten ÖNCE (testli)
 renderer.js                 ← çekirdek: durum, $, bildir, api/woo/b2b, sekmeAc   (4190)
 renderer-ek.js              ← renderer.js'i sarar     (4193)
 src/renderer/sira-motor.js  ← ızgaradan ÖNCE (DOM'suz motor)   (4201)
@@ -1967,6 +1968,78 @@ hatalı **seçilemez**. `[Seçilenleri Düzelt]` toplam farkı söyleyen onaydan
 
 ---
 
+## 4.26 Faz 20 — Arayüz sistemi: üç kademeli düğme, Yenile'de meşgul durumu, ölü düğme koruması, saha terminali ergonomisi
+
+Panel **2.11.0** → `../BYOM-REGISTRY.md §5.54`, kök `CLAUDE.md §10 Faz 20`. Eklenti ve temalar değişmedi.
+
+### 4.26.1 Düğme sistemi — `index.html › <style id="arayuzSistemi">`
+
+Kurumsal tema bloğundan SONRA gelen ayrı bir `<style>`; aynı ağırlıkta (`!important`) yazılır.
+
+| Sınıf | Ölçü | Kullanım |
+|---|---|---|
+| `dg dg-b` | 44px | sayfanın/pencerenin asıl işlemi, pencere ayakları, saha dokunmatik hedefleri |
+| `dg` | 38px | başlık eylemleri (Yenile, Yeni …), süzgeçler |
+| `dg dg-k` | 32px | kart / tablo içi işlemler |
+| `dg-kare` | kare | yalnızca ikon (aria-label zorunlu) |
+| `dg-birincil` · `dg-onay` · `dg-ikincil` · `dg-sessiz` · `dg-tehlike` · `dg-tehlike-dolu` | renk = anlam | yüzeyde TEK birincil |
+| `aria-pressed="true"` / `aria-selected="true"` | seçili DURUM | süzgeç/sekme — eylem renginden ayrı |
+| `dg-grup` | düğme grubu | görünüm anahtarı, kaynak süzgeci, saha sipariş durumu |
+| `dg-sayac` (`--uyari`) | rozet | sekme adetleri; boşken gizli |
+| `adimlar` > `dg adim` | ilerleme şeridi | sipariş kartının durum adımları (`data-adim="su-an|gecmis|sira"`, şu anki `aria-current="step"` + `disabled`) |
+
+> ⚠️ **Gizli kazanır.** Taban `display:inline-flex !important`; `.dg.hidden` ve `.dg[hidden]`
+> ayrıca `display:none !important` alır. Bu kural olmadan `classList.add('hidden')` ile
+> gizlenen düğmeler görünür kalıyordu (revize "Geri Al" — düzenekte yakalandı).
+>
+> ⚠️ **Eski boy eşlemesi** (`h-16→44`, `h-14/12/11→38`, `h-10/9/8→32`) `role="switch"`
+> anahtarlarına ve `.rounded-full` düğmelere **uygulanmaz** — yoksa iskonto matrisi
+> anahtarları kare oluyordu.
+>
+> Dönüştürülen düğmeden eski Tailwind renk/boy sınıfları **sökülür**: temadaki
+> `.hover\:bg-marka-800:hover` (0,2,0) gibi kurallar aksi hâlde nötr düğmeyi fareyle
+> mavi yapar.
+
+### 4.26.2 Meşgul durumu — `src/renderer/arayuz-dugme.js` (`window.ArayuzDugme`)
+
+`calistir(dugme, is, {enAz})` · `bagla(dugme, is)` · `mesgulMu(dugme)` · `etiket(metin)` · `ENAZ_MS = 350`.
+
+- İş **eşzamanlı** başlar; sürerken `aria-busy="true"` + `disabled`, ilk `.ik` döner (CSS).
+- Süren işe ikinci basış yeni iş açmaz (aynı söz). Hata yutulmaz, düğme yine serbest.
+- **Yükleyici sözünü DÖNDÜRMELİ** — dönüş onu bekler (`function () { return yukle(); }`).
+- `renderer.js → yenileDugmesiBagla(dugme, yukleyici)` sarmalayıcısı; modül yoksa düz tıklama.
+- `etiket()` — BÜYÜK HARF → Türkçe kurallı başlık düzeni. `onayla`, `metinSor`,
+  `durumPenceresi`, `butonuMesgulEt` çağıranın büyük harfli metnini kendisi biçimler.
+
+**Betik sırası:** `src/renderer/arayuz-dugme.js` → `renderer.js` (testle kilitli).
+
+### 4.26.3 Bulunan hatalar (kökleri)
+
+| Hata | Kök | Yer |
+|---|---|---|
+| Saha kartında "+" yok | `.urun-kart` yönetici `flex-wrap` düzeni + `contain: paint` taşan "+"yı kesiyordu | `.pv-kart` dikey (`plasiyer-vitrin.js → kartlariCiz`) |
+| Demo/sıfır kurulumda yönetici menüsünde saha sekmeleri | `kapiyiKur` bağlantısız dalda `kisitlamayiUygula()` çağrılmıyordu | `renderer-plasiyer.js` |
+| Bildirimde "undefined" | `bildir(…, 'ok')` (18 çağrı) tanınmıyordu | `renderer.js → bildir` takma adları |
+| "Tarayıcıda aç" ölü | adres yokken sessiz `return` | `renderer-vitrin.js` |
+| Alt sınırda "−" tepkisiz | — | `eksiDurumunuTazele` (`disabled`) |
+
+### 4.26.4 Saha terminali
+
+Kart: görsel 4:3 → ad (2 satır) → kod → koli + fiyat → **dibe oturan** [− kutu +] 44px +
+"Sepete Ekle" 44px. Sepet 304px ve yapışkan; satır −/+/kaldır 44px. Müşteri seçimi
+`#musteriSecim` 44px / en az 18rem. Kategori listesi `.pv-kat` (aria-pressed; "Tüm
+Ürünleri Gör" de listenin üyesi). Künye **çip** (`.pv-cip`, bilgi ≠ eylem). Emoji yerine
+çizgi ikon (modüllerde `ikonHtml(ad)` yardımcısı — `window.ikon` yoksa boş).
+
+### Bozmaman gereken sözler (Faz 20)
+- Yenile bağlaması meşgul yardımcısından geçer; yükleyici söz döndürür.
+- Yeni kimlikli düğme bir JS başvurusu olmadan eklenmez; yeni `data-eylem` dinleyicisiz eklenmez (`arayuz-sistemi.dom.test.js` ölü düğme koruması).
+- `.dg` tabanına `display` kuralı eklenirse gizleme kuralı tabandan SONRA kalır.
+- Anahtarlar (`role="switch"`) eski boy eşlemesine girmez.
+- Saha kartı `.pv-kart` dikey kalır; adet satırı `44px · esnek · 44px`.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1974,10 +2047,11 @@ hatalı **seçilemez**. `[Seçilenleri Düzelt]` toplam farkı söyleyen onaydan
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.095 test**: panel 429 + kök 644 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.126 test**: panel 441 + kök 663 + hub 22).
 
 ```bash
-# Bu submodule'un kendi birim testleri (429 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (441 test) — Electron GEREKMEZ
+node --test test/arayuz-dugme.test.js       # 12 — Faz 20: meşgul durumu (aria-busy, ikinci basış, en az süre), etiket() başlık düzeni
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
@@ -2018,18 +2092,19 @@ node --test scripts/tests/depo-fisi.test.js           # fiş muhasebe dökümü
 node --test scripts/tests/odeme-matrisi.dom.test.js   # matris arayüzü
 node --test scripts/tests/checkout-masasi.dom.test.js
 node --test scripts/tests/sifre-goz.dom.test.js
-node --test scripts/tests/plasiyer-kapi.dom.test.js   # 79 — çift kapı, Master PIN, cihaz kilidi, ÇIKIŞ, rol dayanıklılığı, PIN SIFIRLAMA
+node --test scripts/tests/plasiyer-kapi.dom.test.js   # 80 — Faz 20: sıfır kurulumda yönetici kabuğu · çift kapı, Master PIN, cihaz kilidi, ÇIKIŞ, rol dayanıklılığı, PIN SIFIRLAMA
 node --test scripts/tests/saha-perde.dom.test.js      # 6  — Faz 13: perde ATA ZİNCİRİ (ölü düğme), müşteri düzenleme iki kip
 node --test scripts/tests/plasiyer-menu.dom.test.js   # 19 — menü hiyerarşisi, alt sekmeler, Saha Notlarım, dönem çipleri
 node --test scripts/tests/yonetici-pin.dom.test.js    # 17 — PIN değiştirme kartı + giriş kartı düzeni
 node --test scripts/tests/harita-kokpit.dom.test.js   # 18 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran, bayi profili
-node --test scripts/tests/saha-denetim.dom.test.js    # 30 — Faz 10-14: hızlı adet, Saha Siparişlerim (+ iptal/sil), üç üye alt sekmesi, katalog sayfalama, ürün kartı, KDV İSTEMİYORUM matematiği
+node --test scripts/tests/saha-denetim.dom.test.js    # 31 — Faz 20: alt sınırda "−" kapalı · Faz 10-14: hızlı adet, Saha Siparişlerim (+ iptal/sil), üç üye alt sekmesi, katalog sayfalama, ürün kartı, KDV İSTEMİYORUM matematiği
 node --test scripts/tests/saha-analitik.dom.test.js   # 11 — Faz 11: Performansım, kalem dökümü üç şekil, harita tarih + bayi kartı, çevrimdışı müşteri silme
 node --test scripts/tests/yonetici-arayuz.dom.test.js # 18 — Faz 11-13: sipariş sekmesi iki seviye, WhatsApp fişi, logo ÖLÇEĞİ (--logo-height, önizleme şeridi), üç görsel yuvası
 node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki rol iki harita, renk/il formu, saha kısayolları, bayi profili kapısı
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
 node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
+node --test scripts/tests/arayuz-sistemi.dom.test.js  # 17 — Faz 20: üç kademe, meşgul CSS'i, gizli kazanır, Yenile bağlamaları, ÖLÜ DÜĞME KORUMASI, bildir('ok')
 node --test scripts/tests/revize-urun-ekle.dom.test.js # 17 — Faz 19: ürün ekle, ARA KAYDET, iskonto kırılımı, KDV çift bölme, geçmiş penceresi
 node --test scripts/tests/revize-onizleme.test.js     # 11 — Faz 19: önizleme motoru (PHP_BIN verilirse sunucu motoruyla 500 vaka)
 node --test scripts/tests/odeme-yetki.dom.test.js     # 12 — Faz 19: bayi kartı ödeme yetkileri + bayiMinTutarKaydet regresyonu
@@ -2054,7 +2129,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.095 test)
+# Bitirirken: üç katmanın tamamı (1.126 test)
 node scripts/check-all.js
 ```
 

@@ -84,9 +84,9 @@
 
     dugme.type = 'button';
     dugme.id = 'ziyaretNotuAc';
-    dugme.className = 'px-4 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-600 ' +
-                      'font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition';
-    dugme.textContent = '📝 Saha Ziyaret Notu / Talep Gir';
+    /* Faz 20: müşteri şeridindeki öteki ikincil düğmelerle aynı aile ve boy. */
+    dugme.className = 'dg dg-ikincil';
+    dugme.innerHTML = ('function' === typeof window.ikon ? window.ikon('not') + ' ' : '') + 'Saha Ziyaret Notu / Talep Gir';
     dugme.title = 'İsteğe bağlı — patrona not bırakın';
 
     dugme.addEventListener('click', formuAc);
@@ -121,7 +121,7 @@
           '<div class="text-xl font-extrabold">Saha Ziyaret Notu</div>' +
           '<div class="text-sm text-slate-500 dark:text-slate-400 mt-1">' + kacis(musteri.unvan || '—') + '</div>' +
         '</div>' +
-        '<button type="button" id="ziyaretKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="ziyaretKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
 
       '<p class="mt-3 text-sm text-slate-500 dark:text-slate-400">' +
@@ -152,8 +152,8 @@
       '<p id="zyHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>' +
 
       '<div class="mt-6 flex gap-2">' +
-        '<button type="button" id="zyKaydet" class="flex-1 px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">Notu Gönder</button>' +
-        '<button type="button" id="zyVazgec" class="px-6 py-4 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Vazgeç</button>' +
+        '<button type="button" id="zyKaydet" class="dg dg-birincil dg-b flex-1">Notu Gönder</button>' +
+        '<button type="button" id="zyVazgec" class="dg dg-ikincil dg-b">Vazgeç</button>' +
       '</div>';
 
     perde.hidden = false;
@@ -293,8 +293,9 @@
       zil = document.createElement('button');
       zil.type = 'button';
       zil.id = 'ziyaretZil';
-      zil.className = 'relative px-3 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-600 ' +
-                      'font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition';
+      /* Faz 20: ikon düğmesi KAREDİR (38px); sayaç rozeti köşede. */
+      zil.className = 'dg dg-ikincil dg-kare relative';
+      zil.setAttribute('aria-label', 'Yönetici yanıtları');
       zil.title = 'Yönetici yanıtları';
 
       zil.addEventListener('click', zilPerdesiniAc);
@@ -308,7 +309,7 @@
 
     var sayi = okunmamisSayisi();
 
-    zil.innerHTML = '🔔' + (sayi
+    zil.innerHTML = (window.ikon ? window.ikon('zil') : '') + (sayi
       ? '<span class="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white ' +
         'text-xs font-black grid place-items-center">' + sayi + '</span>'
       : '');
@@ -325,7 +326,7 @@
     modal.innerHTML =
       '<div class="flex items-start justify-between gap-4">' +
         '<div class="text-xl font-extrabold">Notlarım ve Yönetici Yanıtları</div>' +
-        '<button type="button" id="ziyaretKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="ziyaretKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
 
       (liste.length
@@ -418,11 +419,11 @@
     if (!notlar.length) {
       kap.innerHTML =
         '<div class="py-12 text-center">' +
-          '<div class="text-5xl mb-4" aria-hidden="true">📝</div>' +
-          '<div class="text-xl font-bold">Henüz saha notu yok</div>' +
-          '<p class="mt-2 text-slate-500 dark:text-slate-400">' +
+          '<div class="text-5xl mb-4" aria-hidden="true">' + (window.ikon ? window.ikon('not') : '') + '</div>' +
+          '<div class="text-base font-bold">Henüz saha notu yok</div>' +
+          '<p class="mt-2 metin-ikincil">' +
             'Not girmek ZORUNLU DEĞİLDİR. Bir müşteri seçip ' +
-            '"📝 Saha Ziyaret Notu" düğmesiyle istediğinizde ekleyebilirsiniz.</p>' +
+            '"Saha Ziyaret Notu" düğmesiyle istediğinizde ekleyebilirsiniz.</p>' +
         '</div>';
       return;
     }
@@ -443,7 +444,8 @@
   function sekmeyiAc() {
     notlarimiCiz();
 
-    notlariGetir().then(notlarimiCiz).catch(function () { /* sessiz: eldeki liste duruyor */ });
+    /* Söz döner: Yenile düğmesi meşgul görünümünü bu bitene kadar tutar (Faz 20). */
+    return notlariGetir().then(notlarimiCiz).catch(function () { /* sessiz: eldeki liste duruyor */ });
   }
 
   function kur() {
@@ -466,7 +468,10 @@
     }
 
     var yenile = el('notlarimYenile');
-    if (yenile) yenile.addEventListener('click', sekmeyiAc);
+    /* Meşgul durumuyla (Faz 20): iş bitene kadar ikon döner, ikinci basış yeni tur açmaz.
+       Modül yoksa düz tıklama (zarif düşüş). */
+    if (yenile && window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.bagla) window.ArayuzDugme.bagla(yenile, sekmeyiAc);
+    else if (yenile) yenile.addEventListener('click', sekmeyiAc);
 
     document.addEventListener('keydown', function (olay) {
       var perde = el('ziyaretPerde');

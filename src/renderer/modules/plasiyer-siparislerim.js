@@ -38,6 +38,11 @@
     return document.getElementById(id);
   }
 
+  /** Çizgi ikon (index.html › window.ikon). Yoksa boş — emoji yedeği yok (Faz 20). */
+  function ikonHtml(ad) {
+    return 'function' === typeof window.ikon ? window.ikon(ad) : '';
+  }
+
   function oturum() {
     return (window.durum && window.durum.oturum) || {};
   }
@@ -328,13 +333,13 @@
   function suzgecBari(toplam, gorunen) {
     return '<div class="siparislerim-suzgec flex items-center gap-2 flex-wrap mb-4">' +
       '<input type="search" id="siparislerimAra" value="' + kacis(durumS.arama || '') + '" placeholder="Sipariş no, müşteri, ürün…" ' +
-             'class="flex-1 min-w-48 h-11 px-4 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold" aria-label="Siparişlerde ara" />' +
-      '<div class="flex rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-600" role="group" aria-label="Durum">' +
+             'class="alan flex-1 min-w-48 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900" aria-label="Siparişlerde ara" />' +
+      /* Durum süzgeci düğme GRUBUDUR (Faz 20): seçili parça aria-pressed'den boyanır. */
+      '<div class="dg-grup" role="group" aria-label="Durum">' +
         DURUM_CIPLERI.map(function (c) {
           var aktif = c.kod === durumS.suzgec;
-          return '<button type="button" class="siparislerim-cip px-3 py-2 text-sm font-bold transition ' +
-            (aktif ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900' : 'hover:bg-slate-100 dark:hover:bg-slate-700') +
-            '" data-suzgec="' + c.kod + '" aria-pressed="' + (aktif ? 'true' : 'false') + '">' + c.ad + '</button>';
+          return '<button type="button" class="siparislerim-cip dg" ' +
+            'data-suzgec="' + c.kod + '" aria-pressed="' + (aktif ? 'true' : 'false') + '">' + c.ad + '</button>';
         }).join('') +
       '</div>' +
       (gorunen !== toplam ? '<span class="text-sm font-bold text-slate-500">' + gorunen + ' / ' + toplam + '</span>' : '') +
@@ -507,9 +512,9 @@
         '</div>' +
         /* TEK EYLEM: depo düğmeleri YOK. */
         '<div class="flex justify-end pt-3 border-t-2 border-dashed border-slate-200 dark:border-slate-700">' +
-          '<button type="button" class="siparis-detay-ac h-12 px-5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-extrabold transition hover:bg-slate-100 dark:hover:bg-slate-700" ' +
+          '<button type="button" class="siparis-detay-ac dg dg-ikincil dg-k" ' +
                   'data-id="' + s.id + '" aria-expanded="' + (acik ? 'true' : 'false') + '">' +
-            '📄 Sipariş / Fiş Detayı' +
+            ikonHtml('not') + ' Sipariş / Fiş Detayı' +
           '</button>' +
         '</div>' +
         '<div class="siparis-detay"' + (acik ? '' : ' hidden') + '>' +
@@ -545,20 +550,20 @@
              tekrar sipariş. Kartın dışında TEK birincil düğme durur (saha ekranı
              sade kalır); depo eylemleri (revize/iptal/durum) burada da YOKTUR. */
           '<div class="siparis-kanallar mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex gap-2 flex-wrap">' +
-            '<button type="button" class="sk-fis px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + s.id + '" data-kagit="a4" title="Yazdır · PDF olarak kaydet · WhatsApp\'tan gönder">📄 Profesyonel Fiş / Yazdır / PDF</button>' +
-            '<button type="button" class="sk-fis px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + s.id + '" data-kagit="termal" title="80 mm termal yazıcı">🧾 Termal</button>' +
-            '<button type="button" class="sk-wa px-3 py-2 rounded-lg bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700" data-id="' + s.id + '">📲 WhatsApp Sipariş Fişi</button>' +
-            '<button type="button" class="sk-tekrar px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600" data-id="' + s.id + '" title="Kalemleri bugünün fiyatıyla sepete doldur">🔁 Tekrar Sipariş</button>' +
+            '<button type="button" class="dg dg-ikincil dg-k sk-fis" data-id="' + s.id + '" data-kagit="a4" title="Yazdır · PDF olarak kaydet · WhatsApp\'tan gönder">' + ikonHtml('not') + ' Profesyonel Fiş / Yazdır / PDF</button>' +
+            '<button type="button" class="dg dg-ikincil dg-k sk-fis" data-id="' + s.id + '" data-kagit="termal" title="80 mm termal yazıcı">' + ikonHtml('not') + ' Termal</button>' +
+            '<button type="button" class="dg dg-onay dg-k sk-wa" data-id="' + s.id + '">' + ikonHtml('gonder') + ' WhatsApp Sipariş Fişi</button>' +
+            '<button type="button" class="dg dg-birincil dg-k sk-tekrar" data-id="' + s.id + '" title="Kalemleri bugünün fiyatıyla sepete doldur">' + ikonHtml('yenile') + ' Tekrar Sipariş</button>' +
             /* İPTAL / SİL (Faz 14): depo eylemi DEĞİL, plasiyerin kendi siparişi
                üzerindeki iki kararı. Detayın içinde (kartın dışında yine TEK
                birincil düğme). İptal yalnızca kargoya çıkmamış siparişte, silme
                yalnızca iptal edilmiş siparişte görünür — sunucu da aynı kuralı
                uygular (409); düğme yalnızca yol gösterir. */
             (iptalEdilebilirMi(s)
-              ? '<button type="button" class="sk-iptal px-3 py-2 rounded-lg border-2 border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 font-bold text-sm hover:bg-red-100 dark:hover:bg-red-500/20" data-id="' + s.id + '" title="Siparişi iptal et (durum: İptal Edildi)">🚫 Siparişi İptal Et</button>'
+              ? '<button type="button" class="dg dg-tehlike dg-k sk-iptal" data-id="' + s.id + '" title="Siparişi iptal et (durum: İptal Edildi)">' + ikonHtml('yasak') + ' Siparişi İptal Et</button>'
               : '') +
             (silinebilirMi(s)
-              ? '<button type="button" class="sk-sil px-3 py-2 rounded-lg bg-red-700 text-white font-bold text-sm hover:bg-red-800" data-id="' + s.id + '" title="İptal edilmiş siparişi sunucudan kalıcı olarak sil">🗑️ Siparişi Sil</button>'
+              ? '<button type="button" class="dg dg-tehlike dg-k sk-sil" data-id="' + s.id + '" title="İptal edilmiş siparişi sunucudan kalıcı olarak sil">' + ikonHtml('cop') + ' Siparişi Sil</button>'
               : '') +
           '</div>' +
         '</div>' +
@@ -677,7 +682,7 @@
       window.PlasiyerMusteri.kuyrukSeridiniCiz();
     }
 
-    yenile();
+    return yenile();
   }
 
   /* ------------------------------------------------------------------ *
@@ -708,7 +713,10 @@
     }
 
     var yenileDugme = el('siparislerimYenile');
-    if (yenileDugme) yenileDugme.addEventListener('click', sekmeyiAc);
+    /* Meşgul durumuyla (Faz 20): iş bitene kadar ikon döner, ikinci basış yeni tur açmaz.
+       Modül yoksa düz tıklama (zarif düşüş). */
+    if (yenileDugme && window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.bagla) window.ArayuzDugme.bagla(yenileDugme, sekmeyiAc);
+    else if (yenileDugme) yenileDugme.addEventListener('click', sekmeyiAc);
 
     /* Çıktı kanalları (Faz 12) — tek delegasyon. */
     var liste = el('siparislerimListe');

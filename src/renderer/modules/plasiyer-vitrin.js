@@ -240,14 +240,18 @@
       return;
     }
 
+    /* Seçili kategori bir DURUMDUR (Faz 20): aria-pressed taşır, renk sistemden
+       gelir (index.html › .pv-kat). "Tüm Ürünleri Gör" de aynı listenin üyesidir. */
+    var tum = el('tumUrunler');
+    if (tum) tum.setAttribute('aria-pressed', durumV.kategori ? 'false' : 'true');
+
     kap.innerHTML = durumV.kategoriler.map(function (k) {
       var aktif = k.ad === durumV.kategori;
 
-      return '<button type="button" class="kat-dugme text-left px-4 py-2.5 rounded-xl font-bold transition ' +
-        (aktif ? 'bg-marka-700 text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-700') + '" ' +
+      return '<button type="button" class="kat-dugme pv-kat" aria-pressed="' + (aktif ? 'true' : 'false') + '" ' +
         'data-kat="' + kacis(k.ad) + '">' +
-          kacis(k.ad) +
-          '<span class="ml-2 text-xs font-semibold opacity-70">' + k.adet + '</span>' +
+          '<span class="pv-kat__ad">' + kacis(k.ad) + '</span>' +
+          '<span class="pv-kat__adet">' + k.adet + '</span>' +
         '</button>';
     }).join('');
   }
@@ -367,9 +371,9 @@
     if (!durumV.urunler.length) {
       kap.innerHTML =
         '<div class="py-16 text-center">' +
-          '<div class="text-5xl mb-4" aria-hidden="true">📦</div>' +
-          '<div class="text-xl font-bold">Ürün bulunamadı</div>' +
-          '<p class="mt-2 text-slate-500 dark:text-slate-400">Filtreyi temizleyin ya da kataloğu eşitleyin.</p>' +
+          '<div class="text-5xl mb-4" aria-hidden="true">' + ikonHtml('kutuBos') + '</div>' +
+          '<div class="text-base font-bold">Ürün bulunamadı</div>' +
+          '<p class="mt-2 metin-ikincil">Filtreyi temizleyin ya da kataloğu eşitleyin.</p>' +
         '</div>';
 
       dahaDugmesiniCiz();
@@ -389,7 +393,7 @@
       : String(u.image_url || '');
 
     if (!adres) {
-      return '<div class="gorsel-kutu grid place-items-center text-3xl text-slate-300 dark:text-slate-600">📦</div>';
+      return '<div class="gorsel-kutu gorsel-kutu--bos grid place-items-center" aria-hidden="true">' + ikonHtml('paket') + '</div>';
     }
 
     /* loading="lazy": ekran dışındaki görseller hiç okunmaz. */
@@ -455,7 +459,33 @@
   }
 
   function spotRozeti(u) {
-    return u.is_spot ? '<span class="spot-rozet">🔥 SPOT / FIRSAT</span>' : '';
+    return u.is_spot ? '<span class="spot-rozet">' + ikonHtml('parlak') + ' Spot / Fırsat</span>' : '';
+  }
+
+  /** Global ikon yardımcısı (index.html) yoksa boş döner — test ortamı ve zarif düşüş. */
+  function ikonHtml(ad) {
+    return 'function' === typeof window.ikon ? window.ikon(ad) : '';
+  }
+
+  /*
+   * ADET KUTUSU ALT SINIRI (Faz 20). Kutu alt sınırdayken (tekil 1, kolili 1 koli)
+   * "−" hiçbir şey yapmıyordu ve bunu söylemiyordu — tıklama denetiminde tepkisiz
+   * çıkan düğmeydi. Artık alt sınırda KAPALI görünür; değer değişince açılır.
+   */
+  function eksiDurumunuTazele(id) {
+    var kutu = hizliKutu(id);
+    var urun = urunBul(id);
+    var vit = el('urunVitrin');
+    var eksi = vit ? vit.querySelector('.hizli-eksi[data-id="' + String(id) + '"]') : null;
+
+    if (!kutu || !urun || !eksi) return;
+
+    var deger = Number(kutu.value) || 0;
+    eksi.disabled = deger <= M().koliIci(urun);
+  }
+
+  function tumEksileriTazele() {
+    gosterilenler().forEach(function (u) { eksiDurumunuTazele(u.id); });
   }
 
   /**
@@ -482,34 +512,45 @@
 
   /** VİTRİN (sunum) modu — büyük kartlar. */
   function kartlariCiz() {
-    return '<div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(14rem,1fr))]">' +
+    /*
+     * KART YERLEŞİMİ (Faz 20). `.urun-kart` sınıfı yönetici ürün listesiyle
+     * ORTAK ve orada tek satırlık `flex-wrap` düzeni taşıyor; saha kartında bu
+     * düzen adet satırını kartın dışına itiyordu ve `contain: paint` taşan
+     * "+" düğmesini KESİYORDU (ekranda hiç görünmüyordu). `.pv-kart` kartı dikey
+     * sütun yapar (index.html › ARAYÜZ SİSTEMİ › saha kartı); adet satırı ile
+     * "Sepete Ekle" `mt-auto` ile kart dibine oturur — aynı sıradaki kartlarda
+     * düğmeler aynı hizada durur. Dokunmatik hedefler 44px.
+     */
+    return '<div class="pv-izgara">' +
       gosterilenler().map(function (u) {
         return '' +
-          '<div class="urun-kart relative bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-3">' +
+          '<div class="urun-kart pv-kart relative bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-3">' +
             spotRozeti(u) +
             '<button type="button" class="urun-buyut w-full" data-id="' + u.id + '" title="Büyüt">' +
               gorselEtiketi(u) +
             '</button>' +
             /* ÜRÜN SAHİBİNİN İSTEDİĞİ SIRA: görsel → ad → kod/barkod →
                (rozet + fiyat aynı satırda). */
-            '<div class="mt-3 font-extrabold leading-snug line-clamp-2" title="' + kacis(u.name) + '">' + kacis(u.name) + '</div>' +
-            '<div class="mt-1 text-xs text-slate-500 dark:text-slate-400">Ürün Kod/Barkod : ' + kacis(kodBarkod(u)) + '</div>' +
-            '<div class="mt-2 flex items-center justify-between gap-2 flex-wrap">' +
+            '<div class="pv-kart__ad line-clamp-2" title="' + kacis(u.name) + '">' + kacis(u.name) + '</div>' +
+            '<div class="pv-kart__kod">Ürün Kod/Barkod : ' + kacis(kodBarkod(u)) + '</div>' +
+            '<div class="pv-kart__fiyat">' +
               koliEtiketi(u) +
               fiyatHtml(u, 'text-lg font-black', true) +
             '</div>' +
             /* HIZLI ADET (Faz 10 — Görsel 4): kartta doğrudan sayı yazılır;
                −/+ koli katlarında ilerler, Enter ya da "Sepete Ekle" yazılan
                adedi sepete koyar (motor koli katına YUKARI tamamlar). */
-            '<div class="mt-3 flex items-center gap-1">' +
-              '<button type="button" class="hizli-eksi w-9 h-9 shrink-0 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-black" data-id="' + u.id + '" aria-label="Azalt">−</button>' +
-              '<input type="number" min="1" step="' + M().koliIci(u) + '" value="' + M().koliIci(u) + '" data-id="' + u.id + '" ' +
-                     'class="hizli-adet-input flex-1 min-w-0 px-2 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-black text-center" ' +
-                     'aria-label="Adet" title="Adet yazın; koli katına tamamlanır" />' +
-              '<button type="button" class="hizli-arti w-9 h-9 shrink-0 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-black" data-id="' + u.id + '" aria-label="Artır">+</button>' +
+            '<div class="pv-kart__alt">' +
+              '<div class="pv-adet">' +
+                '<button type="button" class="hizli-eksi dg dg-ikincil dg-b dg-kare" data-id="' + u.id + '" aria-label="Azalt" disabled>−</button>' +
+                '<input type="number" min="1" step="' + M().koliIci(u) + '" value="' + M().koliIci(u) + '" data-id="' + u.id + '" ' +
+                       'class="hizli-adet-input pv-adet__kutu" ' +
+                       'aria-label="Adet" title="Adet yazın; koli katına tamamlanır" />' +
+                '<button type="button" class="hizli-arti dg dg-ikincil dg-b dg-kare" data-id="' + u.id + '" aria-label="Artır">+</button>' +
+              '</div>' +
+              '<button type="button" class="urun-ekle dg dg-birincil dg-b dg-tam" ' +
+                      'data-id="' + u.id + '">' + ikonHtml('sepet') + ' Sepete Ekle</button>' +
             '</div>' +
-            '<button type="button" class="urun-ekle mt-2 w-full px-4 py-3 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600 transition" ' +
-                    'data-id="' + u.id + '">Sepete Ekle</button>' +
           '</div>';
       }).join('') +
     '</div>';
@@ -582,7 +623,7 @@
     var kalan = toplam - Math.min(durumV.sinir, yuklu);
 
     kap.innerHTML = kalan > 0
-      ? '<button type="button" id="dahaGoster" class="px-6 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">' +
+      ? '<button type="button" id="dahaGoster" class="dg dg-ikincil dg-b">' +
         kalan + ' ürün daha göster</button>'
       : '';
 
@@ -624,7 +665,7 @@
     modal.innerHTML =
       '<div class="flex items-start justify-between gap-4">' +
         '<div class="text-xl font-extrabold pr-2">' + (u.is_spot ? '🔥 ' : '') + kacis(u.name) + '</div>' +
-        '<button type="button" id="urunKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="urunKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
       '<div class="mt-4 grid gap-5 sm:grid-cols-2">' +
         '<div class="relative">' + spotRozeti(u) + gorselEtiketi(u) + '</div>' +
@@ -639,12 +680,12 @@
             ? '<div class="mt-3 text-sm text-slate-500 dark:text-slate-400">' + kacis(u.categories.join(', ')) + '</div>'
             : '') +
           '<div class="mt-5 flex items-center gap-2">' +
-            '<button type="button" id="modalEksi" class="w-12 h-12 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-2xl font-black hover:bg-slate-100 dark:hover:bg-slate-700">−</button>' +
+            '<button type="button" id="modalEksi" class="dg dg-ikincil dg-b dg-kare" aria-label="Azalt">−</button>' +
             '<input id="modalAdet" type="number" min="1" step="' + koli + '" value="' + koli + '" class="w-24 px-3 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-black text-center text-lg" />' +
-            '<button type="button" id="modalArti" class="w-12 h-12 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-2xl font-black hover:bg-slate-100 dark:hover:bg-slate-700">+</button>' +
+            '<button type="button" id="modalArti" class="dg dg-ikincil dg-b dg-kare" aria-label="Artır">+</button>' +
           '</div>' +
           '<div id="modalEtiket" class="mt-2 text-sm font-bold text-slate-600 dark:text-slate-300"></div>' +
-          '<button type="button" id="modalEkle" class="mt-4 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">Sepete Ekle</button>' +
+          '<button type="button" id="modalEkle" class="dg dg-birincil dg-b mt-4 w-full">Sepete Ekle</button>' +
         '</div>' +
       '</div>';
 
@@ -735,6 +776,7 @@
     /* Kutu bir sonraki ürün için birime döner. */
     var kutu = hizliKutu(u.id);
     if (kutu) kutu.value = M().koliIci(u);
+    eksiDurumunuTazele(u.id);
 
     sepetiCiz();
     bildir(kacis(u.name) + ' sepete eklendi: ' + kacis(M().adetEtiketi(u, eklenen)) + '.', 'ok');
@@ -750,32 +792,37 @@
 
     if (!s.satirlar.length) {
       kap.innerHTML =
-        '<div class="text-center py-8">' +
-          '<div class="text-4xl mb-3" aria-hidden="true">🧺</div>' +
+        '<div class="pv-sepet__bos">' +
+          '<span class="pv-sepet__bos-ikon" aria-hidden="true">' + ikonHtml('sepet') + '</span>' +
           '<div class="font-bold">Sepet boş</div>' +
-          '<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Ürün seçerek başlayın.</p>' +
+          '<p class="metin-ikincil">Ürün seçerek başlayın.</p>' +
         '</div>';
       return;
     }
 
+    /*
+     * SEPET SATIRI (Faz 20) — saha terminali dokunmatik: −/+ ve kaldır 44px
+     * kare hedeftir (eskiden 36px). Satır tutarı adet satırının sağında; ad tam
+     * genişlikte iki satıra kadar sarar.
+     */
     kap.innerHTML =
-      '<div class="font-extrabold text-lg mb-3">Sepet <span class="text-sm font-bold text-slate-500">' + t.satir + ' kalem</span></div>' +
+      '<div class="pv-sepet__baslik">Sepet <span class="metin-ikincil">' + t.satir + ' kalem</span></div>' +
       s.satirlar.map(function (r) {
-        return '<div class="py-3 border-t border-slate-100 dark:border-slate-700">' +
-          '<div class="font-bold leading-snug">' + kacis(r.name) + '</div>' +
-          '<div class="text-xs text-slate-500 dark:text-slate-400">' + kacis(r.sku || '') + '</div>' +
-          '<div class="mt-2 flex items-center gap-2">' +
-            '<button type="button" class="sepet-eksi w-9 h-9 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-black" data-id="' + r.id + '">−</button>' +
-            '<span class="flex-1 text-center font-extrabold text-sm">' + kacis(M().adetEtiketi(r, r.adet)) + '</span>' +
-            '<button type="button" class="sepet-arti w-9 h-9 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-black" data-id="' + r.id + '">+</button>' +
-            '<button type="button" class="sepet-sil w-9 h-9 rounded-lg border-2 border-red-200 text-red-600 font-black" data-id="' + r.id + '" title="Kaldır">🗑</button>' +
+        return '<div class="pv-sepet__satir">' +
+          '<div class="font-bold leading-snug line-clamp-2" title="' + kacis(r.name) + '">' + kacis(r.name) + '</div>' +
+          '<div class="metin-soluk">' + kacis(r.sku || '') + '</div>' +
+          '<div class="pv-sepet__adet">' +
+            '<button type="button" class="sepet-eksi dg dg-ikincil dg-b dg-kare" data-id="' + r.id + '" aria-label="Azalt">−</button>' +
+            '<span class="pv-sepet__adet-metin">' + kacis(M().adetEtiketi(r, r.adet)) + '</span>' +
+            '<button type="button" class="sepet-arti dg dg-ikincil dg-b dg-kare" data-id="' + r.id + '" aria-label="Artır">+</button>' +
+            '<button type="button" class="sepet-sil dg dg-tehlike dg-b dg-kare" data-id="' + r.id + '" title="Kaldır" aria-label="Sepetten kaldır">' + (ikonHtml('cop') || '×') + '</button>' +
           '</div>' +
-          '<div class="mt-1 text-right font-bold">' +
+          '<div class="pv-sepet__tutar">' +
             kacis(paraYaz(M().netFiyat(r.price, s.iskonto, s.odemeIskonto) * M().adediOturt(r, r.adet))) +
           '</div>' +
         '</div>';
       }).join('') +
-      '<div class="mt-4 pt-3 border-t-2 border-slate-200 dark:border-slate-600 space-y-1">' +
+      '<div class="pv-sepet__ozet">' +
         '<div class="flex justify-between text-sm"><span>Ara toplam</span><span class="font-bold">' + kacis(paraYaz(t.araToplam)) + '</span></div>' +
         (t.indirim > 0
           ? '<div class="flex justify-between text-sm text-emerald-700 dark:text-emerald-400"><span>Bayi iskontosu %' + t.iskontoOrani + '</span><span class="font-bold">−' + kacis(paraYaz(t.indirim)) + '</span></div>'
@@ -786,8 +833,9 @@
         '<div class="flex justify-between text-lg font-black"><span>Net</span><span>' + kacis(paraYaz(t.genelToplam)) + '</span></div>' +
         (t.koli ? '<div class="text-xs text-slate-500 dark:text-slate-400">' + t.kalem + ' adet · ' + t.koli + ' koli</div>' : '<div class="text-xs text-slate-500 dark:text-slate-400">' + t.kalem + ' adet</div>') +
       '</div>' +
-      '<button type="button" id="sepetTamamla" class="mt-4 w-full px-5 py-4 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600 transition">Siparişi Tamamla</button>' +
-      '<button type="button" id="sepetBosalt" class="mt-2 w-full px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Sepeti Boşalt</button>';
+      /* Sepetin TEK birincil işlemi; boşaltma yıkıcıdır ve sessiz durur (onay ister). */
+      '<button type="button" id="sepetTamamla" class="dg dg-birincil dg-b dg-tam mt-4">' + ikonHtml('onay') + ' Siparişi Tamamla</button>' +
+      '<button type="button" id="sepetBosalt" class="dg dg-sessiz dg-tam mt-2">Sepeti Boşalt</button>';
 
     var tamamla = el('sepetTamamla');
 
@@ -900,6 +948,7 @@
 
           if (kutu && urun) {
             kutu.value = M().adimla(urun, kutu.value, adim.classList.contains('hizli-arti') ? 1 : -1);
+            eksiDurumunuTazele(adim.dataset.id);
           }
 
           return;
@@ -907,6 +956,12 @@
 
         var buyut = olay.target.closest('.urun-buyut');
         if (buyut) urunuBuyut(buyut.dataset.id);
+      });
+
+      /* Elle yazılan adet "−" düğmesinin alt sınır durumunu da günceller. */
+      vit.addEventListener('input', function (olay) {
+        var kutu = olay.target.closest('.hizli-adet-input');
+        if (kutu) eksiDurumunuTazele(kutu.dataset.id);
       });
 
       /* Adet kutusunda Enter → sepete ekle (klavye akışı). */

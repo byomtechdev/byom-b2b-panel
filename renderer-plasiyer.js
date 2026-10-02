@@ -479,9 +479,10 @@
      * AYNI yerde. Üst barda kalan şey bir BİLGİ, eylem değil.
      */
     kutu.innerHTML =
-      '<span class="px-4 py-2 rounded-xl bg-marka-700 text-white font-extrabold text-base">' +
-        '<span aria-hidden="true">💼</span> ' + kacis(ad) +
-        ' <span class="font-semibold opacity-80">— ' + kacis(bolge) + '</span>' +
+      /* BİLGİ çipi (Faz 20): eylem değil, kimlik — dolu mavi düğme gibi görünmesin. */
+      '<span class="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-marka-200 bg-marka-50 text-marka-800 font-bold text-sm">' +
+        (window.ikon ? window.ikon('kisi') : '') + ' ' + kacis(ad) +
+        ' <span class="font-medium opacity-80">— ' + kacis(bolge) + '</span>' +
       '</span>';
   }
 
@@ -1435,6 +1436,15 @@
 
     if (!baglantiVar() && !cihaz.pinKurulu) {
       oturumKur('admin', {});
+      /*
+       * KABUK DA KURULUR (Faz 20). Eskiden bu dal yalnızca oturumu açıyordu;
+       * kabuk yönlendiricisi hiç çağrılmadığı için DEMO ve sıfır kurulumda
+       * yönetici menüsünde saha sekmeleri (Katalog & Satış, Saha
+       * Siparişlerim, Müşterilerim, Performansım, Saha Haritam) da duruyordu
+       * — tıklanınca yönetici bağlamında saha ekranı açılıyordu. Kapıdan
+       * geçen yönetici girişiyle (`yoneticiGirisiniTamamla`) aynı yol.
+       */
+      kisitlamayiUygula();
       kapi.hidden = true;
       return;
     }

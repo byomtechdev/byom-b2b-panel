@@ -147,7 +147,14 @@ function bildir(mesaj, tur) {
     bilgi: 'bg-slate-800 border-slate-900'
   };
   const simgeler = { basari: ikon('onay'), hata: ikon('carpi'), uyari: ikon('uyari'), bilgi: ikon('bilgi') };
-  const t = tur || 'bilgi';
+  /*
+   * TÜR TAKMA ADLARI (Faz 20). Saha modülleri başarıyı `'ok'` diye bildiriyordu
+   * (18 çağrı); tablo bu adı tanımadığı için simge yerine ekrana "undefined"
+   * yazılıyor, renk de gri `bilgi`ye düşüyordu. Bilinmeyen tür artık `bilgi`dir.
+   */
+  const TAKMA = { ok: 'basari', basarili: 'basari', error: 'hata', warn: 'uyari', uyarı: 'uyari', info: 'bilgi' };
+  const istenen = TAKMA[tur] || tur || 'bilgi';
+  const t = simgeler[istenen] ? istenen : 'bilgi';
 
   const kutu = document.createElement('div');
   kutu.className =
@@ -174,10 +181,9 @@ function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
 
     $('#modalBaslik').textContent = baslik;
     $('#modalMesaj').textContent = mesaj;
-    tamamBtn.textContent = tamamMetni || 'EVET';
-    tamamBtn.className =
-      'flex-1 h-16 rounded-2xl text-xl font-extrabold text-white transition active:scale-95 ' +
-      (tehlikeliMi ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700');
+    tamamBtn.textContent = dgEtiket(tamamMetni || 'Evet');
+    /* Faz 20 düğme sistemi: onay = yeşil dolu, geri alınamaz işlem = kırmızı dolu. */
+    tamamBtn.className = 'dg dg-b flex-1 ' + (tehlikeliMi ? 'dg-tehlike-dolu' : 'dg-onay');
 
     katman.classList.remove('hidden');
     tamamBtn.focus();
@@ -216,7 +222,7 @@ function metinSor(baslik, mesaj, varsayilan, tamamMetni) {
     $('#metinModalBaslik').textContent = baslik;
     $('#metinModalMesaj').textContent = mesaj || '';
     girdi.value = varsayilan || '';
-    tamamBtn.textContent = tamamMetni || 'DEVAM ET';
+    tamamBtn.textContent = dgEtiket(tamamMetni || 'Devam Et');
 
     katman.classList.remove('hidden');
     setTimeout(function () { girdi.focus(); }, 30);
@@ -261,7 +267,7 @@ function durumPenceresi(secenek) {
 
     $('#kargoModalBaslik').textContent = secenek.baslik || 'Durumu Güncelle';
     $('#kargoModalAciklama').textContent = secenek.aciklama || '';
-    onayBtn.textContent = secenek.onayMetni || 'DURUMU GÜNCELLE';
+    onayBtn.textContent = dgEtiket(secenek.onayMetni || 'Durumu Güncelle');
 
     $('#kargoFirma').value = secenek.carrier || '';
     $('#kargoTakip').value = secenek.tracking || '';
@@ -335,11 +341,38 @@ function bosHtml(simge, baslik, aciklama) {
 }
 
 /** Butonu "çalışıyor" durumuna alır; geri almak için çağrılabilir fonksiyon döner. */
+/**
+ * BÜYÜK HARFLE yazılmış eski etiketleri başlık düzenine çevirir (Faz 20).
+ * Biçim kuralı tek yerde: src/renderer/arayuz-dugme.js → etiket. Modül
+ * yüklenemezse metin olduğu gibi kalır (zarif düşüş, kural 4).
+ */
+function dgEtiket(metin) {
+  return (window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.etiket)
+    ? window.ArayuzDugme.etiket(metin)
+    : String(metin === undefined || metin === null ? '' : metin);
+}
+
+/**
+ * Yükleyiciyi düğmeyi MEŞGUL göstererek bağlar (Faz 20).
+ *
+ * Yenile düğmelerinin hepsi yükleyiciyi gerçekten çağırıyordu ama hiçbiri
+ * geri bildirim vermiyordu; aynı veri gelince ekran değişmiyor, kullanıcı
+ * düğmeyi "ölü" sanıp art arda basıyordu. Modül yoksa düz tıklama bağlanır.
+ */
+function yenileDugmesiBagla(dugme, yukleyici) {
+  if (!dugme) return;
+  if (window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.bagla) {
+    window.ArayuzDugme.bagla(dugme, yukleyici);
+    return;
+  }
+  dugme.addEventListener('click', function () { yukleyici(); });
+}
+
 function butonuMesgulEt(buton, mesaj) {
   const eskiMetin = buton.innerHTML;
   const eskiSinif = buton.className;
   buton.disabled = true;
-  buton.innerHTML = '<span class="donuyor">' + ikon('donen') + '</span> ' + (mesaj || 'İŞLENİYOR…');
+  buton.innerHTML = '<span class="donuyor">' + ikon('donen') + '</span> ' + dgEtiket(mesaj || 'İşleniyor…');
   return function () {
     buton.disabled = false;
     buton.innerHTML = eskiMetin;
@@ -774,7 +807,7 @@ function sekmeTanimi(kod) {
 /** Sipariş kartındaki tek-tık durum butonları. `yedek`, eklenti yoksa kullanılır. */
 const DURUM_DUGMELERI = [
   {
-    kod: 'order-ready', yedek: 'processing', simge: ikon('onay'), etiket: 'SİPARİŞ HAZIR',
+    kod: 'order-ready', yedek: 'processing', simge: ikon('onay'), etiket: 'Sipariş Hazır',
     /* Bu adım pratikte AMBARA VERİLDİ adımıdır: mal depodan çıkar, çoğu zaman
        bir ambara / nakliyeciye teslim edilir ve HENÜZ takip numarası yoktur.
        Sevkiyat paneli burada da açılır ki ambar adı yazılabilsin; alanların
@@ -784,12 +817,12 @@ const DURUM_DUGMELERI = [
     aciklama: 'Sipariş hazırlandı, sevkiyat bekliyor.'
   },
   {
-    kod: 'shipped', yedek: 'completed', simge: ikon('kamyon'), etiket: 'KARGOYA VERİLDİ',
+    kod: 'shipped', yedek: 'completed', simge: ikon('kamyon'), etiket: 'Kargoya Verildi',
     renk: 'bg-sky-600 hover:bg-sky-700', kargoSor: true,
     aciklama: 'Sipariş kargoya veya ambara teslim edildi.'
   },
   {
-    kod: 'delivered', yedek: 'completed', simge: ikon('bayrak'), etiket: 'TESLİM EDİLDİ',
+    kod: 'delivered', yedek: 'completed', simge: ikon('bayrak'), etiket: 'Teslim Edildi',
     renk: 'bg-emerald-600 hover:bg-emerald-700', kargoSor: false,
     aciklama: 'Sipariş bayiye teslim edildi.'
   }
@@ -2935,18 +2968,15 @@ function siparisSekmeleriCiz() {
       ? durum.siparislerToplam
       : (Number(durum.sekmeSayaclari[t.kod]) || 0);
     const sayac = adet > 0
-      ? ' <span data-sekme-sayac="' + kacis(t.kod) + '" class="ml-2 px-2 py-0.5 rounded-lg text-base ' +
-        (aktif ? 'bg-white/25' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100') + '">' + adet + '</span>'
+      ? ' <span data-sekme-sayac="' + kacis(t.kod) + '" class="dg-sayac">' + adet + '</span>'
       : '';
 
-    return '<button data-siparis-sekme="' + kacis(t.kod) + '" ' +
-           'title="' + kacis(t.aciklama) + '" ' +
-           'class="h-16 px-6 rounded-2xl border-2 text-xl font-extrabold transition active:scale-95 ' +
-           (aktif
-             ? 'bg-marka-700 text-white border-marka-700 shadow-lg'
-             : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 ' +
-               'dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700') +
-           '">' + t.simge + ' ' + kacis(t.etiket) + sayac + '</button>';
+    /* Seçili sekme bir DURUMDUR, eylem değil (Faz 20): aria-pressed taşır ve
+       arayüz sisteminin "seçili" tonunu alır — sayfadaki tek mavi dolu düğme
+       asıl işleme kalsın. */
+    return '<button type="button" data-siparis-sekme="' + kacis(t.kod) + '" ' +
+           'title="' + kacis(t.aciklama) + '" aria-pressed="' + (aktif ? 'true' : 'false') + '" ' +
+           'class="dg dg-ikincil">' + t.simge + ' ' + kacis(t.etiket) + sayac + '</button>';
   }).join('');
 }
 
@@ -2977,13 +3007,8 @@ function siparisSuzgecleriCiz() {
 
   kap.innerHTML = liste.map(function (f) {
     const aktif = f.kod === durum.siparisSuzgec;
-    return '<button data-suzgec="' + kacis(f.kod) + '" ' +
-           'class="h-12 px-5 rounded-xl border-2 text-lg font-bold transition active:scale-95 ' +
-           (aktif
-             ? 'bg-marka-700 text-white border-marka-700 shadow-md'
-             : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 ' +
-               'dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700') +
-           '">' + f.simge + ' ' + kacis(f.etiket) + '</button>';
+    return '<button type="button" data-suzgec="' + kacis(f.kod) + '" aria-pressed="' + (aktif ? 'true' : 'false') + '" ' +
+           'class="dg dg-ikincil dg-k">' + f.simge + ' ' + kacis(f.etiket) + '</button>';
   }).join('');
 
   filtreOzetiniTazele();
@@ -2996,14 +3021,8 @@ function teslimSuzgecleriCiz() {
 
   kap.innerHTML = TESLIM_SUZGECLERI.map(function (f) {
     const aktif = f.kod === durum.teslimSuzgec;
-    return '<button data-teslim-suzgec="' + kacis(f.kod) + '" ' +
-           'class="h-12 px-5 rounded-xl border-2 text-lg font-bold transition active:scale-95 ' +
-           (aktif
-             ? 'bg-slate-800 text-white border-slate-800 shadow-md ' +
-               'dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
-             : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 ' +
-               'dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700') +
-           '">' + f.simge + ' ' + kacis(f.etiket) + '</button>';
+    return '<button type="button" data-teslim-suzgec="' + kacis(f.kod) + '" aria-pressed="' + (aktif ? 'true' : 'false') + '" ' +
+           'class="dg dg-ikincil dg-k">' + f.simge + ' ' + kacis(f.etiket) + '</button>';
   }).join('');
 
   filtreOzetiniTazele();
@@ -3020,7 +3039,7 @@ function filtreOzetiniTazele() {
   const etkin = (durum.siparisSuzgec ? 1 : 0) + (durum.teslimSuzgec ? 1 : 0);
 
   ozet.innerHTML = ikon('ara') + ' Filtrele' +
-    (etkin ? ' <span class="ml-2 px-2 py-0.5 rounded-lg text-base bg-marka-700 text-white">' + etkin + '</span>' : '');
+    (etkin ? ' <span class="ml-2 px-2 py-0.5 rounded-lg text-xs font-bold bg-marka-700 text-white">' + etkin + '</span>' : '');
 }
 
 /** "Son kontrol: 10:42:15" yazısını tazeler. */
@@ -3341,25 +3360,24 @@ function durumDugmesiHtml(s, tanim) {
   const bu = akisSirasi(hedef);
   const gecmisMi = !aktifMi && suAn > -1 && bu > -1 && bu < suAn;
 
-  let sinif;
-  if (aktifMi) {
-    sinif = 'bg-slate-400 dark:bg-slate-600 cursor-default ring-4 ring-slate-300 dark:ring-slate-500';
-  } else if (gecmisMi) {
-    sinif = tanim.renk + ' opacity-40 hover:opacity-100';
-  } else {
-    sinif = tanim.renk;
-  }
+  /*
+   * ADIM GRUBU (Faz 20): üç durum düğmesi tek bir İLERLEME şeridinde durur
+   * (bkz. index.html › .adimlar). Eskiden mor / mavi / yeşil üç ayrı dolu
+   * düğmeydi ve kartın asıl işlemiyle (Hazırla & Revize Et) yarışıyordu.
+   * Şimdi: şu anki adım işaretli ve kapalı (aria-current), geçmiş adımlar
+   * soluk ama tıklanabilir (geri alma), sıradakiler nötr.
+   */
+  const konum = aktifMi ? 'su-an' : (gecmisMi ? 'gecmis' : 'sira');
 
   const ipucu = gecmisMi
     ? 'Geri alma: ' + tanim.aciklama
     : tanim.aciklama;
 
-  return '<button data-eylem="durum" data-id="' + s.id + '" data-hedef="' + kacis(tanim.kod) + '" ' +
-         (aktifMi ? 'disabled ' : '') +
+  return '<button type="button" data-eylem="durum" data-id="' + s.id + '" data-hedef="' + kacis(tanim.kod) + '" ' +
+         'data-adim="' + konum + '" ' +
+         (aktifMi ? 'disabled aria-current="step" ' : '') +
          'title="' + kacis(ipucu) + '" ' +
-         'class="h-14 px-5 rounded-2xl text-white text-lg font-extrabold shadow-md transition active:scale-95 ' +
-         sinif +
-         '">' + tanim.simge + ' ' + kacis(tanim.etiket) + (aktifMi ? ' ' + ikon('onay', 'ik-sm') : '') + '</button>';
+         'class="dg dg-k adim">' + (aktifMi || gecmisMi ? ikon('onay') : tanim.simge) + ' ' + kacis(tanim.etiket) + '</button>';
 }
 
 /**
@@ -3403,8 +3421,8 @@ function siparisleriSuz(liste) {
    `plasiyer_id`, eklenti ≥ 2.15.0); süzgeç yereldir, istek atmaz. */
 const KAYNAK_SUZGECLERI = [
   { kod: '',     etiket: 'Tümü' },
-  { kod: 'web',  etiket: '🌐 Web Sitesi Siparişleri' },
-  { kod: 'saha', etiket: '💼 Saha / Plasiyer Siparişleri' }
+  { kod: 'web',  simge: ikon('kure'),   etiket: 'Web Sitesi Siparişleri' },
+  { kod: 'saha', simge: ikon('kamyon'), etiket: 'Saha / Plasiyer Siparişleri' }
 ];
 
 /**
@@ -3536,12 +3554,10 @@ function kaynakSuzgecleriCiz() {
     const aktif = f.kod === durum.kaynakSuzgec;
     /* Segmented switcher (Faz 11): tek kapta, seçili parça dolu — sekme değil,
        kaynak anahtarı olduğu ekrandan okunur. */
+    /* Kap `.dg-grup`tur (index.html): seçili parçanın beyaz zemini ve gölgesi
+       aria-pressed'den gelir (Faz 20) — sınıf ataması yok. */
     return '<button type="button" data-kaynak-suzgec="' + kacis(f.kod) + '" aria-pressed="' + (aktif ? 'true' : 'false') + '" ' +
-      'class="h-11 px-4 rounded-xl text-base font-bold transition active:scale-95 ' +
-      (aktif
-        ? 'bg-white text-slate-900 shadow-md dark:bg-slate-700 dark:text-white'
-        : 'text-slate-600 hover:bg-white/60 dark:text-slate-300 dark:hover:bg-slate-800') +
-      '">' + kacis(f.etiket) + '</button>';
+      'class="dg">' + (f.simge ? f.simge + ' ' : '') + kacis(f.etiket) + '</button>';
   }).join('');
 }
 
@@ -3601,7 +3617,7 @@ function siparisleriCiz() {
 
     const bosMetin = {
       active: 'Hazırlanmayı bekleyen sipariş yok.\nYeni sipariş geldiğinde burada listelenecek.',
-      shipped: 'Şu an yolda olan sipariş yok.\nBir siparişi "KARGOYA VERİLDİ" yaptığınızda buraya düşer.',
+      shipped: 'Şu an yolda olan sipariş yok.\nBir siparişi "Kargoya Verildi" yaptığınızda buraya düşer.',
       delivered: 'Henüz teslim edilmiş sipariş yok.\nBayi web sitesinden "Siparişi Teslim Aldım" dediğinde sipariş buraya geçer.'
     };
 
@@ -3679,102 +3695,94 @@ function siparisleriCiz() {
         '</div>' +
       '</div>' +
 
-      /* --- Alt satır: eylem düğmeleri --- */
-      '<div class="flex flex-wrap gap-3 pt-4 border-t-2 border-dashed border-slate-200 dark:border-slate-700">' +
+      /* --- Alt satır: eylem düğmeleri ---
+         Faz 20 düzeni: [asıl iş + ilerleme adımları] · [belgeler] · …… [döküm + yıkıcı]
+         Her düğme ÜÇÜNCÜL kademede (32px, kart içi işlem). Renk = anlam: kartta tek
+         mavi dolu düğme "Hazırla & Revize Et"; kırmızı yalnızca iptal/silmede.
+         `data-eylem` / `data-id` / `data-hedef` sözleşmesi DEĞİŞMEDİ (delegasyon). */
+      '<div class="siparis-eylemler">' +
 
-        /* Depocu koli düzenlemesi: yalnızca henüz kargolanmamış siparişlerde. */
-        (yoneticiEylemleri && revizeEdilebilirMi(s)
-          ? '<button data-eylem="siparis-revize" data-id="' + s.id + '" ' +
-                    'title="Koliye fiilen konulan adetleri girin; tutar ve KDV yeniden hesaplanır." ' +
-                    'class="h-14 px-5 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95 ' +
-                           'text-white text-lg font-extrabold shadow-md transition">' +
-              ikon('kalem') + ' SİPARİŞİ HAZIRLA &amp; REVİZE ET' +
-            '</button>'
-          : '') +
+        '<div class="siparis-eylemler__grup">' +
+          /* Depocu koli düzenlemesi: yalnızca henüz kargolanmamış siparişlerde. */
+          (yoneticiEylemleri && revizeEdilebilirMi(s)
+            ? '<button data-eylem="siparis-revize" data-id="' + s.id + '" type="button" ' +
+                      'title="Koliye fiilen konulan adetleri girin; tutar ve KDV yeniden hesaplanır." ' +
+                      'class="dg dg-birincil dg-k">' +
+                ikon('kalem') + ' Hazırla &amp; Revize Et' +
+              '</button>'
+            : '') +
 
-        /* Revize geçmişi (Faz 19): kim, ne zaman, neyi değiştirdi — önce/sonra. */
-        (yoneticiEylemleri && Number(s.revizeGecmisSayisi || 0) > 0
-          ? '<button data-eylem="revize-gecmis" data-id="' + s.id + '" ' +
-                    'title="Revize geçmiş kaydını görüntüle (önce / sonra)" ' +
-                    'class="h-14 px-5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 ' +
-                           'hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 text-lg font-extrabold transition">' +
-              ikon('saat') + ' REVİZE GEÇMİŞİ (' + Number(s.revizeGecmisSayisi) + ')' +
-            '</button>'
-          : '') +
+          (yoneticiEylemleri
+            ? '<div class="adimlar" role="group" aria-label="Sipariş durumu">' +
+                DURUM_DUGMELERI.map(function (t) { return durumDugmesiHtml(s, t); }).join('') +
+              '</div>'
+            : '') +
+        '</div>' +
 
-        (yoneticiEylemleri ? DURUM_DUGMELERI.map(function (t) { return durumDugmesiHtml(s, t); }).join('') : '') +
+        '<div class="siparis-eylemler__grup">' +
+          (yoneticiEylemleri
+            ? '<button data-eylem="fis" data-id="' + s.id + '" type="button" title="Depo hazırlık fişi (A4)" ' +
+                      'class="dg dg-ikincil dg-k">' + ikon('yazici') + ' Depo Fişi</button>'
+            : '') +
 
-        (yoneticiEylemleri
-          ? '<button data-eylem="fis" data-id="' + s.id + '" ' +
-                    'class="h-14 px-5 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
-                           'text-white text-lg font-extrabold shadow-md transition">' +
-              ikon('yazici') + ' DEPO FİŞİ' +
-            '</button>'
-          : '') +
+          /* Kurumsal sipariş fişi (Faz 12): müşteriye dönük A4 çıktı — depo fişinden ayrı. */
+          (yoneticiEylemleri
+            ? '<button data-eylem="siparis-fisi" data-id="' + s.id + '" type="button" ' +
+                      'title="Kurumsal sipariş fişi (logo, künye, kalemler, iskontolar, net) — yazdır / PDF" ' +
+                      'class="dg dg-ikincil dg-k">' + ikon('not') + ' Sipariş Fişi</button>'
+            : '') +
 
-        (yoneticiEylemleri && s.bayiId
-          ? '<button data-eylem="siparis-bayi" data-id="' + s.bayiId + '" ' +
-                    'class="h-14 px-5 rounded-2xl bg-slate-700 hover:bg-slate-800 active:scale-95 ' +
-                           'text-white text-lg font-extrabold shadow-md transition">' + ikon('bina') + ' BAYİ KARTI</button>'
-          : '') +
+          /* WhatsApp fişi (Faz 11): yalnızca yönetici + saha siparişi + telefon varsa. */
+          (yoneticiEylemleri && sahaSiparisiMi(s) && waTelefon(s.telefon)
+            ? '<button data-eylem="siparis-whatsapp" data-id="' + s.id + '" type="button" ' +
+                      'title="Sipariş özetini müşterinin WhatsApp\'ına gönder" ' +
+                      'class="dg dg-ikincil dg-k">' + ikon('gonder') + ' WhatsApp Fişi</button>'
+            : '') +
 
-        /* İptal: sipariş silinmez, "Sipariş İptal Edildi" durumuna alınır.
-           Zaten iptal/iade edilmiş siparişte düğme gösterilmez. */
-        (yoneticiEylemleri && ['cancelled', 'refunded'].indexOf(String(s.durum)) === -1
-          ? '<button data-eylem="siparis-iptal" data-id="' + s.id + '" ' +
-                    'title="Siparişi iptal et (durum: Sipariş İptal Edildi)" ' +
-                    'class="h-14 px-5 rounded-2xl border-2 border-red-300 dark:border-red-500/40 ' +
-                           'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 ' +
-                           'hover:bg-red-100 dark:hover:bg-red-500/20 active:scale-95 ' +
-                           'text-lg font-extrabold shadow-sm transition">' + ikon('yasak') + ' SİPARİŞİ İPTAL ET</button>'
-          : '') +
+          (yoneticiEylemleri && s.bayiId
+            ? '<button data-eylem="siparis-bayi" data-id="' + s.bayiId + '" type="button" ' +
+                      'class="dg dg-ikincil dg-k">' + ikon('bina') + ' Bayi Kartı</button>'
+            : '') +
 
-        /* Kalıcı silme — YALNIZCA iptal edilmiş siparişlerde görünür.
-           Sipariş sitedeki veritabanından tamamen kaldırılır (force=true),
-           çöp kutusuna bile düşmez; bu yüzden ayrı ve koyu kırmızıdır. */
-        /* Çöpe taşı (Faz 11): WordPress çöp kutusu — geri alınabilir, force=false. */
-        (yoneticiEylemleri && ['cancelled', 'refunded'].indexOf(durumNormalle(s.durum)) !== -1
-          ? '<button data-eylem="siparis-cope" data-id="' + s.id + '" ' +
-                    'title="Siparişi WordPress çöp kutusuna taşır (geri alınabilir)." ' +
-                    'class="h-14 px-5 rounded-2xl border-2 border-red-300 dark:border-red-500/40 ' +
-                           'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 ' +
-                           'hover:bg-red-100 dark:hover:bg-red-500/20 active:scale-95 ' +
-                           'text-lg font-extrabold shadow-sm transition">' + ikon('cop') + ' ÇÖPE TAŞI</button>'
-          : '') +
+          /* Revize geçmişi (Faz 19): kim, ne zaman, neyi değiştirdi — önce/sonra. */
+          (yoneticiEylemleri && Number(s.revizeGecmisSayisi || 0) > 0
+            ? '<button data-eylem="revize-gecmis" data-id="' + s.id + '" type="button" ' +
+                      'title="Revize geçmiş kaydını görüntüle (önce / sonra)" ' +
+                      'class="dg dg-ikincil dg-k">' +
+                ikon('saat') + ' Revize Geçmişi <span class="dg-sayac">' + Number(s.revizeGecmisSayisi) + '</span>' +
+              '</button>'
+            : '') +
+        '</div>' +
 
-        (yoneticiEylemleri && durumNormalle(s.durum) === 'cancelled'
-          ? '<button data-eylem="siparis-sil" data-id="' + s.id + '" ' +
-                    'title="Siparişi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
-                    'class="h-14 px-5 rounded-2xl bg-red-700 hover:bg-red-800 active:scale-95 ' +
-                           'text-white text-lg font-extrabold shadow-md transition">' +
-              ikon('cop') + ' SİPARİŞİ KALICI SİL</button>'
-          : '') +
+        '<div class="siparis-eylemler__grup siparis-eylemler__son">' +
+          '<button data-eylem="siparis-detay" data-id="' + s.id + '" type="button" ' +
+                  'class="dg dg-sessiz dg-k">' + ikon('liste') + ' Ürün Dökümü</button>' +
 
-        /* Kurumsal sipariş fişi (Faz 12): müşteriye dönük A4 çıktı — depo fişinden ayrı. */
-        (yoneticiEylemleri
-          ? '<button data-eylem="siparis-fisi" data-id="' + s.id + '" ' +
-                    'title="Kurumsal sipariş fişi (logo, künye, kalemler, iskontolar, net) — yazdır / PDF" ' +
-                    'class="h-14 px-5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 ' +
-                           'bg-white dark:bg-slate-800 text-lg font-extrabold transition ' +
-                           'hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95">' +
-              ikon('yazici') + ' 📄 SİPARİŞ FİŞİ</button>'
-          : '') +
+          /* İptal: sipariş silinmez, "Sipariş İptal Edildi" durumuna alınır.
+             Zaten iptal/iade edilmiş siparişte düğme gösterilmez. */
+          (yoneticiEylemleri && ['cancelled', 'refunded'].indexOf(String(s.durum)) === -1
+            ? '<button data-eylem="siparis-iptal" data-id="' + s.id + '" type="button" ' +
+                      'title="Siparişi iptal et (durum: Sipariş İptal Edildi)" ' +
+                      'class="dg dg-tehlike dg-k">' + ikon('yasak') + ' Siparişi İptal Et</button>'
+            : '') +
 
-        /* WhatsApp fişi (Faz 11): yalnızca yönetici + saha siparişi + telefon varsa. */
-        (yoneticiEylemleri && sahaSiparisiMi(s) && waTelefon(s.telefon)
-          ? '<button data-eylem="siparis-whatsapp" data-id="' + s.id + '" ' +
-                    'title="Sipariş özetini müşterinin WhatsApp\'ına gönder" ' +
-                    'class="h-14 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
-                           'text-white text-lg font-extrabold shadow-md transition">' +
-              ikon('gonder') + ' 📲 WHATSAPP FİŞİ</button>'
-          : '') +
+          /* Çöpe taşı (Faz 11): WordPress çöp kutusu — geri alınabilir, force=false. */
+          (yoneticiEylemleri && ['cancelled', 'refunded'].indexOf(durumNormalle(s.durum)) !== -1
+            ? '<button data-eylem="siparis-cope" data-id="' + s.id + '" type="button" ' +
+                      'title="Siparişi WordPress çöp kutusuna taşır (geri alınabilir)." ' +
+                      'class="dg dg-tehlike dg-k">' + ikon('cop') + ' Çöpe Taşı</button>'
+            : '') +
 
-        '<button data-eylem="siparis-detay" data-id="' + s.id + '" ' +
-                'class="ml-auto h-14 px-5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 ' +
-                       'bg-slate-50 dark:bg-slate-900 text-lg font-extrabold transition ' +
-                       'hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95">' +
-          ikon('liste') + ' ÜRÜN DÖKÜMÜ' +
-        '</button>' +
+          /* Kalıcı silme — YALNIZCA iptal edilmiş siparişlerde görünür.
+             Sipariş sitedeki veritabanından tamamen kaldırılır (force=true),
+             çöp kutusuna bile düşmez; bu yüzden geri alınamaz işlemin dolu
+             kırmızısını taşır. */
+          (yoneticiEylemleri && durumNormalle(s.durum) === 'cancelled'
+            ? '<button data-eylem="siparis-sil" data-id="' + s.id + '" type="button" ' +
+                      'title="Siparişi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
+                      'class="dg dg-tehlike-dolu dg-k">' + ikon('cop') + ' Kalıcı Sil</button>'
+            : '') +
+        '</div>' +
       '</div>' +
 
       /* --- Ürün dökümü (açılır) --- */
@@ -4496,17 +4504,13 @@ function revizeModaliAc(id) {
               '<td class="p-3 text-center whitespace-nowrap">' +
                 '<button type="button" data-revize-kaldir="' + k.kalemId + '" tabindex="-1" ' +
                         'title="Bu ürünü siparişten çıkar (elde yok / temin edilemiyor)" ' +
-                        'class="h-12 px-3 rounded-xl text-base font-extrabold border-2 border-red-300 dark:border-red-500/40 ' +
-                               'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 ' +
-                               'hover:bg-red-100 dark:hover:bg-red-500/20 transition active:scale-95">' +
-                  ikon('cop') + ' KALDIR' +
+                        'class="dg dg-tehlike dg-k">' +
+                  ikon('cop') + ' Kaldır' +
                 '</button>' +
                 '<button type="button" data-revize-geri="' + k.kalemId + '" tabindex="-1" ' +
                         'title="Kaldırmadan vazgeç" ' +
-                        'class="hidden h-12 px-3 rounded-xl text-base font-extrabold border-2 border-emerald-300 dark:border-emerald-500/40 ' +
-                               'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ' +
-                               'hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition active:scale-95">' +
-                  '↩ GERİ AL' +
+                        'class="dg dg-ikincil dg-k hidden">' +
+                  '↩ Geri Al' +
                 '</button>' +
               '</td>' +
 
@@ -4585,7 +4589,7 @@ async function revizeyiOnayla(buton, secenek) {
   if (kaldirilanlar.length && kaldirilanlar.length === mevcutlar.length && !yeniler.length) {
     const uyari = $('#revizeUyari');
     uyari.textContent = 'Siparişteki bütün ürünleri kaldıramazsınız.\n' +
-                        'Sipariş tamamen iptal edilecekse "SİPARİŞİ İPTAL ET" düğmesini kullanın.';
+                        'Sipariş tamamen iptal edilecekse "Siparişi İptal Et" düğmesini kullanın.';
     uyari.classList.remove('hidden');
     return;
   }
@@ -4641,7 +4645,7 @@ async function revizeyiOnayla(buton, secenek) {
       'Tüm Adetler Sıfır',
       'Siparişteki bütün ürünlerin adedini 0 yaptınız.\n\n' +
       'Bu, siparişin içini boşaltır ve tutarı sıfırlar. Siparişi iptal etmek istiyorsanız\n' +
-      '"SİPARİŞİ İPTAL ET" düğmesini kullanmalısınız.\n\nYine de devam edilsin mi?',
+      '"Siparişi İptal Et" düğmesini kullanmalısınız.\n\nYine de devam edilsin mi?',
       'EVET, DEVAM ET',
       true
     );
@@ -5079,7 +5083,7 @@ function revizeAramaSonuclariniCiz(kayitlar, ebeveyn) {
   const s = durum.revizeSiparis || {};
 
   if (!kayitlar.length) {
-    kap.innerHTML = (ebeveyn ? '<button type="button" data-revize-liste-geri class="self-start h-10 px-3 rounded-xl text-base font-extrabold border-2 border-slate-300 dark:border-slate-600">← Sonuçlara dön</button>' : '') +
+    kap.innerHTML = (ebeveyn ? '<button type="button" data-revize-liste-geri class="dg dg-ikincil dg-k self-start">← Sonuçlara dön</button>' : '') +
       '<div class="text-base font-bold text-slate-500 dark:text-slate-400">' +
       (ebeveyn ? 'Bu ürünün satılabilir varyasyonu yok.' : 'Aramaya uyan ürün bulunamadı.') + '</div>';
     return;
@@ -5087,7 +5091,7 @@ function revizeAramaSonuclariniCiz(kayitlar, ebeveyn) {
 
   kap.innerHTML =
     (ebeveyn
-      ? '<div class="flex items-center gap-3"><button type="button" data-revize-liste-geri class="h-10 px-3 rounded-xl text-base font-extrabold border-2 border-slate-300 dark:border-slate-600">← Sonuçlara dön</button>' +
+      ? '<div class="flex items-center gap-3"><button type="button" data-revize-liste-geri class="dg dg-ikincil dg-k">← Sonuçlara dön</button>' +
         '<span class="text-base font-bold">' + kacis(ebeveyn.ad) + ' — varyasyon seçin</span></div>'
       : '') +
     kayitlar.map(function (k, i) {
@@ -5107,9 +5111,9 @@ function revizeAramaSonuclariniCiz(kayitlar, ebeveyn) {
           '</div>' +
         '</div>' +
         (varyasyonlu
-          ? '<button type="button" data-revize-varyasyon="' + i + '" class="h-11 px-4 rounded-xl text-base font-extrabold border-2 border-marka-600 text-marka-700 dark:text-marka-300 hover:bg-marka-50 dark:hover:bg-marka-900/30 transition">Varyasyonları Göster</button>'
+          ? '<button type="button" data-revize-varyasyon="' + i + '" class="dg dg-ikincil">Varyasyonları Göster</button>'
           : (k.liste > 0
-              ? '<button type="button" data-revize-sec="' + i + '" class="h-11 px-4 rounded-xl text-base font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition">+ EKLE</button>'
+              ? '<button type="button" data-revize-sec="' + i + '" class="dg dg-onay">' + ikon('arti') + ' Ekle</button>'
               : '<span class="text-sm font-bold text-red-700 dark:text-red-300">Fiyatı tanımlı değil — eklenemez</span>')) +
       '</div>';
     }).join('');
@@ -5362,7 +5366,7 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
       baslik: tanim.etiket,
       aciklama: '#' + s.numara + ' · ' + (s.firma || s.musteri) + '\n' + tanim.aciklama,
       kargoGoster: false,
-      onayMetni: tanim.etiket + ' YAP',
+      onayMetni: tanim.etiket + ' Olarak İşaretle',
       bildir: durum.ayarlar.durumEpostasi !== false
     });
   }
@@ -5700,7 +5704,7 @@ function urunleriCiz(arama) {
   if (liste.length === 0) {
     kap.innerHTML = anahtar
       ? bosHtml(ikon('ara'), 'Aramanıza uygun ürün bulunamadı', 'Farklı bir kelime veya stok kodu deneyin.')
-      : bosHtml(ikon('etiket'), 'Ürün bulunamadı', 'Sitenizdeki ürünler burada listelenecek.\nYENİ ÜRÜN EKLE ile ürün ekleyebilirsiniz.');
+      : bosHtml(ikon('etiket'), 'Ürün bulunamadı', 'Sitenizdeki ürünler burada listelenecek.\n"Yeni Ürün" ile ürün ekleyebilirsiniz.');
     return;
   }
 
@@ -6763,21 +6767,14 @@ function uyeSuzgecleriCiz() {
     /* Bekleyen sekmesinde sayaç 0 olsa da gösterilir: "(0)" görmek,
        sayacın hiç olmamasından farklıdır — kuyruğun boş olduğu bilgisidir. */
     const sayi = Number(durum.bekleyenUyeSayisi || 0);
+    /* Bekleyen başvuru varken (ve sekme seçili değilken) rozet kırmızıdır:
+       dikkat isteyen bir kuyruk. Sıfırda nötr kalır. */
     const rozet = (f.kod === 'pending')
-      ? ' <span class="ml-1 px-2 py-0.5 rounded-lg text-base ' +
-        (aktif
-          ? 'bg-white/25'
-          : (sayi > 0 ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300')) +
-        '">' + sayi + '</span>'
+      ? ' <span class="dg-sayac' + (!aktif && sayi > 0 ? ' dg-sayac--uyari' : '') + '">' + sayi + '</span>'
       : '';
 
-    return '<button data-uye-suzgec="' + kacis(f.kod) + '" ' +
-           'class="h-14 px-5 rounded-2xl border-2 text-lg font-bold transition active:scale-95 ' +
-           (aktif
-             ? 'bg-marka-700 text-white border-marka-700 shadow-md'
-             : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 ' +
-               'dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600 dark:hover:bg-slate-700') +
-           '">' + f.simge + ' ' + kacis(f.etiket) + rozet + '</button>';
+    return '<button type="button" data-uye-suzgec="' + kacis(f.kod) + '" aria-pressed="' + (aktif ? 'true' : 'false') + '" ' +
+           'class="dg dg-ikincil">' + f.simge + ' ' + kacis(f.etiket) + rozet + '</button>';
   }).join('');
 }
 
@@ -7023,7 +7020,7 @@ function basvuruKunyesiHtml(u) {
   '<div class="rounded-2xl border-2 border-amber-200 dark:border-amber-500/30 ' +
        'bg-amber-50/60 dark:bg-amber-500/5 p-4">' +
     '<div class="text-base font-black text-amber-800 dark:text-amber-300 mb-2">' +
-      ikon('not') + ' KURUMSAL BAŞVURU BİLGİLERİ</div>' +
+      ikon('not') + ' Kurumsal başvuru bilgileri</div>' +
     '<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-lg">' +
       satir('Firma Ünvanı', u.firma, true) +
       satir('Vergi Dairesi', u.vergiDairesi) +
@@ -7071,9 +7068,10 @@ function uyeleriCiz() {
        Kart dar olabildiği için düğmeler esnemez ve büyük punto taşımaz:
        "BAYİLİĞİ ONAYLA · REDDET · SİL" üçlüsü eskiden `flex-1 min-w-56 h-16`
        ölçüsüyle kartın dışına taşıyordu. Ortak ölçü tek yerden verilir. */
-    const dugmeSinifi = function (renk) {
-      return 'class="' + renk + ' px-3 py-1.5 rounded-xl ' +
-             'text-white text-xs font-semibold transition active:scale-95"';
+    /* Faz 20: kart içi eylem = ÜÇÜNCÜL kademe (32px); renk = anlam
+       (onay yeşil dolu, red/silme kırmızı çerçeve, gerisi nötr). */
+    const dugmeSinifi = function (tur) {
+      return 'type="button" class="dg dg-k ' + tur + '"';
     };
 
     let dugmeler;
@@ -7081,20 +7079,20 @@ function uyeleriCiz() {
       dugmeler =
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
                 'title="Rolü b2b_customer yapar; firma toptan fiyatları görmeye başlar." ' +
-                dugmeSinifi('bg-emerald-600 hover:bg-emerald-700') + '>' +
-                ikon('onay', 'ik-sm') + ' BAYİLİĞİ ONAYLA</button>' +
+                dugmeSinifi('dg-onay') + '>' +
+                ikon('onay', 'ik-sm') + ' Bayiliği Onayla</button>' +
         '<button data-eylem="uye-reddet" data-id="' + u.id + '" ' +
-                dugmeSinifi('bg-red-600 hover:bg-red-700') + '>' +
-                ikon('carpi', 'ik-sm') + ' REDDET</button>';
+                dugmeSinifi('dg-tehlike') + '>' +
+                ikon('carpi', 'ik-sm') + ' Reddet</button>';
     } else if (u.durum === 'approved') {
       dugmeler =
         '<button data-eylem="bayi-detay" data-id="' + u.id + '" ' +
-                dugmeSinifi('bg-marka-700 hover:bg-marka-800') + '>' +
-                ikon('liste', 'ik-sm') + ' SİPARİŞ GEÇMİŞİ</button>' +
+                dugmeSinifi('dg-ikincil') + '>' +
+                ikon('liste', 'ik-sm') + ' Sipariş Geçmişi</button>' +
         (durum.b2bVar || durum.ayarlar.demoModu
           ? '<button data-eylem="uye-askiya-al" data-id="' + u.id + '" ' +
-                    dugmeSinifi('bg-slate-600 hover:bg-slate-700') + '>' +
-                    ikon('durakla', 'ik-sm') + ' ASKIYA AL</button>'
+                    dugmeSinifi('dg-ikincil') + '>' +
+                    ikon('durakla', 'ik-sm') + ' Askıya Al</button>'
           : '');
     } else if (u.durum === 'retail') {
       /* WEB PERAKENDE MÜŞTERİSİ (Faz 10): tek tıkla bayiye dönüştür.
@@ -7102,26 +7100,26 @@ function uyeleriCiz() {
       dugmeler =
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
                 'title="Perakende müşteriyi B2B BAYİYE dönüştürür: rolü b2b_customer olur, toptan fiyatları görür." ' +
-                dugmeSinifi('bg-marka-700 hover:bg-marka-800') + '>' +
-                ikon('bina', 'ik-sm') + ' BAYİYE DÖNÜŞTÜR</button>';
+                dugmeSinifi('dg-birincil') + '>' +
+                ikon('bina', 'ik-sm') + ' Bayiye Dönüştür</button>';
     } else {
       dugmeler =
         '<button data-eylem="uye-onayla" data-id="' + u.id + '" ' +
-                dugmeSinifi('bg-emerald-600 hover:bg-emerald-700') + '>' +
-                ikon('onay', 'ik-sm') + ' ONAYLA</button>' +
+                dugmeSinifi('dg-onay') + '>' +
+                ikon('onay', 'ik-sm') + ' Onayla</button>' +
         '<button data-eylem="bayi-detay" data-id="' + u.id + '" ' +
-                dugmeSinifi('bg-slate-600 hover:bg-slate-700') + '>' +
-                ikon('liste', 'ik-sm') + ' DETAY</button>';
+                dugmeSinifi('dg-ikincil') + '>' +
+                ikon('liste', 'ik-sm') + ' Detay</button>';
     }
 
     /* Kalıcı silme — durumdan bağımsız, her bayi kartında görünür (bkz. uyeSil). */
     dugmeler += '<button data-eylem="uye-sil" data-id="' + u.id + '" ' +
                 'title="Bu müşteriyi/bayiyi sitenizden KALICI olarak siler. Bu işlem geri alınamaz." ' +
-                dugmeSinifi('bg-red-800 hover:bg-red-900') + '>' +
-                ikon('cop', 'ik-sm') + ' 🗑️ BAYİYİ KALICI OLARAK SİL</button>';
+                dugmeSinifi('dg-tehlike dg-ml-oto') + '>' +
+                ikon('cop', 'ik-sm') + ' Bayiyi Kalıcı Olarak Sil</button>';
 
     return '' +
-    '<div data-bayi="' + u.id + '" ' +
+    '<div data-bayi="' + u.id + '" title="Bayi kartını ve sipariş dökümünü açmak için tıklayın" ' +
          'class="bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 ' +
          'shadow-sm hover:shadow-lg hover:border-marka-400 transition p-6 flex flex-col gap-4 cursor-pointer">' +
 
@@ -7164,9 +7162,6 @@ function uyeleriCiz() {
 
       /* Bayiye özel iskonto anahtarı + oran kutusu (yalnızca onaylı/askıdaki bayilerde) */
       bayiIskontoHtml(u) +
-
-      '<div class="text-base text-slate-400 dark:text-slate-500">' +
-        ikon('bilgi', 'ik-sm') + ' Karta tıklayarak bayi kartını ve sipariş dökümünü açın</div>' +
 
       '<div class="bayi-eylemler flex flex-wrap items-center gap-2 mt-3">' + dugmeler + '</div>' +
     '</div>';
@@ -7715,19 +7710,16 @@ async function bayiDetayiAc(id) {
   if (bayi.durum === 'pending' || bayi.durum === 'rejected' || bayi.durum === 'suspended') {
     eylemler.push(
       '<button data-eylem="bayi-modal-onayla" data-id="' + bayi.id + '" ' +
-              'class="flex-1 min-w-56 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 ' +
-                     'text-white text-xl font-extrabold shadow-lg transition">' + ikon('onay') + ' TEK TIKLA ONAYLA</button>');
+              'type="button" class="dg dg-onay dg-b flex-1 min-w-56">' + ikon('onay') + ' Tek Tıkla Onayla</button>');
   }
   if (bayi.durum === 'pending') {
     eylemler.push(
       '<button data-eylem="bayi-modal-reddet" data-id="' + bayi.id + '" ' +
-              'class="flex-1 min-w-40 h-16 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 ' +
-                     'text-white text-xl font-extrabold shadow-lg transition">' + ikon('carpi') + ' REDDET</button>');
+              'type="button" class="dg dg-tehlike dg-b flex-1 min-w-40">' + ikon('carpi') + ' Reddet</button>');
   }
   eylemler.push(
     '<button data-eylem="bayi-modal-kapat" ' +
-            'class="ml-auto h-16 px-8 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300 ' +
-                   'dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">KAPAT</button>');
+            'type="button" class="dg dg-ikincil dg-b ml-auto">Kapat</button>');
 
   ayak.innerHTML = eylemler.join('');
 }
@@ -9209,13 +9201,11 @@ function olcekArayuzunuTazele() {
   const kutu = $('#zoomSecUst');
   if (kutu) kutu.value = String(secili);
 
+  /* Seçili ölçek bir DURUMDUR (Faz 20): aria-pressed taşır, renk sistemden gelir. */
   $$('#zoomSecenekleri [data-zoom]').forEach(function (btn) {
     const bu = Number(btn.dataset.zoom) === secili;
-    btn.className = 'h-12 rounded-xl border-2 text-lg font-extrabold transition active:scale-95 ' +
-      (bu
-        ? 'bg-marka-700 border-marka-800 text-white shadow-lg'
-        : 'bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-700 ' +
-          'dark:bg-slate-900 dark:hover:bg-slate-700 dark:border-slate-600 dark:text-slate-200');
+    btn.className = 'dg dg-ikincil';
+    btn.setAttribute('aria-pressed', bu ? 'true' : 'false');
   });
 
   const bilgi = $('#zoomBilgi');
@@ -9273,9 +9263,11 @@ function olaylariBagla() {
   });
 
   /* --- Yenile butonları --- */
-  $('#siparisYenileBtn').addEventListener('click', function () { siparisleriYukle(); });
-  $('#urunYenileBtn').addEventListener('click', function () { urunleriYukle($('#urunArama').value); });
-  $('#uyeYenileBtn').addEventListener('click', function () { uyeleriYukle(); });
+  /* Yenile düğmeleri MEŞGUL durumuyla bağlanır (Faz 20): iş sürerken ikon döner,
+     ikinci basış yeni tur açmaz. Yükleyici sözünü DÖNDÜRMELİ — dönüş onu bekler. */
+  yenileDugmesiBagla($('#siparisYenileBtn'), function () { return siparisleriYukle(); });
+  yenileDugmesiBagla($('#urunYenileBtn'), function () { return urunleriYukle($('#urunArama').value); });
+  yenileDugmesiBagla($('#uyeYenileBtn'), function () { return uyeleriYukle(); });
 
   /* --- Sipariş sekmeleri: [Aktif] [Kargodakiler] [Teslim Edilenler] --- */
   const siparisSekmeKap = $('#siparisSekmeler');
@@ -9933,7 +9925,7 @@ async function baslat() {
 
     setTimeout(function () {
       bildir('Panel bu bilgisayarda ilk kez açılıyor.\n' +
-             'Site adresinizi ve WooCommerce API anahtarlarınızı girip KAYDET deyin.\n' +
+             'Site adresinizi ve WooCommerce API anahtarlarınızı girip Ayarları Kaydet deyin.\n' +
              'Denemek için Demo Modu anahtarını da açabilirsiniz.', 'bilgi');
     }, 500);
 

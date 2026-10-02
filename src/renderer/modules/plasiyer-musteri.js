@@ -76,6 +76,11 @@
     return document.getElementById(id);
   }
 
+  /** Çizgi ikon (index.html › window.ikon). Yoksa boş — emoji yedeği yok (Faz 20). */
+  function ikonHtml(ad) {
+    return 'function' === typeof window.ikon ? window.ikon(ad) : '';
+  }
+
   function paraYaz(n) {
     if ('function' === typeof window.para) {
       try { return window.para(n); } catch (e) { /* yedek */ }
@@ -383,7 +388,7 @@
     var hepsi = durumM.yereller.concat(durumM.musteriler);
     var secili = durumM.secili;
 
-    var secenekler = '<option value="">👤 Müşteri seçin…</option>' +
+    var secenekler = '<option value="">Müşteri seçin…</option>' +
       hepsi.map(function (m) {
         return '<option value="' + kacis(String(m.id)) + '"' +
           (secili && String(secili.id) === String(m.id) ? ' selected' : '') + '>' +
@@ -395,32 +400,34 @@
     if (secili) {
       var risk = Number(secili.acikBakiye) || 0;
 
+      /* Künye ÇİP olarak (Faz 20): bilgi, eylem değil — düğmelerden görsel olarak ayrışsın. */
       kunye =
-        '<span class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-sm font-bold">' +
+        '<span class="pv-cip">' +
           kacis([secili.kimlikTuru ? secili.kimlikTuru.toUpperCase() + ' ' : '', secili.vergiNo].join('') || '') +
           (secili.il ? ' · ' + kacis(secili.il) : '') +
         '</span>' +
-        '<span class="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 border-2 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900 text-sm font-extrabold" title="Bayi iskontosu — fiyatlar buna göre net gösterilir">' +
+        '<span class="pv-cip pv-cip--iyi" title="Bayi iskontosu — fiyatlar buna göre net gösterilir">' +
           'Bayi %' + yuzdeYaz(sepet().iskonto) +
         '</span>' +
         (risk > 0
-          ? '<span class="px-3 py-2 rounded-xl bg-red-50 text-red-800 border-2 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900 text-sm font-bold">⚠ Açık Bakiye: ' + kacis(paraYaz(risk)) + '</span>'
-          : '<span class="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 border-2 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900 text-sm font-bold">✓ Bakiye temiz</span>') +
-        '<button type="button" id="sonSiparisKopya" class="px-4 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">' +
-          '📋 Son Siparişi Sepete Kopyala' +
+          ? '<span class="pv-cip pv-cip--risk">' + ikonHtml('uyari') + ' Açık bakiye: ' + kacis(paraYaz(risk)) + '</span>'
+          : '<span class="pv-cip pv-cip--iyi">' + ikonHtml('onay') + ' Bakiye temiz</span>') +
+        '<button type="button" id="sonSiparisKopya" class="dg dg-ikincil">' +
+          ikonHtml('kopyala') + ' Son Siparişi Sepete Kopyala' +
         '</button>';
     }
 
     kap.innerHTML =
       '<div class="flex items-center gap-2 flex-wrap">' +
+        /* Terminalin en önemli denetimi: 44px, geniş, seçiliyken mavi çerçeve. */
         '<select id="musteriSecim" aria-label="Müşteri seç" ' +
-                'class="max-w-xs px-4 py-3 rounded-xl border-2 ' +
+                'class="rounded-xl border-2 ' +
                 (secili ? 'border-marka-700 ' : 'border-slate-200 dark:border-slate-600 ') +
-                'bg-white dark:bg-slate-900 font-extrabold">' + secenekler + '</select>' +
-        '<button type="button" id="musteriSec" title="Ünvan, kimlik no, telefon ile ara" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">🔍 Ara</button>' +
-        '<button type="button" id="musteriYeni" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">+ Yeni Müşteri</button>' +
+                'bg-white dark:bg-slate-900">' + secenekler + '</select>' +
+        '<button type="button" id="musteriSec" title="Ünvan, kimlik no, telefon ile ara" class="dg dg-ikincil dg-b">' + ikonHtml('ara') + ' Ara</button>' +
+        '<button type="button" id="musteriYeni" class="dg dg-ikincil dg-b">' + ikonHtml('arti') + ' Yeni Müşteri</button>' +
         kunye +
-        (!secili ? '<span class="text-sm text-slate-500 dark:text-slate-400">Sipariş yazmak için müşteri seçin.</span>' : '') +
+        (!secili ? '<span class="metin-ikincil">Sipariş yazmak için müşteri seçin.</span>' : '') +
       '</div>' +
       subeSeridiHtml(secili);
 
@@ -478,10 +485,10 @@
     }
 
     return '<div class="flex items-center gap-2 flex-wrap mt-2">' +
-        '<span class="text-sm font-bold text-slate-500 dark:text-slate-400">🏭 Teslim Şubesi:</span>' +
+        '<span class="text-sm font-bold text-slate-500 dark:text-slate-400">' + ikonHtml('bina') + ' Teslim Şubesi:</span>' +
         kutu +
         (subeler.length ? '' : '<span class="text-sm text-slate-500 dark:text-slate-400">Tanımlı şube yok — sipariş merkeze yazılır.</span>') +
-        '<button type="button" id="subeEkle" class="px-3 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">+ Şube</button>' +
+        '<button type="button" id="subeEkle" class="dg dg-ikincil dg-k">' + ikonHtml('arti') + ' Şube</button>' +
       '</div>';
   }
 
@@ -523,8 +530,8 @@
           alan('subeIlce', 'İlçe') +
           alan('subeAdres', 'Adres') +
           '<div class="flex gap-2 justify-end mt-4">' +
-            '<button type="button" id="subeVazgec" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold">Vazgeç</button>' +
-            '<button type="button" id="subeKaydet" class="px-4 py-3 rounded-xl bg-marka-700 text-white font-extrabold">Kaydet</button>' +
+            '<button type="button" id="subeVazgec" class="dg dg-ikincil dg-b">Vazgeç</button>' +
+            '<button type="button" id="subeKaydet" class="dg dg-birincil dg-b">Kaydet</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -649,15 +656,15 @@
     var modal = perdeAc(
       '<div class="flex items-start justify-between gap-4">' +
         '<div class="text-xl font-extrabold">Müşteri Seç</div>' +
-        '<button type="button" id="satisKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="satisKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
       '<input id="musteriArama" type="search" autocomplete="off" placeholder="Ünvan, kimlik no, telefon ya da il…" ' +
              'class="mt-5 w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold" />' +
       '<div id="musteriListe" class="mt-4 max-h-80 overflow-y-auto">' +
         '<div class="py-6 text-center text-slate-500">Yükleniyor…</div>' +
       '</div>' +
-      '<button type="button" id="musteriYeniAlt" class="mt-4 w-full px-5 py-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">' +
-        '+ Çevrimdışı Yeni Müşteri Ekle' +
+      '<button type="button" id="musteriYeniAlt" class="dg dg-ikincil dg-b dg-tam mt-4">' +
+        ikonHtml('arti') + ' Çevrimdışı Yeni Müşteri Ekle' +
       '</button>'
     );
 
@@ -855,7 +862,7 @@
               : 'Çevrimdışı kaydedilir, eşitlemede sunucuya iletilir. Kimlik ve telefon algoritmik olarak denetlenir.') +
           '</div>' +
         '</div>' +
-        '<button type="button" id="satisKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="satisKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
 
       alan('ymUnvan', 'Firma ünvanı *', 'text', onDeger(d.unvan)) +
@@ -873,7 +880,7 @@
 
       '<div id="ymMukerrer" class="hidden mt-4 p-3 rounded-xl bg-amber-50 border-2 border-amber-200 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200 text-sm font-semibold"></div>' +
       '<p id="ymHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>' +
-      '<button type="button" id="ymKaydet" class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">' +
+      '<button type="button" id="ymKaydet" class="dg dg-birincil dg-b dg-tam mt-6">' +
         (duzenle ? 'Değişiklikleri Kaydet' : 'Kaydet ve Seç') + '</button>'
     );
 
@@ -1085,7 +1092,7 @@
     if (mukerrer && uyari && !uyari.dataset.gecildi) {
       uyari.innerHTML =
         'Bu kimlik no ya da telefon zaten kayıtlı: <b>' + kacis(mukerrer.unvan) + '</b>. ' +
-        '<button type="button" id="ymMevcutSec" class="ml-2 px-3 py-1.5 rounded-lg bg-marka-700 text-white font-bold">Onu seç</button> ' +
+        '<button type="button" id="ymMevcutSec" class="dg dg-birincil dg-k ml-2">Onu seç</button> ' +
         'ya da yine de yeni kayıt için tekrar Kaydet\'e basın.';
       uyari.classList.remove('hidden');
       uyari.dataset.gecildi = '1';
@@ -1361,7 +1368,7 @@
           '<div class="text-xl font-extrabold">Siparişi Tamamla</div>' +
           '<div class="text-sm text-slate-500 dark:text-slate-400 mt-1">' + kacis(durumM.secili.unvan) + '</div>' +
         '</div>' +
-        '<button type="button" id="satisKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="satisKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
 
       /* ÖDEME — ÜÇ SEÇENEK, fazlası yok (şirket politikası). Her düğme o
@@ -1452,8 +1459,9 @@
 
       '<div id="tamamlaOzet" class="mt-5 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 space-y-1"></div>' +
       '<p id="tamamlaHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>' +
-      '<button type="button" id="tamamlaGonder" class="mt-5 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">' +
-        'Siparişi Kaydet' +
+      /* Saha akışının asıl işlemi: birincil kademe (44px), tam genişlik. */
+      '<button type="button" id="tamamlaGonder" class="dg dg-birincil dg-b dg-tam mt-5">' +
+        ikonHtml('kaydet') + ' Siparişi Kaydet' +
       '</button>'
     );
 
@@ -1784,30 +1792,30 @@
                   return '<option value="' + kacis(y) + '">' + kacis(M().ODEME_ETIKET[y] || y) + '</option>';
                 }).join('') +
               '</select>' +
-              '<button type="button" class="kuyruk-odeme px-3 py-1.5 rounded-lg bg-marka-700 text-white text-xs font-extrabold hover:bg-marka-600 transition">💳 Ödeme Yöntemini Değiştir</button>'
+              '<button type="button" class="dg dg-birincil dg-k kuyruk-odeme">' + ikonHtml('kart') + ' Ödeme Yöntemini Değiştir</button>'
             : '<span class="text-xs font-bold text-red-700 dark:text-red-300">Bu müşteri için açık başka ödeme yöntemi yok — yöneticiyle görüşün.</span>') +
-          '<button type="button" class="kuyruk-sil ml-auto px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-extrabold hover:bg-red-500 transition">🗑️ Siparişi Sil</button>' +
+          '<button type="button" class="dg dg-tehlike dg-k kuyruk-sil ml-auto">' + ikonHtml('cop') + ' Siparişi Sil</button>' +
         '</div>';
     } else if (onarim) {
       /* Künye yedeği YOKSA düğme hiç basılmaz: 2.2.0 öncesi köprülenen
          kayıtlarda yedek yoktur ve boş bir müşteri açmak isimsiz cari üretirdi
          (Faz 11'in "çalışan/çalışmayan ayar" reddiyle aynı ilke). */
       var dirilt = (satir.musteriKunyesi && satir.musteriKunyesi.unvan)
-        ? '<button type="button" class="kuyruk-dirilt px-3 py-1.5 rounded-lg bg-marka-700 text-white text-xs font-extrabold hover:bg-marka-600 transition">🔄 Müşteriyi Yeniden Oluştur</button>'
+        ? '<button type="button" class="dg dg-birincil dg-k kuyruk-dirilt">' + ikonHtml('yenile') + ' Müşteriyi Yeniden Oluştur</button>'
         : '';
 
       eylemler =
         '<div class="w-full flex items-center gap-2 flex-wrap pt-2 mt-1 border-t border-red-200 dark:border-red-900">' +
           dirilt +
           hedefSeciciHtml() +
-          '<button type="button" class="kuyruk-bagla px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-extrabold hover:bg-slate-600 transition">🔗 Bu Müşteriye Bağla</button>' +
-          '<button type="button" class="kuyruk-sil ml-auto px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-extrabold hover:bg-red-500 transition">🗑️ Siparişi Sil</button>' +
+          '<button type="button" class="dg dg-ikincil dg-k kuyruk-bagla">' + ikonHtml('zincir') + ' Bu Müşteriye Bağla</button>' +
+          '<button type="button" class="dg dg-tehlike dg-k kuyruk-sil ml-auto">' + ikonHtml('cop') + ' Siparişi Sil</button>' +
         '</div>';
     } else if (kalici) {
       eylemler =
         '<div class="w-full flex items-center gap-2 flex-wrap pt-2 mt-1 border-t border-red-200 dark:border-red-900">' +
-          '<button type="button" class="kuyruk-tekrar px-3 py-1.5 rounded-lg bg-marka-700 text-white text-xs font-extrabold hover:bg-marka-600 transition">⟳ Tekrar Dene</button>' +
-          '<button type="button" class="kuyruk-sil ml-auto px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-extrabold hover:bg-red-500 transition">🗑️ Siparişi Sil</button>' +
+          '<button type="button" class="dg dg-birincil dg-k kuyruk-tekrar">' + ikonHtml('yenile') + ' Tekrar Dene</button>' +
+          '<button type="button" class="dg dg-tehlike dg-k kuyruk-sil ml-auto">' + ikonHtml('cop') + ' Siparişi Sil</button>' +
         '</div>';
     }
 
@@ -2011,7 +2019,7 @@
         '<div class="flex items-center gap-3 flex-wrap mb-3">' +
           '<div class="font-extrabold text-lg">📦 Çevrimdışı kuyruk: ' + bekleyen.length + ' sipariş' +
             (hatali ? ' <span class="text-red-600">(' + hatali + ' hatalı)</span>' : '') + '</div>' +
-          '<button type="button" id="kuyrukEsitle" class="ml-auto px-4 py-2 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600 transition">⟳ Şimdi Eşitle</button>' +
+          '<button type="button" id="kuyrukEsitle" class="dg dg-birincil dg-k ml-auto">' + ikonHtml('yenile') + ' Şimdi Eşitle</button>' +
         '</div>' +
         '<div class="flex flex-col gap-2">' +
           bekleyen.map(kuyrukSatiriHtml).join('') +
@@ -2101,20 +2109,20 @@
             : '<span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">Bakiye temiz</span>') +
         '</div>' +
         '<div class="mt-1 flex gap-2 flex-wrap">' +
-          '<button type="button" class="mk-siparis px-3 py-2 rounded-lg bg-marka-700 text-white font-bold text-sm hover:bg-marka-600" data-id="' + kacis(String(m.id)) + '">🛍️ Sipariş Yaz</button>' +
-          '<button type="button" class="mk-not px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '" title="İsteğe bağlı — patrona not bırakın">📝 Ziyaret Notu</button>' +
+          '<button type="button" class="dg dg-birincil dg-k mk-siparis" data-id="' + kacis(String(m.id)) + '">' + ikonHtml('sepet') + ' Sipariş Yaz</button>' +
+          '<button type="button" class="dg dg-ikincil dg-k mk-not" data-id="' + kacis(String(m.id)) + '" title="İsteğe bağlı — patrona not bırakın">' + ikonHtml('not') + ' Ziyaret Notu</button>' +
           /* HIZLI TEKRAR SİPARİŞ (Faz 12): müşterinin son siparişi BUGÜNÜN fiyatıyla
              sepete dolar ve satış ekranı açılır. Çevrimdışı müşterinin sunucuda
              geçmişi olamaz — düğme gösterilmez. */
           (m.gecici
             ? ''
-            : '<button type="button" class="mk-tekrar px-3 py-2 rounded-lg border-2 border-emerald-300 text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-300 font-bold text-sm hover:bg-emerald-50 dark:hover:bg-emerald-500/10" data-id="' + kacis(String(m.id)) + '" title="Son siparişi bugünün fiyatıyla sepete doldur">🔁 Tekrar Sipariş</button>') +
-          '<button type="button" class="mk-duzenle px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '" title="Müşteri bilgilerini düzenle">✏️</button>' +
-          '<button type="button" class="mk-profil px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + kacis(String(m.id)) + '">Profil</button>' +
+            : '<button type="button" class="dg dg-ikincil dg-k mk-tekrar" data-id="' + kacis(String(m.id)) + '" title="Son siparişi bugünün fiyatıyla sepete doldur">' + ikonHtml('yenile') + ' Tekrar Sipariş</button>') +
+          '<button type="button" class="dg dg-ikincil dg-k dg-kare mk-duzenle" data-id="' + kacis(String(m.id)) + '" title="Müşteri bilgilerini düzenle" aria-label="Müşteri bilgilerini düzenle">' + ikonHtml('kalem') + '</button>' +
+          '<button type="button" class="dg dg-ikincil dg-k mk-profil" data-id="' + kacis(String(m.id)) + '">Profil</button>' +
           /* Yalnızca henüz sunucuya gitmemiş kayıt silinebilir (Faz 11). Metinde
              "ÇEVRİMDIŞI" geçmez — eşitleme testi rozetin kalktığını o sözcükle ölçer. */
           (m.gecici
-            ? '<button type="button" class="mk-sil px-3 py-2 rounded-lg border-2 border-red-300 text-red-700 dark:border-red-500/40 dark:text-red-300 font-bold text-sm hover:bg-red-50 dark:hover:bg-red-500/10" data-id="' + kacis(String(m.id)) + '" title="Henüz sunucuya gitmemiş bu kaydı cihazdan siler.">🗑️ Sil</button>'
+            ? '<button type="button" class="dg dg-tehlike dg-k mk-sil" data-id="' + kacis(String(m.id)) + '" title="Henüz sunucuya gitmemiş bu kaydı cihazdan siler.">' + ikonHtml('cop') + ' Sil</button>'
             : '') +
         '</div>' +
       '</div>';
@@ -2166,7 +2174,7 @@
             kacis([m.ad && m.ad !== m.unvan ? 'Yetkili: ' + m.ad : '', kimlikYaz(m), m.telefon, m.eposta, [m.il, m.ilce].filter(Boolean).join('/')].filter(Boolean).join(' · ')) +
           '</div>' +
         '</div>' +
-        '<button type="button" id="profilKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="profilKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
       '<div class="mt-4 grid gap-4 md:grid-cols-3">' +
         '<div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50">' +
@@ -2185,9 +2193,9 @@
           '<div class="text-2xl font-black">' + kacis(paraYaz(m.acikBakiye)) + '</div>' +
         '</div>' +
         '<div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 flex flex-col gap-2">' +
-          '<button type="button" id="profilSiparis" class="px-4 py-3 rounded-xl bg-marka-700 text-white font-extrabold hover:bg-marka-600">🛍️ Bu Müşteriye Sipariş Yaz</button>' +
-          '<button type="button" id="profilDuzenle" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700">✏️ Müşteri Bilgilerini Düzenle</button>' +
-          '<button type="button" id="profilNot" class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-100 dark:hover:bg-slate-700">📝 Saha Ziyaret Notu <span class="font-normal opacity-70">(isteğe bağlı)</span></button>' +
+          '<button type="button" id="profilSiparis" class="dg dg-birincil dg-b">' + ikonHtml('sepet') + ' Bu Müşteriye Sipariş Yaz</button>' +
+          '<button type="button" id="profilDuzenle" class="dg dg-ikincil dg-b">' + ikonHtml('kalem') + ' Müşteri Bilgilerini Düzenle</button>' +
+          '<button type="button" id="profilNot" class="dg dg-ikincil dg-b">' + ikonHtml('not') + ' Saha Ziyaret Notu <span class="font-normal opacity-70">(isteğe bağlı)</span></button>' +
         '</div>' +
       '</div>' +
       '<div class="mt-5 grid gap-5 md:grid-cols-2">' +
@@ -2292,7 +2300,10 @@
     }
 
     var yenile = el('musterilerimYenile');
-    if (yenile) yenile.addEventListener('click', function () { durumM.yuklendi = false; portfoyuAc(); });
+    /* Meşgul durumuyla (Faz 20): iş bitene kadar ikon döner, ikinci basış yeni tur açmaz.
+       Modül yoksa düz tıklama (zarif düşüş). */
+    if (yenile && window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.bagla) window.ArayuzDugme.bagla(yenile, function () { durumM.yuklendi = false; return portfoyuAc(); });
+    else if (yenile) yenile.addEventListener('click', function () { durumM.yuklendi = false; return portfoyuAc(); });
 
     var yeni = el('musterilerimYeni');
     if (yeni) yeni.addEventListener('click', yeniPerdesiniAc);

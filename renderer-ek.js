@@ -840,7 +840,7 @@ async function iskontoSekmesiYukle(zorla) {
       (oranlar
         ? 'Mevcut iskonto oranlarınız KURUMSAL BAYİ satırına taşındı.\n'
         : 'Fabrika ayarları yüklendi.\n') +
-      'Bireysel müşteri satırını gözden geçirip KAYDET deyin.\n\n' +
+      'Bireysel müşteri satırını gözden geçirip Kaydet deyin.\n\n' +
       matrisOzeti(d.odemeMatrisi)
     );
   } catch (e) {
@@ -3549,10 +3549,12 @@ function ekOlaylariBagla() {
     iskontoKaydetBtn.addEventListener('click', function () { iskontoKaydet(); });
   }
 
+  /* Meşgul durumuyla (Faz 20, renderer.js → yenileDugmesiBagla). Yardımcı yoksa
+     (bu dosyayı tek başına yükleyen testler) düz tıklama bağlanır. */
   const iskontoYenileBtn = $('#iskontoYenileBtn');
-  if (iskontoYenileBtn) {
-    iskontoYenileBtn.addEventListener('click', function () { iskontoSekmesiYukle(true); });
-  }
+  const iskontoYenile = function () { return iskontoSekmesiYukle(true); };
+  if (typeof yenileDugmesiBagla === 'function') yenileDugmesiBagla(iskontoYenileBtn, iskontoYenile);
+  else if (iskontoYenileBtn) iskontoYenileBtn.addEventListener('click', iskontoYenile);
 
   /* Tablolar yeniden çizildiği için tek tek kutulara değil, SABİT kaplara
      dinleyici bağlanır (olay yetkilendirme). */

@@ -116,8 +116,9 @@ const IZGARA_SUTUNLARI = [
  * hesaplandı. İlk uyan kademe kullanılır.
  *
  * NEDEN ÜÇ KADEME: 1440px'lik VARSAYILAN pencerede bile ızgaraya kalan yer
- * yaklaşık 764px'tir (sol menü 288 + sayfa boşluğu 48 + kategori paneli 320 +
- * aralık 16 + çerçeve 4 düşülür). Tek bir sıkışık kademe bu genişlikte ÜRÜN
+ * yaklaşık 870px'tir (sol menü 248 + sayfa boşluğu 48 + kategori paneli 256 +
+ * aralık 12 + çerçeve 2 düşülür; Faz 20'de panel 320 → 256px daraldı ki ÜRÜN
+ * ADI sütunu ~60px kazansın). Tek bir sıkışık kademe bu genişlikte ÜRÜN
  * ADI'na 60px bile bırakmıyordu.
  *
  * ÖLÇÜLEN ŞEY PENCERE DEĞİL TAŞIYICIDIR: kategori paneli kapatılınca tablo
@@ -318,7 +319,13 @@ function izgKabuguCiz() {
                       'class="w-5 h-5 accent-marka-600 cursor-pointer" />' +
              '</div>';
     }
-    return '<div class="izg-bh" style="text-align:' + s.hiza + '">' + kacis(s.etiket) + '</div>';
+    /* Görsel sütunu 46–68px: "GÖRSEL" yazısı oraya sığmayıp "G…" diye
+       kesiliyordu (Faz 20). Başlık ikonla anlatılır, adı title'da durur. */
+    if (s.kod === 'gorsel') {
+      return '<div class="izg-bh" style="text-align:center" title="Görsel" aria-label="Görsel">' +
+               (typeof ikon === 'function' ? ikon('resim', 'ik-sm') : '') + '</div>';
+    }
+    return '<div class="izg-bh" style="text-align:' + s.hiza + '" title="' + kacis(s.etiket) + '">' + kacis(s.etiket) + '</div>';
   }).join('');
 
   kap.innerHTML =
@@ -1793,7 +1800,9 @@ function izgKategoriAgaciCiz() {
 
     return '' +
       '<div class="flex items-stretch gap-1" style="padding-left:' + (derinlik * 14) + 'px">' +
-        '<button type="button" data-kat-suz="' + id + '" ' +
+        /* title: dar panelde (256px, Faz 20) uzun kategori adı "…" ile kesilir;
+           tam ad fareyle üzerine gelince okunur. */
+        '<button type="button" data-kat-suz="' + id + '" title="' + kacis(etiket) + '" ' +
                 'class="kat-dugme flex-1 ' + (aktifMi ? 'kat-aktif' : '') + ' ' + (ekSinif || '') + '">' +
           '<span class="kat-ad">' + kacis(etiket) + '</span>' +
           '<span class="kat-adet">' + adet + '</span>' +
@@ -2031,11 +2040,8 @@ function izgKategoriSor(baslik, aciklama) {
         '</div>' +
         '<div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 ' +
                     'border-slate-200 dark:border-slate-700">' +
-          '<button id="izgKatVazgec" class="flex-1 h-16 rounded-2xl text-xl font-extrabold ' +
-                  'bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 ' +
-                  'transition active:scale-95">VAZGEÇ</button>' +
-          '<button id="izgKatTamam" class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white ' +
-                  'bg-marka-700 hover:bg-marka-800 transition active:scale-95 shadow-lg">UYGULA</button>' +
+          '<button type="button" id="izgKatVazgec" class="dg dg-ikincil dg-b flex-1">Vazgeç</button>' +
+          '<button type="button" id="izgKatTamam" class="dg dg-birincil dg-b flex-[2]">Uygula</button>' +
         '</div>' +
       '</div>';
 
@@ -2106,13 +2112,10 @@ function izgGorunumSec(gorunum) {
     liste.classList.toggle('flex', !tabloMu);
   }
 
-  const aktif = 'bg-marka-700 text-white shadow';
-  const pasif = 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600';
-
-  if (tabloBtn) tabloBtn.className = 'gorunum-btn h-12 px-5 rounded-xl text-lg font-extrabold transition ' +
-                                    (tabloMu ? aktif : pasif);
-  if (kartBtn) kartBtn.className = 'gorunum-btn h-12 px-5 rounded-xl text-lg font-extrabold transition ' +
-                                  (tabloMu ? pasif : aktif);
+  /* Görünüm anahtarı bir düğme GRUBUDUR (Faz 20, index.html › .dg-grup): seçili
+     parça aria-pressed taşır; renk/zemin arayüz sisteminden gelir. */
+  if (tabloBtn) { tabloBtn.className = 'gorunum-btn dg'; tabloBtn.setAttribute('aria-pressed', tabloMu ? 'true' : 'false'); }
+  if (kartBtn) { kartBtn.className = 'gorunum-btn dg'; kartBtn.setAttribute('aria-pressed', tabloMu ? 'false' : 'true'); }
 
   if (tabloMu) izgCiz(false);
   else izgKartGorunumunuCiz();

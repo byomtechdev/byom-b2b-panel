@@ -428,7 +428,7 @@
         (BYOM.talepler.length
           ? 'Bu süzgeçte talep yok.'
           : 'Henüz destek talebiniz yok.<br><br>Bir sorunuz veya sorununuz olduğunda<br>' +
-            '<b>YENİ DESTEK TALEBİ</b> düğmesine basın.') +
+            '<b>Yeni Destek Talebi</b> düğmesine basın.') +
         '</div>';
       return;
     }
@@ -538,7 +538,7 @@
           '<div class="text-6xl mb-4">' + ikon('kulaklik', 'ik-xxl') + '</div>' +
           '<div class="text-2xl font-black mb-3">BYOM Destek Masası</div>' +
           '<p class="text-lg leading-relaxed text-slate-500 dark:text-slate-400">' +
-            'Sol taraftan bir talep seçin ya da <b>YENİ DESTEK TALEBİ</b> ile bize yazın.<br><br>' +
+            'Sol taraftan bir talep seçin ya da <b>Yeni Destek Talebi</b> ile bize yazın.<br><br>' +
             'Talepleriniz doğrudan BYOM Brain sistemine düşer; cevaplar yine bu ekranda görünür.' +
           '</p>' +
         '</div>';
@@ -1003,11 +1003,14 @@
   function destekOlaylariniBagla() {
     const yenileBtn = secDeg('#destekYenileBtn');
     if (yenileBtn) {
-      yenileBtn.addEventListener('click', async function () {
+      /* Meşgul durumuyla (Faz 20): iş bitene kadar ikon döner, ikinci basış yeni tur açmaz. */
+      const yenile = async function () {
         await taleplariYukle(false);
         // Elle yenilemede açık sohbet de koşulsuz tazelensin.
         if (BYOM.secilenTalepId && !BYOM.formAcik) await sohbetiTazele({ sessiz: true });
-      });
+      };
+      if (window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.bagla) window.ArayuzDugme.bagla(yenileBtn, yenile);
+      else yenileBtn.addEventListener('click', yenile);
     }
 
     const yeniBtn = secDeg('#destekYeniBtn');

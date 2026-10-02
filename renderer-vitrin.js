@@ -1536,7 +1536,7 @@
           durumCiz();
           if (UI.liste) {
             UI.liste.innerHTML = '<li class="rounded-2xl border-2 border-red-300 bg-red-50 dark:bg-red-500/10 dark:border-red-500/30 p-4 text-base text-red-800 dark:text-red-300 whitespace-pre-line">' +
-              ikn('uyari') + ' ' + kac(hataMetni) + '\n\n<button type="button" class="mt-3 h-11 px-4 rounded-xl bg-marka-700 text-white font-extrabold" data-ve-retry>TEKRAR DENE</button></li>';
+              ikn('uyari') + ' ' + kac(hataMetni) + '\n\n<button type="button" class="dg dg-birincil mt-3" data-ve-retry>Tekrar Dene</button></li>';
           }
         }
       }
@@ -2430,10 +2430,44 @@
     if (UI.yineBtn) UI.yineBtn.addEventListener('click', function () { dispatch(M.redo(VE.state)); tokenlariCiz(); paletCiz(); });
     if (UI.sifirlaBtn) UI.sifirlaBtn.addEventListener('click', sifirla);
     if (UI.yayinlaBtn) UI.yayinlaBtn.addEventListener('click', function () { yayinla(false); });
-    if (UI.yenileBtn) UI.yenileBtn.addEventListener('click', function () { onizlemeYukle(); });
+    /*
+     * ÖNİZLEMEYİ YENİLE (Faz 20) — düğme iframe yüklenene kadar MEŞGUL görünür.
+     * `onizlemeYukle` eşzamanlıdır; asıl iş iframe'in `load` olayıyla biter. Demo
+     * modunda ya da adres yokken iframe hiç yüklenmez: iş anında biter (boş
+     * durum metni zaten sebebi söylüyor). 8 sn sonra düğme her koşulda serbest.
+     */
+    if (UI.yenileBtn) {
+      var onizlemeyiYenile = function () {
+        return new Promise(function (coz) {
+          var bitti = false;
+          var zaman = null;
+          var son = function () {
+            if (bitti) return;
+            bitti = true;
+            clearTimeout(zaman);
+            if (UI.iframe) UI.iframe.removeEventListener('load', son);
+            coz();
+          };
+          zaman = setTimeout(son, 8000);
+          if (UI.iframe) UI.iframe.addEventListener('load', son);
+          onizlemeYukle();
+          if (VE.demo || !VE.preview.url) son();
+        });
+      };
+      if (window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.bagla) window.ArayuzDugme.bagla(UI.yenileBtn, onizlemeyiYenile);
+      else UI.yenileBtn.addEventListener('click', onizlemeyiYenile);
+    }
     if (UI.disariBtn) UI.disariBtn.addEventListener('click', function () {
       var adres = guvenliOnizlemeUrl(VE.preview.url) || guvenliOnizlemeUrl(siteAdresi());
-      if (!adres) return;
+      /* ÖLÜ DÜĞME DÜZELTMESİ (Faz 20): adres yokken düğme sessizce hiçbir şey
+         yapmıyordu (tıklama denetiminde tepkisiz çıkan tek gerçek düğme). */
+      if (!adres) {
+        uyar(VE.demo
+          ? 'Demo modunda bağlı bir site yok; tarayıcıda açılacak sayfa bulunmuyor. Ayarlar sekmesinden site adresinizi girin.'
+          : 'Tarayıcıda açılacak önizleme adresi yok. Önce "Siteden Yükle" ile düzeni çekin ya da Ayarlar\'dan site adresini girin.',
+          'uyari');
+        return;
+      }
       if (electron && electron.shell) electron.shell.openExternal(adres);
       else window.open(adres, '_blank');
     });

@@ -500,10 +500,10 @@
     if (!kayit.plasiyerler.length) {
       kap.innerHTML =
         '<div class="py-12 text-center">' +
-          '<div class="text-5xl mb-4" aria-hidden="true">💼</div>' +
-          '<div class="text-xl font-bold">Henüz pazarlamacı tanımlı değil</div>' +
-          '<p class="mt-2 text-slate-500 dark:text-slate-400">' +
-            '"+ Yeni Pazarlamacı" ile ad, bölge ve PIN belirleyerek başlayın.</p>' +
+          '<div class="text-5xl mb-4" aria-hidden="true">' + (window.ikon ? window.ikon('kullanicilar') : '') + '</div>' +
+          '<div class="text-base font-bold">Henüz pazarlamacı tanımlı değil</div>' +
+          '<p class="mt-2 metin-ikincil">' +
+            '"Yeni Pazarlamacı" ile ad, bölge ve PIN belirleyerek başlayın.</p>' +
         '</div>';
       return;
     }
@@ -561,8 +561,8 @@
               ? '<span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">PIN ✓</span>'
               : '<span class="text-xs font-bold text-amber-700 dark:text-amber-400">PIN yok</span>') +
             '<div class="mt-2 flex gap-2 justify-end flex-wrap">' +
-              '<button type="button" class="plasiyer-duzenle px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + Number(p.id) + '">Düzenle</button>' +
-              '<button type="button" class="plasiyer-bayiler px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 font-bold text-sm hover:bg-slate-100 dark:hover:bg-slate-700" data-id="' + Number(p.id) + '">Bayiler</button>' +
+              '<button type="button" class="dg dg-ikincil dg-k plasiyer-duzenle" data-id="' + Number(p.id) + '">Düzenle</button>' +
+              '<button type="button" class="dg dg-ikincil dg-k plasiyer-bayiler" data-id="' + Number(p.id) + '">Bayiler</button>' +
               cihazDugmesi(p) +
             '</div>' +
           '</td>' +
@@ -628,7 +628,7 @@
     form.innerHTML =
       '<div class="flex items-start justify-between gap-4">' +
         '<div class="text-xl font-extrabold">' + (yeni ? 'Yeni Pazarlamacı' : 'Pazarlamacıyı Düzenle') + '</div>' +
-        '<button type="button" id="plasiyerFormKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="plasiyerFormKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
 
       '<label class="block mt-6 text-sm font-bold text-slate-600 dark:text-slate-300" for="pfAd">Ad Soyad</label>' +
@@ -665,9 +665,9 @@
       '<div class="mt-2 flex items-center gap-2 flex-wrap">' +
         '<input id="pfIlAra" type="search" placeholder="İl ara…" class="flex-1 min-w-40 px-3 py-2 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold text-sm" />' +
         ['Marmara', 'Ege', 'Akdeniz', 'İç Anadolu', 'Karadeniz', 'Doğu Anadolu', 'Güneydoğu Anadolu'].map(function (b) {
-          return '<button type="button" class="pf-bolge-sec px-2.5 py-1.5 rounded-lg border-2 border-slate-200 dark:border-slate-600 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700" data-bolge="' + b + '" title="' + b + ' bölgesinin (uygun) illerini seç">' + b + '</button>';
+          return '<button type="button" class="dg dg-ikincil dg-k pf-bolge-sec" data-bolge="' + b + '" title="' + b + ' bölgesinin (uygun) illerini seç">' + b + '</button>';
         }).join('') +
-        '<button type="button" id="pfIlTemizle" class="px-2.5 py-1.5 rounded-lg border-2 border-slate-200 dark:border-slate-600 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700">Temizle</button>' +
+        '<button type="button" id="pfIlTemizle" class="dg dg-ikincil dg-k">Temizle</button>' +
       '</div>' +
       '<div id="pfIlListe" class="mt-2 max-h-48 overflow-y-auto rounded-xl border-2 border-slate-200 dark:border-slate-600 p-2 grid grid-cols-2 sm:grid-cols-3 gap-1">' +
         (function () {
@@ -700,7 +700,7 @@
 
       '<p id="pfHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>' +
 
-      '<button type="button" id="pfKaydet" class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 disabled:opacity-50 transition">Kaydet</button>';
+      '<button type="button" id="pfKaydet" class="dg dg-birincil dg-b mt-6 w-full">Kaydet</button>';
 
     perde.hidden = false;
 
@@ -913,7 +913,7 @@
       '<div class="flex items-start justify-between gap-4">' +
         '<div><div class="text-xl font-extrabold">Bayi Ataması</div>' +
         '<div class="text-sm text-slate-500 dark:text-slate-400 mt-1">' + kacis(p.ad) + (p.bolge ? ' — ' + kacis(p.bolge) : '') + '</div></div>' +
-        '<button type="button" id="plasiyerFormKapat" class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>' +
+        '<button type="button" id="plasiyerFormKapat" class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat">' + (window.ikon ? window.ikon('carpi') : '×') + '</button>' +
       '</div>' +
       '<div id="pfBayiYukleniyor" class="mt-5 text-slate-600 dark:text-slate-300">Bayiler yükleniyor…</div>';
 
@@ -974,7 +974,7 @@
           (satirlar || '<p class="py-6 text-center text-slate-500">Kayıtlı bayi yok.</p>') +
         '</div>' +
         '<p id="pfHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>' +
-        '<button type="button" id="pfAta" class="mt-5 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold hover:bg-marka-600 transition">Atamayı Kaydet</button>';
+        '<button type="button" id="pfAta" class="dg dg-birincil dg-b mt-5 w-full">Atamayı Kaydet</button>';
     }
 
     var ara = el('pfBayiAra');
@@ -1060,7 +1060,10 @@
     bagli = true;
 
     var yenile = el('plasiyerYenile');
-    if (yenile) yenile.addEventListener('click', listeyiGetir);
+    /* Meşgul durumuyla (Faz 20): iş bitene kadar ikon döner, ikinci basış yeni tur açmaz.
+       Modül yoksa düz tıklama (zarif düşüş). */
+    if (yenile && window.ArayuzDugme && 'function' === typeof window.ArayuzDugme.bagla) window.ArayuzDugme.bagla(yenile, listeyiGetir);
+    else if (yenile) yenile.addEventListener('click', listeyiGetir);
 
     var yeni = el('plasiyerYeni');
     if (yeni) yeni.addEventListener('click', function () { formuAc(null); });

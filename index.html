@@ -1625,6 +1625,402 @@
   }
 
 </style>
+<style id="arayuzSistemi">
+  /* ==================================================================
+     ARAYÜZ SİSTEMİ (Faz 20) — düğme kademeleri, meşgul durumu, 4'lük ritim
+     ------------------------------------------------------------------
+     Yukarıdaki KURUMSAL B2B TEMASI aynen durur; bu blok onun üstüne
+     yazılır ve aynı ağırlığı (!important) taşır. AYRI bir <style>
+     etiketi olması bilinçli: kaynak sırasında sonra geldiği için eşit
+     özgüllükteki tema kurallarını yener, tema bloğunu okumadan da
+     bulunur.
+
+     ÜÇ DÜĞME KADEMESİ (ürün sahibinin şartnamesi):
+       .dg .dg-b   44px  BİRİNCİL — sayfanın / pencerenin asıl işlemi
+                         (Ayarları Kaydet, Yayınla, Siparişi Onayla …)
+       .dg         38px  İKİNCİL  — başlık eylemleri, süzgeçler, pencere içi
+       .dg .dg-k   32px  ÜÇÜNCÜL  — kart / tablo içi işlemler, mini yenile
+     Yalnızca ikon taşıyan düğme KAREDİR: .dg-kare → 44 / 38 / 32.
+     Saha terminalindeki dokunmatik hedefler .dg-b ölçüsündedir.
+
+     RENK = ANLAM (her yüzeyde TEK birincil):
+       .dg-birincil  kobalt dolu — o yüzeyin asıl işlemi
+       .dg-onay      yeşil dolu  — onayı / parayı kesinleştiren işlem
+       .dg-ikincil   nötr çerçeve (varsayılan)
+       .dg-sessiz    zeminsiz — kapat, aç/kapa gibi araç düğmeleri
+       .dg-tehlike   kırmızı çerçeve — geri alınabilir yıkıcı işlem
+       .dg-tehlike-dolu  kırmızı dolu — GERİ ALINAMAZ işlem
+     Seçili süzgeç bir EYLEM değil DURUMDUR: aria-pressed="true" /
+     aria-selected="true" → açık mavi zemin (menüdeki etkin sekmeyle aynı).
+
+     ÖZGÜLLÜK: renk kuralları `html:not(.dark) .dg.dg-…` (0,3,1) yazılır;
+     temadaki `html:not(.dark) [data-eylem="durum"]` (0,2,1) gibi eylem
+     kurallarını yenmek için. Dönüştürülen düğmelerden eski Tailwind
+     renk/boy sınıfları SÖKÜLÜR — üst üste iki sistem bırakılmaz.
+     ================================================================== */
+  :root {
+    --dg-b: 44px;
+    --dg-o: 38px;
+    --dg-k: 32px;
+    --tehlike:        #b91c1c;
+    --tehlike-koyu:   #991b1b;
+    --tehlike-zemin:  #fef2f2;
+    --tehlike-kenar:  #fecaca;
+    --onay:           #047857;
+    --onay-koyu:      #065f46;
+    --kose-kart:      8px;
+  }
+  html.dark {
+    --tehlike:        #fca5a5;
+    --tehlike-koyu:   #f87171;
+    --tehlike-zemin:  rgba(239, 68, 68, .10);
+    --tehlike-kenar:  rgba(239, 68, 68, .32);
+    --onay:           #059669;
+    --onay-koyu:      #047857;
+  }
+
+  /* ---- 1) Metin ritmi: şartnamenin 1.4 satır / -0.01em harf aralığı ---- */
+  body { line-height: 1.4 !important; letter-spacing: -.01em !important; }
+  .metin-ikincil { font-size: 12px !important; line-height: 1.4 !important; color: var(--ikincil) !important; font-weight: 400 !important; }
+  .metin-soluk   { font-size: 12px !important; line-height: 1.4 !important; color: var(--soluk) !important; font-weight: 400 !important; }
+
+  /* ---- 2) DÜĞME — temel (ikincil, 38px) ---- */
+  html .dg {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    height: var(--dg-o) !important;
+    min-width: 0;
+    padding: 0 16px !important;
+    border: 1px solid var(--kenar-guclu) !important;
+    border-radius: var(--kose) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    letter-spacing: -.01em !important;
+    text-transform: none !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease !important;
+  }
+  /* Varyant sınıfı unutulursa bile nötr görünsün (düşük özgüllük). */
+  html .dg { background-color: var(--panel); color: var(--govde); }
+  html .dg .ik { width: 16px !important; height: 16px !important; }
+  html .dg.dg-b { height: var(--dg-b) !important; padding: 0 20px !important; font-size: 14px !important; }
+  html .dg.dg-b .ik { width: 18px !important; height: 18px !important; }
+  html .dg.dg-k { height: var(--dg-k) !important; padding: 0 12px !important; gap: 6px !important; font-size: 12.5px !important; }
+  html .dg.dg-k .ik { width: 14px !important; height: 14px !important; }
+  html .dg.dg-kare { width: var(--dg-o) !important; padding: 0 !important; }
+  html .dg.dg-kare.dg-b { width: var(--dg-b) !important; }
+  html .dg.dg-kare.dg-k { width: var(--dg-k) !important; }
+  html .dg.dg-tam { width: 100% !important; }
+  /* Yıkıcı işlem sıranın SONUNA itilir: olumlu eylemlerden ayrışsın */
+  html .dg.dg-ml-oto { margin-left: auto !important; }
+
+  html .dg:focus-visible { outline: 2px solid var(--aksiyon) !important; outline-offset: 2px !important; }
+  html .dg:disabled:not([aria-busy="true"]) { opacity: .45 !important; cursor: not-allowed !important; }
+
+  /* GİZLİ SINIFI KAZANIR. Tabandaki display:inline-flex !important, Tailwind'in
+     `.hidden` sınıfını eziyordu: JS'in classList ile gizlediği düğmeler (revize
+     "Geri Al", Logo/Favicon "Kaldır", Excel "Durdur/Kapat"…) görünür oluyordu.
+     [hidden] özniteliği de aynı sebeple burada yeniden yazılır: genel
+     [hidden]{display:none!important} kuralı (0,1,0) .dg tabanına (0,1,1) yeniliyordu. */
+  html .dg.hidden, html .dg-grup.hidden, html .bilgi-notu.hidden, html .siparis-eylemler.hidden, html .adimlar.hidden,
+  html .dg[hidden], html .dg-grup[hidden], html .bilgi-notu[hidden] { display: none !important; }
+
+  /* ---- 3) DÜĞME — renk = anlam ---- */
+  html:not(.dark) .dg.dg-ikincil {
+    background-color: var(--panel) !important; color: var(--govde) !important; border-color: var(--kenar-guclu) !important;
+  }
+  html:not(.dark) .dg-ikincil:hover { background-color: var(--panel-alt) !important; color: var(--baslik) !important; border-color: var(--soluk) !important; }
+
+  html:not(.dark) .dg.dg-birincil { background-color: var(--aksiyon) !important; color: #fff !important; border-color: var(--aksiyon) !important; }
+  html:not(.dark) .dg-birincil:hover { background-color: var(--aksiyon-koyu) !important; border-color: var(--aksiyon-koyu) !important; }
+
+  html:not(.dark) .dg.dg-onay { background-color: var(--onay) !important; color: #fff !important; border-color: var(--onay) !important; }
+  html:not(.dark) .dg-onay:hover { background-color: var(--onay-koyu) !important; border-color: var(--onay-koyu) !important; }
+
+  html:not(.dark) .dg.dg-sessiz { background-color: transparent !important; color: var(--govde) !important; border-color: transparent !important; }
+  html:not(.dark) .dg-sessiz:hover { background-color: var(--cizgi) !important; color: var(--baslik) !important; }
+
+  html:not(.dark) .dg.dg-tehlike { background-color: var(--panel) !important; color: var(--tehlike) !important; border-color: var(--tehlike-kenar) !important; }
+  html:not(.dark) .dg-tehlike:hover { background-color: var(--tehlike-zemin) !important; border-color: #fca5a5 !important; }
+
+  html:not(.dark) .dg.dg-tehlike-dolu { background-color: var(--tehlike) !important; color: #fff !important; border-color: var(--tehlike) !important; }
+  html:not(.dark) .dg-tehlike-dolu:hover { background-color: var(--tehlike-koyu) !important; border-color: var(--tehlike-koyu) !important; }
+
+  html.dark .dg.dg-ikincil {
+    background-color: var(--panel-alt) !important; color: var(--govde) !important; border-color: var(--kenar-guclu) !important;
+  }
+  html.dark .dg-ikincil:hover { background-color: #1c2a44 !important; color: var(--baslik) !important; }
+  html.dark .dg.dg-birincil { background-color: var(--aksiyon) !important; color: #fff !important; border-color: var(--aksiyon) !important; }
+  html.dark .dg-birincil:hover { background-color: var(--aksiyon-koyu) !important; border-color: var(--aksiyon-koyu) !important; }
+  html.dark .dg.dg-onay { background-color: var(--onay) !important; color: #fff !important; border-color: var(--onay) !important; }
+  html.dark .dg-onay:hover { background-color: var(--onay-koyu) !important; border-color: var(--onay-koyu) !important; }
+  html.dark .dg.dg-sessiz { background-color: transparent !important; color: var(--govde) !important; border-color: transparent !important; }
+  html.dark .dg-sessiz:hover { background-color: var(--cizgi) !important; color: var(--baslik) !important; }
+  html.dark .dg.dg-tehlike { background-color: var(--tehlike-zemin) !important; color: var(--tehlike) !important; border-color: var(--tehlike-kenar) !important; }
+  html.dark .dg.dg-tehlike-dolu { background-color: #b91c1c !important; color: #fff !important; border-color: #b91c1c !important; }
+
+  /* Seçili süzgeç / sekme = DURUM (eylem değil) */
+  html:not(.dark) .dg[aria-pressed="true"], html:not(.dark) .dg[aria-selected="true"] {
+    background-color: var(--aksiyon-zemin) !important; color: var(--aksiyon-koyu) !important; border-color: var(--aksiyon-kenar) !important;
+  }
+  html.dark .dg[aria-pressed="true"], html.dark .dg[aria-selected="true"] {
+    background-color: var(--aksiyon-zemin) !important; color: #bfdbfe !important; border-color: var(--aksiyon-kenar) !important;
+  }
+
+  /* Düğmedeki sayaç rozeti (sekme adetleri) */
+  html .dg .dg-sayac {
+    min-width: 20px; height: 20px; padding: 0 6px !important; margin: 0 !important;
+    display: inline-flex !important; align-items: center; justify-content: center;
+    border-radius: 999px !important; font-size: 11px !important; font-weight: 700 !important; line-height: 1 !important;
+    background: var(--cizgi) !important; color: var(--govde) !important;
+  }
+  html .dg[aria-pressed="true"] .dg-sayac, html .dg[aria-selected="true"] .dg-sayac { background: var(--aksiyon) !important; color: #fff !important; }
+  html .dg .dg-sayac:empty { display: none !important; }
+  html .dg .dg-sayac.dg-sayac--uyari { background: var(--tehlike) !important; color: #fff !important; }
+  html.dark .dg .dg-sayac.dg-sayac--uyari { background: #b91c1c !important; }
+
+  /* ---- 4) MEŞGUL DURUMU — src/renderer/arayuz-dugme.js yazar ---- */
+  html button[aria-busy="true"] { cursor: progress !important; opacity: .8 !important; }
+  html button[aria-busy="true"] > .ik:first-child { animation: donme .8s linear infinite; transform-origin: 50% 50%; }
+  html button[aria-busy="true"]:not(:has(> .ik))::before {
+    content: ""; width: 14px; height: 14px; flex: none; box-sizing: border-box;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+    animation: donme .7s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html button[aria-busy="true"] > .ik:first-child, html button[aria-busy="true"]::before { animation-duration: 2.4s; }
+  }
+
+  /* ---- 5) DÜĞME GRUBU (segmented): görünüm anahtarı, kaynak süzgeci ---- */
+  html .dg-grup {
+    display: inline-flex !important; align-items: center !important; gap: 2px !important;
+    height: var(--dg-o) !important; padding: 2px !important; margin: 0;
+    border: 1px solid var(--kenar) !important; border-radius: var(--kose) !important;
+    background: var(--cizgi) !important; box-shadow: none !important;
+  }
+  html .dg-grup > .dg { height: 32px !important; padding: 0 12px !important; border-color: transparent !important; background: transparent !important; color: var(--ikincil) !important; }
+  html .dg-grup > .dg:hover { color: var(--baslik) !important; background: rgba(255, 255, 255, .55) !important; }
+  html.dark .dg-grup > .dg:hover { background: rgba(255, 255, 255, .04) !important; }
+  html .dg-grup > .dg[aria-pressed="true"], html .dg-grup > .dg[aria-selected="true"] {
+    background: var(--panel) !important; color: var(--baslik) !important; border-color: var(--kenar) !important; box-shadow: var(--golge) !important;
+  }
+
+  /* ---- 6) SAYFA BAŞLIĞI — her sekmenin ilk satırı aynı kalıpta ---- */
+  html .sayfa-baslik { display: flex !important; flex-wrap: wrap; align-items: center !important; gap: 12px !important; margin-bottom: 16px !important; min-height: var(--dg-b); }
+  html .sayfa-baslik > h1 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 20px !important; line-height: 1.2 !important; font-weight: 700 !important; letter-spacing: -.02em !important; }
+  html .sayfa-baslik > h1 .ik { width: 20px !important; height: 20px !important; color: var(--soluk); }
+  html .sayfa-baslik .sayfa-baslik__meta { font-size: 12px !important; font-weight: 500 !important; color: var(--ikincil) !important; }
+  html .sayfa-baslik .sayfa-baslik__eylemler { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+  /* ---- 7) BİLGİ NOTU — uzun açıklama tek satıra katlanır ---- */
+  html details.bilgi-notu {
+    border: 1px solid var(--kenar) !important; border-radius: var(--kose-kart) !important;
+    background: var(--panel) !important; margin-bottom: 16px !important;
+  }
+  html details.bilgi-notu > summary {
+    display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 12px;
+    font-size: 12.5px; font-weight: 600; color: var(--ikincil); cursor: pointer; user-select: none;
+  }
+  html details.bilgi-notu > summary::before { order: 3; margin-left: auto; }
+  html details.bilgi-notu > summary .ik { color: var(--soluk); }
+  html details.bilgi-notu > .bilgi-notu__govde {
+    padding: 0 12px 12px 36px; font-size: 12.5px; line-height: 1.5; color: var(--ikincil);
+  }
+  html details.bilgi-notu > .bilgi-notu__govde b, html details.bilgi-notu > .bilgi-notu__govde strong { color: var(--govde); font-weight: 600; }
+
+  /* ---- 8) 4'LÜK RİTİM — temanın sıkıştırdığı boşluklar ızgaraya oturur ---- */
+  .p-12 { padding: 24px !important; }
+  .p-10 { padding: 24px !important; }
+  .p-7  { padding: 16px !important; }
+  .p-6  { padding: 16px !important; }
+  .p-5  { padding: 16px !important; }
+  .p-4  { padding: 12px !important; }
+  .p-3  { padding: 8px  !important; }
+  .gap-6 { gap: 16px !important; }
+  .gap-5 { gap: 16px !important; }
+  .gap-4 { gap: 12px !important; }
+  .gap-3 { gap: 8px  !important; }
+  .gap-2 { gap: 8px  !important; }
+  .mb-6 { margin-bottom: 16px !important; }
+  .mb-5 { margin-bottom: 16px !important; }
+  .mb-4 { margin-bottom: 12px !important; }
+  .mt-6 { margin-top: 16px !important; }
+  .mt-5 { margin-top: 16px !important; }
+  .mt-4 { margin-top: 12px !important; }
+
+  /* Uygulama kabuğu: üst çubuk, sol menü ve içerik AYNI dış boşlukta (24px) */
+  main { padding: 24px 24px 32px !important; }
+  html:not(.mac) header.h-20 { padding-left: 24px !important; padding-right: 24px !important; }
+  nav.w-72 { padding: 12px !important; gap: 2px !important; }
+  .menu-btn { min-height: 40px; }
+
+  /* Konteyner köşesi denetimlerden bir kademe yumuşak: kart 8px, düğme/alan 6px */
+  div.rounded-2xl, div.rounded-3xl, section.rounded-2xl, aside.rounded-2xl, details.rounded-2xl,
+  div.rounded-xl:not(.px-3):not(.px-2) { border-radius: var(--kose-kart) !important; }
+
+  /* Form alanı ölçüsü düğmeyle aynı satırda aynı boyda dursun */
+  html input.alan, html select.alan {
+    height: var(--dg-o) !important; padding: 0 12px !important;
+    border-radius: var(--kose) !important; font-size: 13px !important; font-weight: 500 !important;
+  }
+  html input.alan.alan-b, html select.alan.alan-b { height: var(--dg-b) !important; font-size: 14px !important; }
+
+  /* ---- 10) SİPARİŞ KARTI — eylem satırı ve ilerleme adımları ---- */
+  html .siparis-eylemler {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    padding-top: 12px; border-top: 1px dashed var(--kenar);
+  }
+  html .siparis-eylemler__grup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  html .siparis-eylemler__son { margin-left: auto; }
+
+  /* İlerleme şeridi: üç adım tek kapta, ortak kenarlıkla */
+  html .adimlar {
+    display: inline-flex; align-items: stretch; height: var(--dg-k);
+    border: 1px solid var(--kenar-guclu); border-radius: var(--kose); overflow: hidden;
+  }
+  html .adimlar > .dg.adim {
+    height: 100% !important; padding: 0 10px !important; border: 0 !important; border-radius: 0 !important;
+    border-right: 1px solid var(--kenar) !important;
+  }
+  html .adimlar > .dg.adim:last-child { border-right: 0 !important; }
+  html:not(.dark) .adimlar > .dg.adim { background-color: var(--panel) !important; color: var(--govde) !important; }
+  html:not(.dark) .adimlar > .dg.adim:hover:not(:disabled) { background-color: var(--panel-alt) !important; color: var(--baslik) !important; }
+  html:not(.dark) .adimlar > .dg.adim[data-adim="gecmis"] { background-color: var(--panel-alt) !important; color: var(--soluk) !important; }
+  html:not(.dark) .adimlar > .dg.adim[aria-current="step"] {
+    background-color: var(--aksiyon-zemin) !important; color: var(--aksiyon-koyu) !important; opacity: 1 !important; cursor: default !important;
+  }
+  html.dark .adimlar > .dg.adim { background-color: var(--panel-alt) !important; color: var(--govde) !important; }
+  html.dark .adimlar > .dg.adim:hover:not(:disabled) { background-color: #1c2a44 !important; color: var(--baslik) !important; }
+  html.dark .adimlar > .dg.adim[data-adim="gecmis"] { color: var(--soluk) !important; }
+  html.dark .adimlar > .dg.adim[aria-current="step"] { background-color: var(--aksiyon-zemin) !important; color: #bfdbfe !important; opacity: 1 !important; cursor: default !important; }
+  html .adimlar > .dg.adim[aria-current="step"] .ik, html .adimlar > .dg.adim[data-adim="gecmis"] .ik { color: inherit; }
+
+  /* ---- 11) SAHA TERMİNALİ — katalog kartı, adet, sepet (dokunmatik hedef 44px) ---- */
+  html .pv-izgara { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
+  /* Yönetici ürün kartının tek satır flex-wrap düzeni saha kartına GELMEZ (bkz.
+     plasiyer-vitrin.js → kartlariCiz notu): kart dikey sütundur. */
+  html #sekme-satis .urun-kart.pv-kart {
+    display: flex !important; flex-direction: column !important; flex-wrap: nowrap !important;
+    align-items: stretch !important; gap: 0 !important; padding: 12px !important;
+  }
+  html #sekme-satis .urun-kart.pv-kart:hover, html #sekme-satis .urun-kart.pv-kart:active { transform: none !important; }
+  html .pv-kart .urun-buyut { padding: 0 !important; border: 0 !important; background: transparent !important; display: block !important; }
+  /* Görsel en çok 168px: 1366px dizüstünde 4:3 kutu 225px tutuyor ve satırda tek kart
+     sırası görünüyordu. Gerçek ürün fotoğrafı kutuya sığdırılır (object-fit: contain). */
+  html .pv-kart .gorsel-kutu { aspect-ratio: 4 / 3; max-height: 168px; width: 100%; border-radius: var(--kose); }
+  html .pv-kart .gorsel-kutu--bos { color: var(--soluk); background: var(--panel-alt); }
+  html .pv-kart .gorsel-kutu--bos .ik { width: 40px; height: 40px; stroke-width: 1.2; }
+  html .pv-kart__ad { margin-top: 12px; font-size: 13.5px; font-weight: 650; line-height: 1.35; color: var(--baslik); min-height: 2.7em; }
+  html .pv-kart__kod { margin-top: 4px; font-size: 11.5px; line-height: 1.4; color: var(--ikincil); overflow-wrap: anywhere; }
+  html .pv-kart__fiyat { margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  html .pv-kart__alt { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  html .pv-kart .spot-rozet { top: 16px; left: 16px; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0; }
+  html .pv-kart .spot-rozet .ik { width: 12px; height: 12px; }
+
+  /* Adet satırı: [−] [ sayı ] [+] — kutu kalan genişliği alır, düğmeler kare */
+  html .pv-adet { display: grid; grid-template-columns: var(--dg-b) minmax(0, 1fr) var(--dg-b); gap: 6px; align-items: center; }
+  html .pv-adet input.hizli-adet-input {
+    width: 100% !important; min-width: 0 !important; height: var(--dg-b) !important;
+    padding: 0 8px !important; text-align: center !important; -moz-appearance: textfield;
+    font-size: 16px !important; font-weight: 700 !important; font-variant-numeric: tabular-nums;
+  }
+  html .pv-adet input.hizli-adet-input::-webkit-inner-spin-button,
+  html .pv-adet input.hizli-adet-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  html .pv-adet .dg, html .pv-sepet__adet .dg { font-size: 18px !important; }
+
+  /* Sepet: katalog kaydırılırken görünür kalır */
+  /* Genişlik px: kök yazı 13px olduğundan 20rem yalnızca 260px ediyordu ve 44px'lik
+     −/+/sil düğmeleri arasında "12 Adet (1 Koli)" iki satıra sarıyordu. */
+  html #sepetKutu { position: sticky; top: 0; width: 304px !important; }
+  html .pv-sepet__baslik { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-size: 15px; font-weight: 700; color: var(--baslik); }
+  html .pv-sepet__satir { padding: 12px 0; border-top: 1px solid var(--cizgi); }
+  html .pv-sepet__adet { margin-top: 8px; display: grid; grid-template-columns: var(--dg-b) minmax(0, 1fr) var(--dg-b) var(--dg-b); gap: 6px; align-items: center; }
+  html .pv-sepet__adet-metin { text-align: center; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  html .pv-sepet__tutar { margin-top: 6px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  html .pv-sepet__ozet { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--kenar); display: flex; flex-direction: column; gap: 4px; }
+  html .pv-sepet__bos { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 8px; text-align: center; }
+  html .pv-sepet__bos-ikon .ik { width: 28px; height: 28px; margin-bottom: 4px; color: var(--soluk); }
+
+  /* Kategori kenar çubuğu: liste öğesi (yöneticideki kategori ağacının .kat-dugme
+     ölçüsü burada GEÇERSİZ — 15px/700 saha listesinde bağırıyordu) */
+  html #katKenar .pv-kat {
+    display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important;
+    width: 100%; min-height: 40px; padding: 0 12px !important; margin: 0;
+    border: 1px solid transparent !important; border-radius: var(--kose) !important; background: transparent !important;
+    font-size: 13px !important; font-weight: 500 !important; color: var(--govde) !important; text-align: left; cursor: pointer;
+    white-space: normal !important;
+  }
+  html #katKenar .pv-kat:hover { background: var(--cizgi) !important; color: var(--baslik) !important; }
+  html #katKenar .pv-kat[aria-pressed="true"] { background: var(--aksiyon-zemin) !important; color: var(--aksiyon-koyu) !important; border-color: var(--aksiyon-kenar) !important; font-weight: 650 !important; }
+  html.dark #katKenar .pv-kat[aria-pressed="true"] { color: #bfdbfe !important; }
+  html #katKenar .pv-kat--tumu { margin-bottom: 4px; font-weight: 650 !important; }
+  html #katKenar .pv-kat__ad { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  html #katKenar .pv-kat__adet { flex: none; min-width: 22px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--cizgi); color: var(--ikincil); font-size: 11px; font-weight: 700; }
+  html #katKenar .pv-kat[aria-pressed="true"] .pv-kat__adet { background: var(--aksiyon); color: #fff; }
+  html #katListe { gap: 2px !important; }
+
+  /* Müşteri şeridi: seçim kutusu terminalin en önemli denetimi — geniş ve 44px */
+  html #musteriSecim { height: var(--dg-b) !important; min-width: 18rem; max-width: 26rem !important; padding: 0 12px !important; font-size: 14px !important; font-weight: 600 !important; }
+  html #subeSecim { height: var(--dg-o) !important; padding: 0 12px !important; }
+  html .pv-cip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--kenar); background: var(--panel-alt); font-size: 12px; font-weight: 600; color: var(--govde); white-space: nowrap; }
+  html .pv-cip--iyi { border-color: #a7f3d0; background: #ecfdf5; color: #065f46; }
+  html .pv-cip--risk { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+  html.dark .pv-cip--iyi { border-color: rgba(16, 185, 129, .35); background: rgba(16, 185, 129, .10); color: #6ee7b7; }
+  html.dark .pv-cip--risk { border-color: rgba(239, 68, 68, .35); background: rgba(239, 68, 68, .10); color: #fca5a5; }
+
+  /* ---- 12) ÜRÜN IZGARASI — uygulamanın geri kalanıyla aynı yazı ölçeği ----
+     Satır yüksekliği (68px) DEĞİŞMEZ: sanallaştırma ve sürükle-bırak geometrisi
+     o sabite bağlı (renderer-izgara.js → IZGARA_SATIR_YUKSEKLIGI, testli). */
+  html .izg-bh { padding: 8px !important; font-size: 11px !important; font-weight: 700 !important; letter-spacing: .02em !important; color: var(--ikincil) !important; }
+  /* Durum hücresi en dar kademede 84px: rozet sığsın, "…" basılmasın */
+  html .izg-h:has(> .izg-rozet) { padding-left: 4px !important; padding-right: 4px !important; text-overflow: clip !important; }
+  html .izg-h { font-size: 13.5px !important; }
+  html .izg-ad { font-size: 14px !important; font-weight: 650 !important; }
+  html .izg-kod { font-size: 12.5px !important; font-weight: 600 !important; }
+  html .izg-kategori { font-size: 12.5px !important; font-weight: 500 !important; }
+  html .izg-para { font-weight: 650 !important; }
+  html .izg-stok { font-weight: 700 !important; }
+  html .izg-kdv { font-size: 12.5px !important; font-weight: 600 !important; }
+  html .izg-koli-adet { font-size: 13px !important; font-weight: 700 !important; }
+  html .izg-rozet { padding: 3px 6px !important; border-width: 1px !important; font-size: 11px !important; font-weight: 700 !important; letter-spacing: .02em !important; }
+  html .izg-islem { width: var(--dg-k) !important; height: var(--dg-k) !important; border-width: 1px !important; border-radius: var(--kose) !important; }
+  html .izg-islem .ik { width: 15px; height: 15px; }
+  html .izg-girdi { height: var(--dg-o) !important; font-size: 13.5px !important; border-width: 1px !important; border-radius: var(--kose) !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .16) !important; }
+  html .izg-hap { height: var(--dg-k) !important; font-size: 12px !important; font-weight: 600 !important; }
+
+  /* Yönetici kategori ağacı: aynı ölçek */
+  html .kat-dugme:not(.pv-kat) { padding: 8px 10px !important; font-size: 13px !important; font-weight: 600 !important; border-width: 1px !important; border-radius: var(--kose) !important; }
+  html .kat-tumu:not(.pv-kat) { font-weight: 700 !important; }
+  html .kat-adet { font-size: 11px !important; font-weight: 700 !important; padding: 1px 7px !important; }
+  html .kat-islem { width: var(--dg-k) !important; height: var(--dg-k) !important; border-width: 1px !important; border-radius: var(--kose) !important; }
+
+  /* Toplu zam türü anahtarı: 64px / 18px yerine birincil kademe */
+  html .zam-tur { height: var(--dg-b) !important; border-width: 1px !important; border-radius: var(--kose) !important; font-size: 14px !important; font-weight: 650 !important; }
+
+  /* ---- 9) ESKİ BOY SINIFLARI — dönüştürülmemiş düğmeler de üç kademeye oturur ----
+     Aç/kapa ANAHTARLARI (role=switch) bu eşlemenin DIŞINDADIR: kendi ölçüleri
+     var (ör. [data-matris-anahtar] 34×20) ve 38px yükseklik onları kare yapıyordu.
+     Yuvarlak renk/nokta düğmeleri (.rounded-full) de muaftır: oval olurlardı. */
+  button.h-16:not(.dg):not([role="switch"]):not(.rounded-full) { height: var(--dg-b) !important; }
+  button.h-14:not(.dg):not([role="switch"]):not(.rounded-full), button.h-12:not(.dg):not([role="switch"]):not(.rounded-full), button.h-11:not(.dg):not([role="switch"]):not(.rounded-full) { height: var(--dg-o) !important; }
+  button.h-10:not(.dg):not([role="switch"]):not(.rounded-full), button.h-9:not(.dg):not([role="switch"]):not(.rounded-full), button.h-8:not(.dg):not([role="switch"]):not(.rounded-full) { height: var(--dg-k) !important; }
+  button.w-12.h-12:not(.dg):not([role="switch"]):not(.rounded-full), button.w-10.h-10:not(.dg):not([role="switch"]):not(.rounded-full) { width: var(--dg-k) !important; height: var(--dg-k) !important; }
+  button.w-14.h-14:not(.dg):not([role="switch"]):not(.rounded-full) { width: var(--dg-o) !important; }
+  button.w-16.h-16:not(.dg):not([role="switch"]):not(.rounded-full) { width: var(--dg-b) !important; }
+  /* Form alanları aynı kademelere: düğmeyle yan yana duran kutu aynı boyda (Faz 20) */
+  input.h-16, select.h-16 { height: var(--dg-b) !important; }
+  input.h-14, select.h-14, input.h-12, select.h-12, input.h-11, select.h-11 { height: var(--dg-o) !important; }
+  input.h-10, select.h-10 { height: var(--dg-k) !important; }
+</style>
 </head>
 
 <body class="bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
@@ -1736,8 +2132,7 @@
         <div id="pinAltBaslik" class="text-sm text-slate-500 dark:text-slate-400 mt-1">Adınızı seçip PIN'inizi girin.</div>
       </div>
       <button type="button" id="pinKapat"
-              class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                     text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>
+              class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat" title="Kapat"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
     <!-- PAZARLAMACI SEÇİMİ — kilitli cihazda GİZLENİR.
@@ -1761,16 +2156,14 @@
     <p id="pinHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>
 
     <button type="button" id="pinGiris"
-            class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold
-                   hover:bg-marka-600 disabled:opacity-50 disabled:cursor-not-allowed transition">
+            class="dg dg-birincil dg-b dg-tam mt-6 w-full">
       Giriş Yap
     </button>
 
     <!-- ÇIKIŞ YOLU: modal hiçbir koşulda çıkmazı olmamalı. Üç yol birden
          var — ✕ düğmesi, bu düğme, ESC ve perdeye tıklama. -->
     <button type="button" id="pinGeri"
-            class="mt-3 w-full px-6 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                   font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+            class="dg dg-ikincil dg-b dg-tam mt-3 w-full">
       ← Geri Dön / Yönetici Girişi
     </button>
   </div>
@@ -1799,8 +2192,7 @@
         <div id="ypinAciklama" class="text-sm text-slate-500 dark:text-slate-400 mt-1"></div>
       </div>
       <button type="button" id="ypinKapat"
-              class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                     text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold">×</button>
+              class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat" title="Kapat"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
     <div id="ypinPinAlan">
@@ -1854,10 +2246,7 @@
                     text-slate-900 dark:text-white break-all">…</div>
         <div id="ypinTalepDurum" class="mt-2 text-xs text-slate-500 dark:text-slate-400 text-center"></div>
         <button type="button" id="ypinTalepKopyala"
-                class="mt-3 w-full px-4 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600
-                       text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition">
-          Kodu Kopyala
-        </button>
+                class="dg dg-ikincil dg-tam mt-3 w-full"><svg class="ik" aria-hidden="true"><use href="#ik-kopyala"></use></svg> Kodu Kopyala</button>
       </div>
 
       <label class="block mt-5 text-sm font-bold text-slate-600 dark:text-slate-300" for="ypinKurtarmaKod">
@@ -1878,8 +2267,7 @@
     <p id="ypinHata" class="hidden mt-4 text-red-600 dark:text-red-400 font-semibold text-sm"></p>
 
     <button type="button" id="ypinGonder"
-            class="mt-6 w-full px-6 py-4 rounded-xl bg-marka-700 text-white text-lg font-extrabold
-                   hover:bg-marka-600 disabled:opacity-50 disabled:cursor-not-allowed transition">
+            class="dg dg-birincil dg-b dg-tam mt-6 w-full">
       Devam
     </button>
 
@@ -1893,8 +2281,7 @@
     </button>
 
     <button type="button" id="ypinGeri"
-            class="mt-3 w-full px-6 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                   font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+            class="dg dg-ikincil dg-b dg-tam mt-3 w-full">
       ← Geri Dön
     </button>
   </div>
@@ -2045,9 +2432,8 @@
       </div>
 
       <!-- Koyu / Açık tema -->
-      <button id="temaBtn" title="Koyu / Açık görünüm"
-              class="w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
-                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition"><svg class="ik" aria-hidden="true"><use href="#ik-ay"></use></svg></button>
+      <button type="button" id="temaBtn" title="Koyu / Açık görünüm"
+              class="dg dg-ikincil dg-kare" aria-label="Koyu / açık görünüm"><svg class="ik" aria-hidden="true"><use href="#ik-ay"></use></svg></button>
     </div>
   </header>
 
@@ -2215,7 +2601,7 @@
                      dark:border-slate-600 dark:text-slate-300 dark:hover:bg-red-950/40
                      dark:hover:border-red-800 dark:hover:text-red-300
                      focus:outline-none focus:ring-4 focus:ring-red-500/20">
-        <span class="align-middle" aria-hidden="true">🚪</span>
+        <svg class="ik" aria-hidden="true"><use href="#ik-cikis"></use></svg>
         <span id="cikisYapMetin" class="align-middle ml-1">Çıkış Yap / Giriş Ekranına Dön</span>
       </button>
     </nav>
@@ -2239,26 +2625,20 @@
           <div id="siparisSonKontrol"
                class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
 
-          <label class="ml-auto flex items-center gap-2 h-14 px-4 rounded-2xl cursor-pointer select-none
-                        bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600
-                        text-lg font-bold">
+          <label class="dg dg-ikincil ml-auto cursor-pointer select-none">
             <input id="otoYenileKutu" type="checkbox" class="w-6 h-6 accent-emerald-600" />
  Otomatik Yenile
  </label>
 
-          <button id="siparisYenileBtn"
-                  class="h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> YENİLE
- </button>
+          <button type="button" id="siparisYenileBtn"
+                  class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
         </div>
 
         <!-- İKİ SEVİYELİ SÜZGEÇ (Faz 11 — Görsel 3: 14 düğmelik karmaşa sadeleşti)
              Seviye 1 (KAYNAK, segmented switcher): [Tümü] [🌐 Web] [💼 Saha]
                Yerel süzgeç — siparisKaynagi / plasiyerId damgasına bakar (Faz 10). -->
         <div id="kaynakSuzgecler" role="group" aria-label="Sipariş kaynağı"
-             class="inline-flex flex-wrap gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900
-                    border-2 border-slate-200 dark:border-slate-700 mb-4"></div>
+             class="dg-grup mb-4"></div>
 
         <!-- Seviye 2 (DURUM sekmeleri, sayaçlı rozet):
              [Hazırlanacaklar (X)] [Kargoda / Yolda (Y)] [Tamamlananlar (Z)] [İptal / İadeler]
@@ -2284,15 +2664,15 @@
         <!-- Özet kartlar -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
-            <div class="text-base font-bold text-slate-500 dark:text-slate-400">LİSTELENEN SİPARİŞ</div>
+            <div class="text-base font-bold text-slate-500 dark:text-slate-400">Listelenen sipariş</div>
             <div id="ozetToplam" class="text-4xl font-black mt-1">—</div>
           </div>
           <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border-2 border-amber-300 dark:border-amber-500/40 shadow-sm">
-            <div class="text-base font-bold text-amber-600 dark:text-amber-400">HAZIRLANMAYI BEKLEYEN</div>
+            <div class="text-base font-bold text-amber-600 dark:text-amber-400">Hazırlanmayı bekleyen</div>
             <div id="ozetBekleyen" class="text-4xl font-black mt-1 text-amber-600 dark:text-amber-400">—</div>
           </div>
           <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border-2 border-emerald-300 dark:border-emerald-500/40 shadow-sm">
-            <div class="text-base font-bold text-emerald-600 dark:text-emerald-400">TOPLAM TUTAR</div>
+            <div class="text-base font-bold text-emerald-600 dark:text-emerald-400">Toplam tutar</div>
             <div id="ozetTutar" class="text-4xl font-black mt-1 text-emerald-600 dark:text-emerald-400">—</div>
           </div>
         </div>
@@ -2317,42 +2697,25 @@
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-etiket"></use></svg> Ürün &amp; Stok Yönetimi</h1>
 
           <!-- Görünüm anahtarı: TABLO / KART -->
-          <div class="ml-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-700
-                      border-2 border-slate-200 dark:border-slate-600 shrink-0">
+          <div class="ml-auto dg-grup shrink-0" role="group" aria-label="Görünüm">
             <button id="gorunumTabloBtn" type="button" data-gorunum="tablo"
                     title="Excel tipi tablo görünümü — hücreye çift tıklayarak düzenleyin"
-                    class="gorunum-btn h-12 px-5 rounded-xl text-lg font-extrabold transition">
-              <svg class="ik" aria-hidden="true"><use href="#ik-liste"></use></svg> TABLO
-            </button>
+                    class="gorunum-btn dg" aria-pressed="true"><svg class="ik" aria-hidden="true"><use href="#ik-liste"></use></svg> Tablo</button>
             <button id="gorunumKartBtn" type="button" data-gorunum="kart"
                     title="Kart görünümü — sürükle-bırak sıralama bu görünümde çalışır"
-                    class="gorunum-btn h-12 px-5 rounded-xl text-lg font-extrabold transition">
-              <svg class="ik" aria-hidden="true"><use href="#ik-tutamak"></use></svg> KART
-            </button>
+                    class="gorunum-btn dg" aria-pressed="false"><svg class="ik" aria-hidden="true"><use href="#ik-tutamak"></use></svg> Kart</button>
           </div>
 
-          <button id="urunEkleBtn"
-                  class="h-14 px-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> YENİ ÜRÜN EKLE
- </button>
-          <button id="urunExcelIndirBtn"
+          <button type="button" id="urunEkleBtn"
+                  class="dg dg-birincil"><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> Yeni Ürün</button>
+          <button type="button" id="urunExcelIndirBtn"
                   title="Kataloğun tamamını Excel (.xlsx) dosyası olarak kaydet"
-                  class="h-14 px-7 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> EXCEL DÖKÜMÜ AL
- </button>
-          <button id="urunExcelYukleBtn"
+                  class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Excel Dökümü Al</button>
+          <button type="button" id="urunExcelYukleBtn"
                   title="Excel / CSV dosyasından toplu fiyat, stok ve ürün güncelle"
-                  class="h-14 px-7 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> EXCEL YÜKLE
- </button>
-          <button id="urunYenileBtn"
-                  class="h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> YENİLE
- </button>
+                  class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> Excel Yükle</button>
+          <button type="button" id="urunYenileBtn"
+                  class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
         </div>
 
         <div class="flex flex-col lg:flex-row gap-4 mb-4">
@@ -2403,65 +2766,37 @@
             <span class="text-base font-extrabold text-slate-600 dark:text-slate-300">KDV</span>
             <button id="topluKdvBtn" type="button"
                     title="Seçili ürünlerin KDV oranını tek seferde ata (fiyatı değiştirmez)"
-                    class="h-9 px-4 rounded-lg bg-sky-600 hover:bg-sky-700 active:scale-95
-                           text-white text-base font-extrabold shadow transition">
-              <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> TOPLU KDV ATA
-            </button>
+                    class="dg dg-ikincil dg-k"><svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> Toplu KDV Ata</button>
           </div>
 
           <!-- Toplu stok durumu: tek istekte /byom/v1/products/bulk-stock-status.
                "Stokta Var" adet sayimini da kapatir (sinirsiz satis). -->
           <button id="topluStoktaBtn" type="button"
                   title="Seçili ürünleri STOKTA VAR yap ve adet sayımını kapat (sınırsız satış)"
-                  class="h-12 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
-                         text-white text-lg font-extrabold shadow transition">
-            <svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> STOKTA VAR
-          </button>
+                  class="dg dg-ikincil dg-k"><svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> Stokta Var</button>
 
           <button id="topluTukendiBtn" type="button"
                   title="Seçili ürünleri TÜKENDİ yap (adet takibi ayarlarına dokunulmaz)"
-                  class="h-12 px-5 rounded-xl bg-slate-600 hover:bg-slate-700 active:scale-95
-                         text-white text-lg font-extrabold shadow transition">
-            <svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> TÜKENDİ
-          </button>
+                  class="dg dg-ikincil dg-k"><svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> Tükendi</button>
 
           <button id="topluIskontoBtn" type="button"
-                  class="h-12 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95
-                         text-white text-lg font-extrabold shadow transition">
-            <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> TOPLU İSKONTO
-          </button>
+                  class="dg dg-ikincil dg-k"><svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> Toplu İskonto</button>
 
           <button id="topluZamBtn" type="button"
                   title="Seçili ürünlerin liste fiyatını yüzdeyle ya da sabit tutarla artır"
-                  class="h-12 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95
-                         text-white text-lg font-extrabold shadow transition">
-            <svg class="ik" aria-hidden="true"><use href="#ik-yukariOk"></use></svg> TOPLU ZAM
-          </button>
+                  class="dg dg-ikincil dg-k"><svg class="ik" aria-hidden="true"><use href="#ik-yukariOk"></use></svg> Toplu Zam</button>
 
           <button id="topluKategoriBtn" type="button"
-                  class="h-12 px-5 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95
-                         text-white text-lg font-extrabold shadow transition">
-            <svg class="ik" aria-hidden="true"><use href="#ik-klasor"></use></svg> KATEGORİ DEĞİŞTİR
-          </button>
+                  class="dg dg-ikincil dg-k"><svg class="ik" aria-hidden="true"><use href="#ik-klasor"></use></svg> Kategori Değiştir</button>
 
           <button id="topluYayinlaBtn" type="button"
-                  class="h-12 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
-                         text-white text-lg font-extrabold shadow transition">
-            <svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> YAYINA AL
-          </button>
+                  class="dg dg-ikincil dg-k"><svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> Yayına Al</button>
 
           <button id="topluTaslakBtn" type="button"
-                  class="h-12 px-5 rounded-xl bg-slate-600 hover:bg-slate-700 active:scale-95
-                         text-white text-lg font-extrabold shadow transition">
-            <svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> TASLAĞA AL
-          </button>
+                  class="dg dg-ikincil dg-k"><svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> Taslağa Al</button>
 
           <button id="topluTemizleBtn" type="button"
-                  class="ml-auto h-12 px-5 rounded-xl border-2 border-slate-400 dark:border-slate-500
-                         text-lg font-extrabold hover:bg-slate-100 dark:hover:bg-slate-700
-                         active:scale-95 transition">
-            <svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg> SEÇİMİ TEMİZLE
-          </button>
+                  class="dg dg-sessiz dg-k ml-auto"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg> Seçimi Temizle</button>
         </div>
 
         <div class="flex flex-col xl:flex-row gap-4 min-h-0">
@@ -2470,7 +2805,7 @@
                SOL PANEL — KATEGORİ AĞACI
                ======================================================== -->
           <aside id="kategoriPanel"
-                 class="shrink-0 w-full xl:w-80 rounded-2xl bg-white dark:bg-slate-800
+                 class="shrink-0 w-full xl:w-64 rounded-2xl bg-white dark:bg-slate-800
                         border-2 border-slate-200 dark:border-slate-700 overflow-hidden
                         flex flex-col self-start">
 
@@ -2480,17 +2815,14 @@
                            bg-slate-50 dark:bg-slate-900/50 border-b-2 border-slate-200 dark:border-slate-700
                            hover:bg-slate-100 dark:hover:bg-slate-700 transition">
               <svg class="ik" aria-hidden="true"><use href="#ik-klasor"></use></svg>
-              <span class="text-lg font-extrabold flex-1">KATEGORİLER</span>
+              <span class="text-base font-bold flex-1">Kategoriler</span>
               <span id="kategoriOk" class="text-2xl leading-none transition-transform">▾</span>
             </button>
 
             <div id="kategoriPanelGovde" class="flex flex-col min-h-0">
               <div class="p-3 border-b-2 border-slate-200 dark:border-slate-700 shrink-0">
                 <button id="kategoriEkleBtn" type="button"
-                        class="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700
-                               active:scale-95 text-white text-lg font-extrabold shadow transition">
-                  <svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> YENİ KATEGORİ
-                </button>
+                        class="dg dg-ikincil dg-tam w-full"><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> Yeni Kategori</button>
               </div>
 
               <div id="kategoriAgaci" class="overflow-y-auto p-2 flex flex-col gap-1"
@@ -2518,11 +2850,8 @@
 
         <div class="flex flex-wrap items-center gap-4 mb-4">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg> Bayiler / Müşteriler</h1>
-          <button id="uyeYenileBtn"
-                  class="ml-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> YENİLE
- </button>
+          <button type="button" id="uyeYenileBtn"
+                  class="dg dg-ikincil ml-auto"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
         </div>
 
         <!-- ALT SEKMELER (Faz 10) — Görsel 6/7: web'den kayıt olan perakende
@@ -2536,12 +2865,12 @@
              role="tablist" aria-label="Üye görünümü">
           <button type="button" class="uye-alt px-5 py-3 rounded-xl font-extrabold transition"
                   role="tab" data-alt="bayi" aria-selected="true">
-            <span aria-hidden="true">🏢</span>
+            <svg class="ik" aria-hidden="true"><use href="#ik-bina"></use></svg>
             <span class="align-middle ml-1">B2B Bayilik Başvuruları</span>
           </button>
           <button type="button" class="uye-alt px-5 py-3 rounded-xl font-extrabold transition"
                   role="tab" data-alt="perakende" aria-selected="false">
-            <span aria-hidden="true">👤</span>
+            <svg class="ik" aria-hidden="true"><use href="#ik-kisi"></use></svg>
             <span class="align-middle ml-1">Web Perakende Müşterileri</span>
           </button>
           <!-- SAHA MÜŞTERİLERİ (Faz 12.1): pazarlamacıların sahada açtığı hesaplar.
@@ -2553,18 +2882,22 @@
                sekmeyi de kurcalardı (Faz 10 kilidi). -->
           <button type="button" class="uye-alt px-5 py-3 rounded-xl font-extrabold transition"
                   role="tab" data-alt="saha" aria-selected="false">
-            <span aria-hidden="true">🚚</span>
+            <svg class="ik" aria-hidden="true"><use href="#ik-kamyon"></use></svg>
             <span class="align-middle ml-1">Saha / Pazarlamacı Müşterileri</span>
           </button>
         </div>
-        <p class="mb-5 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
-                  border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4">
- <svg class="ik" aria-hidden="true"><use href="#ik-bilgi"></use></svg> <b>Tüm Müşteriler</b> sitenize kayıtlı herkesi, <b>Onaylı Bayiler</b> toptan fiyat gören
-          kurumsal hesapları, <b>Onay Bekleyenler</b> ise henüz karara bağlanmamış
-          <b>kurumsal bayilik başvurularını</b> listeler.
-          Onayladığınız başvurunun rolü <code>b2b_customer</code> yapılır ve firma toptan fiyat
-          listesine erişir. Bir kayda tıklayarak <b>geçmiş siparişlerinin dökümünü</b> görebilirsiniz.
-        </p>
+        <!-- Faz 20: uzun açıklama varsayılan KAPALI bir nota katlandı; her kartta
+             tekrar eden "Karta tıklayarak…" ipucu da buraya, tek yere taşındı. -->
+        <details class="bilgi-notu">
+          <summary><svg class="ik" aria-hidden="true"><use href="#ik-bilgi"></use></svg> Bu sekme ne gösterir?</summary>
+          <div class="bilgi-notu__govde">
+            <b>Tüm Müşteriler</b> sitenize kayıtlı herkesi, <b>Onaylı Bayiler</b> toptan fiyat gören
+            kurumsal hesapları, <b>Onay Bekleyenler</b> ise henüz karara bağlanmamış
+            <b>kurumsal bayilik başvurularını</b> listeler.
+            Onayladığınız başvurunun rolü <code>b2b_customer</code> yapılır ve firma toptan fiyat
+            listesine erişir. Bir karta tıklayarak bayi kartını ve <b>geçmiş siparişlerinin dökümünü</b> açabilirsiniz.
+          </div>
+        </details>
 
         <div class="flex flex-col lg:flex-row gap-4 mb-6">
           <div id="uyeSuzgecler" class="flex flex-wrap gap-2"></div>
@@ -2608,22 +2941,20 @@
 
         <div class="flex flex-wrap items-center gap-4 mb-5">
           <h1 class="text-3xl font-black"><svg class="ik ik-lg" aria-hidden="true"><use href="#ik-yuzde"></use></svg> İskonto / Fiyat Ayarları</h1>
-          <button id="iskontoYenileBtn"
-                  class="ml-auto h-14 px-7 rounded-2xl bg-marka-700 hover:bg-marka-800 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> YENİLE
- </button>
+          <button type="button" id="iskontoYenileBtn"
+                  class="dg dg-ikincil ml-auto"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
         </div>
 
-        <p class="mb-6 text-lg text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800
-                  border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4 leading-relaxed">
- <svg class="ik" aria-hidden="true"><use href="#ik-bilgi"></use></svg> Aşağıdaki iki tablo <b>birbirinden bağımsızdır</b>: bireysel müşterilerinize ayrı,
-          kurumsal bayilerinize ayrı ödeme yöntemi ve iskonto tanımlarsınız.
-          <b>Anahtarı kapattığınız</b> ödeme yöntemi o rol için sitede <b>hiç görünmez</b>;
-          açık bıraktığınız yöntemin oranı sepet toplamına <b>anında</b> uygulanır ve
-          siparişin üzerine not olarak işlenir.
-          <br>Vadeli siparişlerde genellikle iskonto uygulanmaz (%0 = sabit fiyat).
-        </p>
+        <details class="bilgi-notu">
+          <summary><svg class="ik" aria-hidden="true"><use href="#ik-bilgi"></use></svg> İki tablo birbirinden bağımsızdır — nasıl çalışır?</summary>
+          <div class="bilgi-notu__govde">
+            Bireysel müşterilerinize ayrı, kurumsal bayilerinize ayrı ödeme yöntemi ve iskonto tanımlarsınız.
+            <b>Anahtarı kapattığınız</b> ödeme yöntemi o rol için sitede <b>hiç görünmez</b>;
+            açık bıraktığınız yöntemin oranı sepet toplamına <b>anında</b> uygulanır ve
+            siparişin üzerine not olarak işlenir.
+            Vadeli siparişlerde genellikle iskonto uygulanmaz (%0 = sabit fiyat).
+          </div>
+        </details>
 
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <!-- Sol: Bireysel Müşteriler tablosu -->
@@ -2666,20 +2997,14 @@
           </label>
 
           <button id="minTutarKaydetBtn" type="button"
-                  class="h-14 px-7 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95
-                         text-white text-lg font-extrabold shadow-md transition shrink-0">
-            <svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> KAYDET
-          </button>
+                  class="dg dg-ikincil shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Kaydet</button>
 
           <div id="minTutarDurum" class="w-full text-base font-bold"></div>
         </div>
 
         <div class="mt-6 flex flex-wrap items-center gap-4">
-          <button id="iskontoKaydetBtn"
-                  class="h-16 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> ÖDEME MATRİSİNİ KAYDET
- </button>
+          <button type="button" id="iskontoKaydetBtn"
+                  class="dg dg-birincil dg-b"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Ödeme Matrisini Kaydet</button>
           <div id="iskontoDurum" class="text-lg font-bold whitespace-pre-line flex-1 min-w-72"></div>
         </div>
 
@@ -2730,25 +3055,15 @@
 
           <div class="ml-auto flex flex-wrap items-center gap-2">
             <button id="veYukleBtn" type="button"
-                    class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                           dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 text-base font-extrabold transition">
-              <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> SİTEDEN YÜKLE
-            </button>
+                    class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Siteden Yükle</button>
             <button id="veGeriAlBtn" type="button" title="Geri al (Ctrl+Z)" disabled
-                    class="h-12 w-12 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                           dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 text-lg font-extrabold transition disabled:opacity-40">↶</button>
+                    class="dg dg-ikincil dg-kare" aria-label="Geri al">↶</button>
             <button id="veYineleBtn" type="button" title="Yinele (Ctrl+Y)" disabled
-                    class="h-12 w-12 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                           dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 text-lg font-extrabold transition disabled:opacity-40">↷</button>
+                    class="dg dg-ikincil dg-kare" aria-label="Yinele">↷</button>
             <button id="veSifirlaBtn" type="button"
-                    class="h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
-                           dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
-                           text-red-700 dark:text-red-300 text-base font-extrabold transition">Varsayılana Dön</button>
+                    class="dg dg-tehlike">Varsayılana Dön</button>
             <button id="veYayinlaBtn" type="button" title="Yayınla (Ctrl+S)"
-                    class="h-14 px-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
-                           text-white text-xl font-extrabold shadow-lg transition">
-              <svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> YAYINLA
-            </button>
+                    class="dg dg-birincil dg-b"><svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> Yayınla</button>
           </div>
         </div>
 
@@ -2812,13 +3127,9 @@
  </div>
               <div class="flex-1 flex flex-wrap gap-2">
                 <button id="logoYukleBtn" type="button"
-                        class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                               text-base font-extrabold transition"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> LOGO YÜKLE</button>
+                        class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> Logo Yükle</button>
                 <button id="logoKaldirBtn" type="button"
-                        class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
-                               dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
-                               text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
+                        class="dg dg-tehlike hidden"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg> Kaldır</button>
               </div>
               <input id="logoDosyaSec" type="file" accept="image/*" class="hidden" />
             </div>
@@ -2867,9 +3178,7 @@
                   <span class="text-sm font-bold text-slate-500">320px</span>
                   <span id="veLogoGenislikDeger" class="text-right text-base font-black tabular-nums whitespace-nowrap">220px · %100</span>
                   <button id="veLogoGenislikKaydet" type="button"
-                          class="h-11 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                                 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                                 text-base font-extrabold transition">Kaydet</button>
+                          class="dg dg-ikincil">Kaydet</button>
                 </div>
                 <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
                   Yalnızca bu bilgisayardaki uygulamanın sol üst logosunu boyutlandırır; web sitenizin
@@ -2897,13 +3206,9 @@
  </div>
               <div class="flex-1 flex flex-wrap gap-2">
                 <button id="faviconYukleBtn" type="button"
-                        class="h-12 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                               text-base font-extrabold transition"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> FAVICON YÜKLE</button>
+                        class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yukle"></use></svg> Favicon Yükle</button>
                 <button id="faviconKaldirBtn" type="button"
-                        class="hidden h-12 px-4 rounded-xl bg-red-50 hover:bg-red-100 border-2 border-red-300
-                               dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:border-red-500/30
-                               text-red-700 dark:text-red-300 text-base font-extrabold transition">✕ KALDIR</button>
+                        class="dg dg-tehlike hidden"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg> Kaldır</button>
               </div>
               <input id="faviconDosyaSec" type="file" accept="image/*" class="hidden" />
             </div>
@@ -2914,9 +3219,7 @@
         </div>
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <button id="veMarkaGonderBtn" type="button"
-                        class="h-11 px-4 rounded-xl bg-marka-700 hover:bg-marka-800 text-white text-base font-extrabold transition">
-                  <svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> SİTEYE GÖNDER
-                </button>
+                        class="dg dg-birincil"><svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> Siteye Gönder</button>
                 <span id="veMarkaDurum" class="text-sm text-slate-500 dark:text-slate-400"></span>
               </div>
             </div>
@@ -3156,10 +3459,7 @@
             değişiklik sitenizle olan bağlantıyı tamamen kesebilir.
           </p>
           <button id="ayarKilitAcModalBtn" type="button"
-                  class="h-16 px-8 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95
-                         text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-anahtar"></use></svg> ŞİFREYİ GİR VE AÇ
- </button>
+                  class="dg dg-birincil dg-b"><svg class="ik" aria-hidden="true"><use href="#ik-anahtar"></use></svg> Şifreyi Gir ve Aç</button>
         </div>
 
         <!-- Kilit açılana kadar `hidden`. Izgara sınıfları İÇ kapta durur:
@@ -3255,8 +3555,7 @@
                                 bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
                                 focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
                   <button id="csGosterBtn" type="button" title="Göster / Gizle"
-                          class="w-14 h-14 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                                 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition"><svg class="ik" aria-hidden="true"><use href="#ik-goz"></use></svg></button>
+                          class="dg dg-ikincil dg-kare" aria-label="Göster / gizle"><svg class="ik" aria-hidden="true"><use href="#ik-goz"></use></svg></button>
                 </div>
               </div>
 
@@ -3274,10 +3573,7 @@
                   </div>
                 </div>
                 <button id="apiKilitAcBtn" type="button"
-                        class="h-14 px-6 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95
-                               text-white text-lg font-extrabold shadow-md transition shrink-0">
- <svg class="ik" aria-hidden="true"><use href="#ik-kilitAcik"></use></svg> KİLİDİ AÇ
- </button>
+                        class="dg dg-birincil shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-kilitAcik"></use></svg> Kilidi Aç</button>
               </div>
 
               <!-- E-posta bildirimleri -->
@@ -3341,17 +3637,10 @@
               </details>
 
               <div class="flex flex-wrap gap-4 pt-1">
-                <button id="baglantiTestBtn"
-                        class="flex-1 min-w-56 h-16 rounded-2xl bg-slate-800 hover:bg-slate-900 active:scale-95
-                               dark:bg-slate-600 dark:hover:bg-slate-500
-                               text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-priz"></use></svg> BAĞLANTIYI TEST ET
- </button>
-                <button id="ayarKaydetBtn"
-                        class="flex-1 min-w-56 h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95
-                               text-white text-xl font-extrabold shadow-lg transition">
- <svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> AYARLARI KAYDET
- </button>
+                <button type="button" id="baglantiTestBtn"
+                        class="dg dg-ikincil dg-b flex-1 min-w-56"><svg class="ik" aria-hidden="true"><use href="#ik-priz"></use></svg> Bağlantıyı Test Et</button>
+                <button type="button" id="ayarKaydetBtn"
+                        class="dg dg-birincil dg-b flex-1 min-w-56"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Ayarları Kaydet</button>
               </div>
 
               <div id="testSonucu" class="hidden rounded-xl p-4 text-lg font-semibold whitespace-pre-line"></div>
@@ -3373,7 +3662,7 @@
                     İzin: <b class="text-emerald-700 dark:text-emerald-400">Okuma/Yazma</b> seçin.</li>
                 <li><b>API anahtarı oluştur</b>'a basın.</li>
                 <li>Ekranda çıkan <b>Consumer Key</b> ve <b>Consumer Secret</b> değerlerini
-                    soldaki kutulara yapıştırıp <b><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> AYARLARI KAYDET</b> deyin.</li>
+                    soldaki kutulara yapıştırıp <b><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Ayarları Kaydet</b> deyin.</li>
               </ol>
               <div class="mt-5 p-4 rounded-xl bg-amber-100 dark:bg-amber-500/15 border-2 border-amber-300 dark:border-amber-500/30
                           text-amber-900 dark:text-amber-200 text-lg font-bold">
@@ -3404,9 +3693,9 @@
               </p>
               <div class="mt-3 flex flex-wrap items-center gap-3">
                 <button id="iskontoDenetle" type="button"
-                        class="h-12 px-5 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95 text-white text-lg font-extrabold transition disabled:opacity-50">Siparişleri Denetle</button>
+                        class="dg dg-ikincil">Siparişleri Denetle</button>
                 <button id="iskontoDuzelt" type="button" disabled
-                        class="h-12 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-lg font-extrabold transition disabled:opacity-50 disabled:cursor-not-allowed">Seçilenleri Düzelt</button>
+                        class="dg dg-birincil">Seçilenleri Düzelt</button>
               </div>
               <div id="iskontoDenetimOzet" class="mt-3 text-base font-bold"></div>
               <div id="iskontoDenetimListe" class="mt-3 flex flex-col gap-2 max-h-[32rem] overflow-y-auto"></div>
@@ -3460,11 +3749,7 @@
                 <p id="ypinAyarHata" class="hidden text-sm font-semibold"></p>
 
                 <button type="button" id="ypinDegistirBtn"
-                        class="h-14 rounded-xl bg-marka-700 hover:bg-marka-600 active:scale-95
-                               text-white text-lg font-extrabold shadow transition
-                               disabled:opacity-50 disabled:cursor-not-allowed">
-                  <svg class="ik" aria-hidden="true"><use href="#ik-kilit"></use></svg> PIN'İ DEĞİŞTİR
-                </button>
+                        class="dg dg-birincil"><svg class="ik" aria-hidden="true"><use href="#ik-kilit"></use></svg> PIN'i Değiştir</button>
               </div>
 
               <!-- ========================================================
@@ -3487,11 +3772,7 @@
                   kodu</b> verir, mevcut PIN silinir ve yenisini siz belirlersiniz.
                 </p>
                 <button type="button" id="ypinSifirlaBtn"
-                        class="mt-3 w-full h-12 rounded-xl border-2 border-amber-300 dark:border-amber-700
-                               text-amber-800 dark:text-amber-300 font-extrabold
-                               hover:bg-amber-50 dark:hover:bg-amber-900/30 transition">
-                  🔓 Sıfırlama Kodu ile PIN'i Sıfırla
-                </button>
+                        class="dg dg-ikincil dg-tam mt-3 w-full"><svg class="ik" aria-hidden="true"><use href="#ik-kilitAcik"></use></svg> Sıfırlama Kodu ile PIN'i Sıfırla</button>
                 <!-- DENETİM İZİ: kurtarma yolu sosyal mühendisliğe açıktır
                      (biri merkezi arayıp patron gibi davranabilir). Panelin
                      karşı önlemi, sıfırlamanın görünür bir iz bırakmasıdır. -->
@@ -3524,8 +3805,7 @@
                         class="flex-1 px-3 py-3 rounded-xl bg-slate-100 dark:bg-slate-900 text-base font-mono
                                break-all border-2 border-slate-200 dark:border-slate-700">hesaplanıyor…</code>
                   <button id="byomHwidKopyaBtn" type="button" title="Panoya kopyala"
-                          class="w-14 shrink-0 rounded-xl text-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                                 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition"><svg class="ik" aria-hidden="true"><use href="#ik-kopyala"></use></svg></button>
+                          class="dg dg-ikincil dg-kare shrink-0" aria-label="Panoya kopyala"><svg class="ik" aria-hidden="true"><use href="#ik-kopyala"></use></svg></button>
                 </div>
               </div>
 
@@ -3542,23 +3822,13 @@
 
               <div class="grid grid-cols-2 gap-2 mt-4">
                 <button id="byomKontrolBtn" type="button"
-                        class="h-12 rounded-xl text-base font-extrabold text-white bg-marka-700 hover:bg-marka-800 transition active:scale-95">
- <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> LİSANSI KONTROL ET
- </button>
+                        class="dg dg-birincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Lisansı Kontrol Et</button>
                 <button id="byomApiKaydetBtn" type="button"
-                        class="h-12 rounded-xl text-base font-extrabold bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition active:scale-95">
- <svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> ADRESİ KAYDET
- </button>
+                        class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Adresi Kaydet</button>
                 <button id="byomApiTestBtn" type="button"
-                        class="h-12 rounded-xl text-base font-extrabold bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                               dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition active:scale-95">
- <svg class="ik" aria-hidden="true"><use href="#ik-anten"></use></svg> BAĞLANTIYI TEST ET
- </button>
+                        class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-anten"></use></svg> Bağlantıyı Test Et</button>
                 <button id="byomDestekGitBtn" type="button"
-                        class="h-12 rounded-xl text-base font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white transition active:scale-95">
- <svg class="ik" aria-hidden="true"><use href="#ik-kulaklik"></use></svg> DESTEK TALEBİ AÇ
- </button>
+                        class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-kulaklik"></use></svg> Destek Talebi Aç</button>
               </div>
             </div>
           </div>
@@ -3598,7 +3868,7 @@
       <section id="sekme-sahaharitam" class="sekme-govde" data-kabuk="plasiyer">
         <div class="flex items-center gap-4 mb-5 flex-wrap">
           <h1 class="text-3xl font-black">
-            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kure"></use></svg> 🗺️ Saha Haritam
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-kure"></use></svg> Saha Haritam
           </h1>
           <span class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             Sorumlu illerim ve bayilerim · ile tıklayın, karttan sipariş açın
@@ -3609,15 +3879,14 @@
       <section id="sekme-performansim" class="sekme-govde" data-kabuk="plasiyer">
         <div class="flex items-center gap-4 mb-5 flex-wrap">
           <h1 class="text-3xl font-black">
-            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-liste"></use></svg> 📊 Performansım
+            <svg class="ik ik-lg" aria-hidden="true"><use href="#ik-grafik"></use></svg> Performansım
           </h1>
           <span id="performansimOzet"
                 class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
                        dark:bg-slate-800 dark:text-slate-300"></span>
           <div class="ml-auto flex gap-3">
             <button type="button" id="performansimYenile"
-                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+                    class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
           </div>
         </div>
         <div id="performansimKartlar" class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(14rem,1fr))] mb-6"></div>
@@ -3634,8 +3903,7 @@
                        dark:bg-slate-800 dark:text-slate-300"></span>
           <div class="ml-auto flex gap-3">
             <button type="button" id="siparislerimYenile"
-                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+                    class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
           </div>
         </div>
         <!-- PLASİYER KUYRUK ŞERİDİ (Faz 9) — çevrimdışı yazılan siparişler
@@ -3646,12 +3914,13 @@
       </section>
       <section id="sekme-satis" class="sekme-govde" data-kabuk="plasiyer">
 
-        <!-- ÜST ŞERİT: müşteri + katalog durumu + görünüm anahtarı -->
-        <div class="flex items-center gap-3 mb-4 flex-wrap">
+        <!-- ÜST ŞERİT: müşteri + katalog durumu + görünüm anahtarı.
+             items-start (Faz 20): müşteri şeridi iki satıra sarınca ☰ ve
+             "Kataloğu Eşitle" dikeyde ortalanıp ikinci satıra kayıyordu. -->
+        <div class="flex items-start gap-3 mb-4 flex-wrap">
           <button type="button" id="katMenuAnahtar"
-                  class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold
-                         hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-                  aria-expanded="true" aria-controls="katKenar" title="Kategori menüsünü aç/kapat">☰</button>
+                  class="dg dg-ikincil dg-b dg-kare"
+                  aria-expanded="true" aria-controls="katKenar" title="Kategori menüsünü aç/kapat" aria-label="Kategori menüsünü aç / kapat"><svg class="ik" aria-hidden="true"><use href="#ik-liste"></use></svg></button>
 
           <div id="musteriSerit" class="flex-1 min-w-64"></div>
 
@@ -3663,8 +3932,7 @@
             filtre barında yazılı — düğme kalkınca kısayol keşfedilemez olmasın.
           -->
           <button type="button" id="katalogEsitle"
-                  class="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 font-bold
-                         hover:bg-slate-100 dark:hover:bg-slate-700 transition">⟳ Kataloğu Eşitle</button>
+                  class="dg dg-ikincil dg-b"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Kataloğu Eşitle</button>
         </div>
 
         <!-- FİLTRE BARI: aktif filtre etiketi + arama -->
@@ -3673,8 +3941,8 @@
 
           <div class="ml-auto flex items-center gap-2">
             <input id="satisArama" type="search" autocomplete="off" placeholder="Ad, SKU ya da barkod…"
-                   class="w-72 px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                          bg-white dark:bg-slate-900 font-semibold" />
+                   class="alan alan-b w-80 rounded-xl border-2 border-slate-200 dark:border-slate-600
+                          bg-white dark:bg-slate-900" />
             <span id="katalogKunye" class="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap"></span>
           </div>
         </div>
@@ -3684,10 +3952,8 @@
           <!-- SOL: daraltılabilir kategori kenar çubuğu -->
           <aside id="katKenar"
                  class="kat-kenar bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-4 max-h-[70vh] overflow-y-auto">
-            <button type="button" id="tumUrunler"
-                    class="w-full text-left px-4 py-3 rounded-xl font-extrabold mb-3
-                           bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition">
-              Tüm Ürünleri Gör
+            <button type="button" id="tumUrunler" class="pv-kat pv-kat--tumu" aria-pressed="true">
+              <span class="pv-kat__ad">Tüm Ürünleri Gör</span>
             </button>
             <div id="katListe" class="flex flex-col gap-1"></div>
           </aside>
@@ -3739,11 +4005,9 @@
                    class="w-72 px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
                           bg-white dark:bg-slate-900 font-semibold" />
             <button type="button" id="musterilerimYenile"
-                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+                    class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
             <button type="button" id="musterilerimYeni"
-                    class="px-5 py-3 rounded-xl bg-marka-700 text-white font-extrabold
-                           hover:bg-marka-600 transition">+ Yeni Müşteri</button>
+                    class="dg dg-birincil"><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> Yeni Müşteri</button>
           </div>
         </div>
         <!-- Portföy kartları -->
@@ -3763,8 +4027,7 @@
 
           <div class="ml-auto flex gap-3">
             <button type="button" id="notlarimYenile"
-                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+                    class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
           </div>
         </div>
 
@@ -3791,11 +4054,9 @@
 
           <div id="plasiyerAraclar" class="ml-auto flex gap-3">
             <button type="button" id="plasiyerYenile"
-                    class="px-5 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600
-                           font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition">Yenile</button>
+                    class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
             <button type="button" id="plasiyerYeni"
-                    class="px-5 py-3 rounded-xl bg-marka-700 text-white font-extrabold
-                           hover:bg-marka-600 transition">+ Yeni Pazarlamacı</button>
+                    class="dg dg-birincil"><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> Yeni Pazarlamacı</button>
           </div>
         </div>
 
@@ -3816,13 +4077,13 @@
 
           <button type="button" class="plasiyer-alt px-5 py-3 rounded-xl font-extrabold transition"
                   role="tab" data-alt="performans" aria-selected="true" aria-controls="plasiyerAltPerformans">
-            <span aria-hidden="true">👥</span>
+            <svg class="ik" aria-hidden="true"><use href="#ik-kullanicilar"></use></svg>
             <span class="align-middle ml-1">Pazarlamacılar &amp; Ciro</span>
           </button>
 
           <button type="button" class="plasiyer-alt relative px-5 py-3 rounded-xl font-extrabold transition"
                   role="tab" data-alt="harita" aria-selected="false" aria-controls="plasiyerAltHarita">
-            <span aria-hidden="true">🗺️</span>
+            <svg class="ik" aria-hidden="true"><use href="#ik-kure"></use></svg>
             <span class="align-middle ml-1">Saha Ziyaret Haritası</span>
             <!-- Çözülmemiş saha notu sayacı: Faz 3'te sol menüdeydi, harita
                  buraya taşınınca rozet de onu izledi. Sol menüdeki
@@ -3861,16 +4122,10 @@
                 class="text-base font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600
                        dark:bg-slate-800 dark:text-slate-300"></span>
           <div class="ml-auto flex gap-3">
-            <button id="destekYenileBtn"
-                    class="h-14 px-5 rounded-2xl text-lg font-extrabold bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                           dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition active:scale-95">
- <svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> YENİLE
- </button>
-            <button id="destekYeniBtn"
-                    class="h-14 px-6 rounded-2xl text-lg font-extrabold text-white bg-marka-700 hover:bg-marka-800
-                           shadow-lg transition active:scale-95">
- <svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> YENİ DESTEK TALEBİ
- </button>
+            <button type="button" id="destekYenileBtn"
+                    class="dg dg-ikincil"><svg class="ik" aria-hidden="true"><use href="#ik-yenile"></use></svg> Yenile</button>
+            <button type="button" id="destekYeniBtn"
+                    class="dg dg-birincil"><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> Yeni Destek Talebi</button>
           </div>
         </div>
 
@@ -3903,9 +4158,8 @@
                           class="flex-1 p-4 rounded-xl text-lg resize-none bg-slate-50 dark:bg-slate-900
                                  border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                                  focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
-                <button id="destekYanitGonderBtn"
-                        class="h-16 px-7 rounded-xl text-lg font-extrabold text-white bg-marka-700 hover:bg-marka-800
-                               transition active:scale-95 shrink-0">GÖNDER</button>
+                <button type="button" id="destekYanitGonderBtn"
+                        class="dg dg-birincil dg-b shrink-0">Gönder</button>
               </div>
               <div data-yanit-ipucu class="mt-2 text-sm text-slate-400">Ctrl + Enter ile de gönderebilirsiniz.</div>
             </div>
@@ -3941,12 +4195,10 @@
               </div>
 
               <div class="flex gap-3">
-                <button id="destekGonderBtn"
-                        class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
-                               shadow-lg transition active:scale-95"><svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> TALEBİ GÖNDER</button>
-                <button id="destekVazgecBtn"
-                        class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                               dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+                <button type="button" id="destekGonderBtn"
+                        class="dg dg-birincil dg-b flex-[2]"><svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> Talebi Gönder</button>
+                <button type="button" id="destekVazgecBtn"
+                        class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
               </div>
             </div>
 
@@ -3977,9 +4229,8 @@
         <div class="text-2xl font-black">Yeni Ürün Ekle</div>
         <div id="urunModalMod" class="text-base font-bold"></div>
       </div>
-      <button id="urunModalKapat" title="Kapat"
-              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
-                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+      <button type="button" id="urunModalKapat" title="Kapat"
+              class="dg dg-sessiz dg-kare dg-k ml-auto" aria-label="Kapat"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
     <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -4101,12 +4352,10 @@
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700
                 sticky bottom-0 rounded-b-3xl">
-      <button id="urunEkleVazgec"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
-      <button id="urunEkleOnay"
-              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
-                     transition active:scale-95 shadow-lg"><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> ÜRÜNÜ EKLE</button>
+      <button type="button" id="urunEkleVazgec"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
+      <button type="button" id="urunEkleOnay"
+              class="dg dg-birincil dg-b flex-[2]"><svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> Ürünü Ekle</button>
     </div>
   </div>
 </div>
@@ -4128,9 +4377,8 @@
         <div id="duzenleBaslik" class="text-2xl font-black">Ürünü Düzenle</div>
         <div id="duzenleAltBaslik" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
       </div>
-      <button id="duzenleKapatBtn" title="Kapat"
-              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
-                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+      <button type="button" id="duzenleKapatBtn" title="Kapat"
+              class="dg dg-sessiz dg-kare dg-k ml-auto" aria-label="Kapat"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
     <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -4294,12 +4542,10 @@
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700
                 sticky bottom-0 rounded-b-3xl">
-      <button id="duzenleVazgecBtn"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
-      <button id="duzenleKaydetBtn"
-              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
-                     transition active:scale-95 shadow-lg"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> DEĞİŞİKLİKLERİ KAYDET</button>
+      <button type="button" id="duzenleVazgecBtn"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
+      <button type="button" id="duzenleKaydetBtn"
+              class="dg dg-birincil dg-b flex-[2]"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Değişiklikleri Kaydet</button>
     </div>
   </div>
 </div>
@@ -4314,12 +4560,10 @@
       <div id="modalMesaj" class="text-lg leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-line"></div>
     </div>
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
-      <button id="modalVazgec"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
-      <button id="modalTamam"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
-                     transition active:scale-95">EVET</button>
+      <button type="button" id="modalVazgec"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
+      <button type="button" id="modalTamam"
+              class="dg dg-onay dg-b flex-1">Evet</button>
     </div>
   </div>
 </div>
@@ -4390,9 +4634,8 @@
         <div id="bayiModalBaslik" class="text-2xl font-black truncate">Bayi Detayı</div>
         <div id="bayiModalAltBaslik" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
       </div>
-      <button id="bayiModalKapat" title="Kapat"
-              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
-                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+      <button type="button" id="bayiModalKapat" title="Kapat"
+              class="dg dg-sessiz dg-kare dg-k ml-auto" aria-label="Kapat"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
     <div id="bayiModalGovde" class="p-6 flex flex-col gap-6"></div>
@@ -4486,12 +4729,10 @@
     </div>
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
-      <button id="kargoVazgec"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
-      <button id="kargoOnay"
-              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
-                     transition active:scale-95 shadow-lg"><svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> DURUMU GÜNCELLE</button>
+      <button type="button" id="kargoVazgec"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
+      <button type="button" id="kargoOnay"
+              class="dg dg-birincil dg-b flex-[2]"><svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> Durumu Güncelle</button>
     </div>
   </div>
 </div>
@@ -4517,14 +4758,9 @@
       </div>
       <!-- REVİZE GEÇMİŞİ (Faz 19): kim, ne zaman, neyi değiştirdi — önce / sonra -->
       <button id="revizeGecmisAc" type="button" title="Revize geçmiş kaydını görüntüle"
-              class="ml-auto h-12 px-4 rounded-xl text-base font-extrabold bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
-                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0">
-        <svg class="ik" aria-hidden="true"><use href="#ik-saat"></use></svg> Revize Geçmişi
-        <span data-gecmis-sayi class="ml-1 px-2 rounded-lg bg-marka-700 text-white empty:hidden"></span>
-      </button>
-      <button id="revizeModalKapat" title="Kapat"
-              class="w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
-                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+              class="dg dg-ikincil ml-auto shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-saat"></use></svg> Revize Geçmişi <span data-gecmis-sayi class="dg-sayac empty:hidden"></span></button>
+      <button type="button" id="revizeModalKapat" title="Kapat"
+              class="dg dg-sessiz dg-kare dg-k shrink-0" aria-label="Kapat"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
     <div class="p-6 flex flex-col gap-5">
@@ -4553,7 +4789,7 @@
                   bg-emerald-50/60 dark:bg-emerald-500/10 p-4">
         <div class="flex flex-wrap items-center gap-3">
           <div class="text-lg font-extrabold text-emerald-900 dark:text-emerald-200">
-            <svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> ÜRÜN EKLE
+            <svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> Ürün Ekle
           </div>
           <div class="flex-1 min-w-[16rem]">
             <label for="revizeUrunAra" class="sr-only">Siparişe eklenecek ürünü arayın</label>
@@ -4607,11 +4843,7 @@
             <span class="text-2xl font-black text-amber-900 dark:text-amber-200">%</span>
             <button id="revizeIskontoGeri" type="button"
                     title="Girilen oranı iptal et, siparişin mevcut oranına dön"
-                    class="h-14 px-4 rounded-xl text-base font-extrabold
-                           border-2 border-amber-300 dark:border-amber-500/40
-                           bg-white dark:bg-slate-900 text-amber-800 dark:text-amber-300
-                           hover:bg-amber-100 dark:hover:bg-amber-500/20 transition active:scale-95
-                           disabled:opacity-50 disabled:cursor-not-allowed">↩ VAZGEÇ</button>
+                    class="dg dg-ikincil">↩ Vazgeç</button>
           </div>
         </div>
 
@@ -4689,19 +4921,15 @@
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700
                 sticky bottom-0 rounded-b-3xl">
-      <button id="revizeVazgec"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <button type="button" id="revizeVazgec"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
       <!-- ARA KAYDET (Faz 19): değişiklikleri siteye yazar, pencere AÇIK
            kalır, sipariş durumu ASLA değişmez. -->
       <button id="revizeAraKaydet" type="button"
               title="Değişiklikleri kaydet ve düzenlemeye devam et (sipariş durumu değişmez)"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold text-marka-800 dark:text-marka-200
-                     border-2 border-marka-600 bg-white dark:bg-slate-800 hover:bg-marka-50 dark:hover:bg-marka-900/30
-                     transition active:scale-95"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> ARA KAYDET</button>
-      <button id="revizeOnay"
-              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
-                     transition active:scale-95 shadow-lg"><svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> SİPARİŞİ ONAYLA</button>
+              class="dg dg-ikincil dg-b flex-1"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Ara Kaydet</button>
+      <button type="button" id="revizeOnay"
+              class="dg dg-onay dg-b flex-[2]"><svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> Siparişi Onayla</button>
     </div>
   </div>
 </div>
@@ -4725,9 +4953,8 @@
           <span class="text-emerald-700 dark:text-emerald-300 font-black">yeni değer</span> · en yeni kayıt üstte
         </div>
       </div>
-      <button id="revizeGecmisKapat" title="Kapat"
-              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
-                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+      <button type="button" id="revizeGecmisKapat" title="Kapat"
+              class="dg dg-sessiz dg-kare dg-k ml-auto shrink-0" aria-label="Kapat"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
     <div id="revizeGecmisGovde" class="p-6"></div>
   </div>
@@ -4748,12 +4975,10 @@
                        focus:ring-4 focus:ring-marka-600/20 outline-none transition"></textarea>
     </div>
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
-      <button id="metinModalVazgec"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
-      <button id="metinModalTamam"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-red-600 hover:bg-red-700
-                     transition active:scale-95">DEVAM ET</button>
+      <button type="button" id="metinModalVazgec"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
+      <button type="button" id="metinModalTamam"
+              class="dg dg-tehlike-dolu dg-b flex-1">Devam Et</button>
     </div>
   </div>
 </div>
@@ -4783,10 +5008,10 @@
         <div class="text-lg font-extrabold mb-2">Artış Türü</div>
         <div class="grid grid-cols-2 gap-3">
           <button id="zamTurYuzde" type="button" data-zam-tur="yuzde" class="zam-tur">
-            <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> YÜZDE (%)
+            <svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> Yüzde (%)
           </button>
           <button id="zamTurTutar" type="button" data-zam-tur="tutar" class="zam-tur">
-            <svg class="ik" aria-hidden="true"><use href="#ik-nakit"></use></svg> SABİT TUTAR (₺)
+            <svg class="ik" aria-hidden="true"><use href="#ik-nakit"></use></svg> Sabit Tutar (₺)
           </button>
         </div>
       </div>
@@ -4813,12 +5038,10 @@
     </div>
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
-      <button id="zamVazgec"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
-      <button id="zamTamam"
-              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-rose-600 hover:bg-rose-700
-                     transition active:scale-95 shadow-lg">ZAMMI UYGULA</button>
+      <button type="button" id="zamVazgec"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
+      <button type="button" id="zamTamam"
+              class="dg dg-birincil dg-b flex-[2]">Zammı Uygula</button>
     </div>
   </div>
 </div>
@@ -4846,9 +5069,7 @@
         <div id="excelModalAciklama" class="text-base font-bold text-slate-500 dark:text-slate-400 truncate"></div>
       </div>
       <button id="excelKapatBtn" type="button" title="Kapat" aria-label="Kapat"
-              class="ml-auto w-12 h-12 shrink-0 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2
-                     border-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600
-                     transition"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+              class="dg dg-sessiz dg-kare dg-k ml-auto shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
     <!-- ---------- 1. AŞAMA: SÜTUN EŞLEŞTİRME ---------- -->
@@ -4912,23 +5133,13 @@
     <div class="flex flex-wrap gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2
                 border-slate-200 dark:border-slate-700 sticky bottom-0 rounded-b-3xl">
       <button id="excelVazgecBtn" type="button"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
       <button id="excelBaslatBtn" type="button"
-              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-indigo-600 hover:bg-indigo-700
-                     transition active:scale-95 shadow-lg">
-        <svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> İÇE AKTARMAYI BAŞLAT
-      </button>
+              class="dg dg-birincil dg-b flex-[2]"><svg class="ik" aria-hidden="true"><use href="#ik-gonder"></use></svg> İçe Aktarmayı Başlat</button>
       <button id="excelDurdurBtn" type="button"
-              class="hidden flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-red-600 hover:bg-red-700
-                     transition active:scale-95 shadow-lg">
-        <svg class="ik" aria-hidden="true"><use href="#ik-durakla"></use></svg> DURDUR
-      </button>
+              class="dg dg-tehlike dg-b hidden flex-1"><svg class="ik" aria-hidden="true"><use href="#ik-durakla"></use></svg> Durdur</button>
       <button id="excelBitirBtn" type="button"
-              class="hidden flex-1 h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600
-                     hover:bg-emerald-700 transition active:scale-95 shadow-lg">
-        <svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> KAPAT
-      </button>
+              class="dg dg-birincil dg-b hidden flex-1"><svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> Kapat</button>
     </div>
   </div>
 </div>
@@ -4963,8 +5174,7 @@
                       bg-slate-50 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600
                       focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
         <button id="kilitSifreGosterBtn" type="button" title="Göster / Gizle"
-                class="w-16 h-16 rounded-2xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300
-                       dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition"><svg class="ik" aria-hidden="true"><use href="#ik-goz"></use></svg></button>
+                class="dg dg-ikincil dg-kare" aria-label="Şifreyi göster / gizle"><svg class="ik" aria-hidden="true"><use href="#ik-goz"></use></svg></button>
       </div>
 
       <div id="kilitUyari" class="hidden mt-4 rounded-xl p-4 text-lg font-bold whitespace-pre-line
@@ -4973,12 +5183,10 @@
     </div>
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
-      <button id="kilitVazgec"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
-      <button id="kilitTamam"
-              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-marka-700 hover:bg-marka-800
-                     transition active:scale-95 shadow-lg"><svg class="ik" aria-hidden="true"><use href="#ik-kilitAcik"></use></svg> KİLİDİ AÇ</button>
+      <button type="button" id="kilitVazgec"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
+      <button type="button" id="kilitTamam"
+              class="dg dg-birincil dg-b flex-[2]"><svg class="ik" aria-hidden="true"><use href="#ik-kilitAcik"></use></svg> Kilidi Aç</button>
     </div>
   </div>
 </div>
@@ -5000,9 +5208,8 @@
         <div class="text-2xl font-black">Siparişi İptal Et</div>
         <div id="iptalModalAciklama" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
       </div>
-      <button id="iptalModalKapat" title="Kapat"
-              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
-                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+      <button type="button" id="iptalModalKapat" title="Kapat"
+              class="dg dg-sessiz dg-kare dg-k ml-auto shrink-0" aria-label="Kapat"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
     <div class="p-6 flex flex-col gap-5">
@@ -5044,12 +5251,10 @@
     </div>
 
     <div class="flex gap-3 p-5 bg-slate-50 dark:bg-slate-900/50 border-t-2 border-slate-200 dark:border-slate-700">
-      <button id="iptalVazgec"
-              class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
-                     dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
-      <button id="iptalOnay"
-              class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-red-600 hover:bg-red-700
-                     transition active:scale-95 shadow-lg"><svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> EVET, İPTAL ET</button>
+      <button type="button" id="iptalVazgec"
+              class="dg dg-ikincil dg-b flex-1">Vazgeç</button>
+      <button type="button" id="iptalOnay"
+              class="dg dg-tehlike-dolu dg-b flex-[2]"><svg class="ik" aria-hidden="true"><use href="#ik-yasak"></use></svg> Evet, İptal Et</button>
     </div>
   </div>
 </div>
@@ -5072,6 +5277,8 @@
   Bu bir BYOM TECH ürünüdür
 </div>
 
+<!-- Düğme meşgul durumu (Faz 20): renderer.js ve modüllerden ÖNCE yüklenir. -->
+<script src="src/renderer/arayuz-dugme.js"></script>
 <script src="renderer.js"></script>
 <!-- Ek modüller: İskonto Oranları sekmesi, Ürün Düzenle paneli, sürükle-bırak sıralama.
      renderer.js'ten SONRA yüklenir; oradaki genel fonksiyonları ve `durum` nesnesini kullanır. -->
