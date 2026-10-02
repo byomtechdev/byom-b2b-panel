@@ -858,3 +858,42 @@ test('400 HÂLÂ kalıcı (sözleşme korundu)', () => {
 test('401 kalıcı SAYILMAZ — eski kaliciRet sözleşmesi de öyle der', () => {
   assert.equal(S.kaliciRet({ durum: 401 }), false);
 });
+
+/* ------------------------------------------------------------------ *
+ *  FAZ 19 — ÖDEME YÖNTEMİ KAPALI: ONARIM, KALICI DEĞİL
+ *  Sipariş kuyruktayken yönetici bayiye yöntemi kapattı → sunucu
+ *  400 b2b_plasiyer_odeme_kapali (+ data.izinli). Sipariş KAYBOLMAMALI.
+ * ------------------------------------------------------------------ */
+
+test('Faz 19: odeme_kapali reti ONARIM ister; kod ve açık yöntemler satırda saklanır', (t) => {
+  assert.equal(S.retTuru({ durum: 400, kod: 'b2b_plasiyer_odeme_kapali' }), 'onarim', '400 olsa da kalici DEGIL');
+  assert.equal(S.kaliciRet({ durum: 400, kod: 'b2b_plasiyer_odeme_kapali' }), false);
+  assert.equal(S.retTuru({ durum: 400, kod: 'b2b_plasiyer_odeme' }), 'kalici', 'gecersiz yontem (bozuk govde) hala kalici');
+
+  const kayit = { durum: S.BEKLIYOR, deneme: 1, kayit: { odeme: 'nakit' } };
+
+  S.hataIsle(kayit, {
+    ok: false, durum: 400, kod: 'b2b_plasiyer_odeme_kapali', hata: 'Bu müşteri için "Nakit" ödeme yöntemi kapalı.',
+    veri: { code: 'b2b_plasiyer_odeme_kapali', data: { status: 400, izinli: ['vade', 'kart'] } }
+  });
+
+  assert.equal(kayit.durum, S.ONARIM_GEREKLI);
+  assert.equal(kayit.deneme, 1, 'onarim reti deneme hakkini YAKMAZ');
+  assert.equal(kayit.hataKodu, 'b2b_plasiyer_odeme_kapali', 'serit dogru dugmeyi bu koddan secer');
+  assert.deepEqual(kayit.izinliOdeme, ['vade', 'kart'], 'acik yontemler sunucudan');
+  assert.equal(S.denenebilir(kayit), false, 'onarilmadan otomatik denenmez');
+
+  assert.equal(S.kayitOnar(kayit), true);
+  assert.equal(kayit.hataKodu, '', 'onarimda kod temizlenir');
+  assert.equal(kayit.izinliOdeme, undefined, 'eski acik yontem listesi tasinmaz');
+  assert.equal(S.denenebilir(kayit), true);
+});
+
+test('Faz 19: başka hata kodunda açık yöntem listesi YAZILMAZ', (t) => {
+  const kayit = { durum: S.BEKLIYOR, deneme: 0, kayit: {} };
+
+  S.hataIsle(kayit, { ok: false, durum: 404, kod: 'b2b_plasiyer_musteri_yok', veri: { data: { izinli: ['vade'] } } });
+
+  assert.equal(kayit.hataKodu, 'b2b_plasiyer_musteri_yok');
+  assert.equal(kayit.izinliOdeme, undefined);
+});

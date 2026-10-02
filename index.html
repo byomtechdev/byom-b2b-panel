@@ -3388,6 +3388,31 @@
             </div>
 
             <!-- ==========================================================
+                 GEÇMİŞ SİPARİŞ İSKONTO DENETİMİ (Faz 19)
+                 ----------------------------------------------------------
+                 Mantık: src/renderer/modules/iskonto-denetimi.js
+                 GET  /wc-b2b/v1/maintenance/fee-audit → KURU denetim (yazmaz)
+                 POST /wc-b2b/v1/maintenance/fee-audit → YALNIZCA seçilenler
+                 Formül panelde YOK: B2B_Ucret_Onarim → B2B_Ucret_Motoru.
+                 ========================================================== -->
+            <div id="iskontoDenetimKart" class="bg-white dark:bg-slate-800 rounded-2xl p-6 border-2 border-slate-200 dark:border-slate-700">
+              <div class="text-xl font-black mb-2"><svg class="ik" aria-hidden="true"><use href="#ik-yuzde"></use></svg> Geçmiş Sipariş İskonto Denetimi</div>
+              <p class="text-base leading-relaxed text-slate-600 dark:text-slate-300">
+                Kalemleri sonradan değişmiş siparişlerde ödeme / bayi iskontosu eski tutarda kalmış olabilir
+                (örn. kalemler 32.863,90 ₺ iken %12 iskonto 3.520,92 ₺). <b>Denetim hiçbir şeyi değiştirmez</b>;
+                yalnızca listeden seçtiğiniz siparişler güncel kalemlerden yeniden hesaplanır. İadeli siparişlere dokunulmaz.
+              </p>
+              <div class="mt-3 flex flex-wrap items-center gap-3">
+                <button id="iskontoDenetle" type="button"
+                        class="h-12 px-5 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95 text-white text-lg font-extrabold transition disabled:opacity-50">Siparişleri Denetle</button>
+                <button id="iskontoDuzelt" type="button" disabled
+                        class="h-12 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-lg font-extrabold transition disabled:opacity-50 disabled:cursor-not-allowed">Seçilenleri Düzelt</button>
+              </div>
+              <div id="iskontoDenetimOzet" class="mt-3 text-base font-bold"></div>
+              <div id="iskontoDenetimListe" class="mt-3 flex flex-col gap-2 max-h-[32rem] overflow-y-auto"></div>
+            </div>
+
+            <!-- ==========================================================
                  YÖNETİCİ MASTER PIN (Faz 7)
                  ----------------------------------------------------------
                  Mantık: src/renderer/modules/yonetici-pin.js
@@ -4490,8 +4515,15 @@
         <div id="revizeModalBaslik" class="text-2xl font-black truncate">Siparişi Hazırla &amp; Revize Et</div>
         <div id="revizeModalAciklama" class="text-base font-bold text-slate-500 dark:text-slate-400"></div>
       </div>
+      <!-- REVİZE GEÇMİŞİ (Faz 19): kim, ne zaman, neyi değiştirdi — önce / sonra -->
+      <button id="revizeGecmisAc" type="button" title="Revize geçmiş kaydını görüntüle"
+              class="ml-auto h-12 px-4 rounded-xl text-base font-extrabold bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0">
+        <svg class="ik" aria-hidden="true"><use href="#ik-saat"></use></svg> Revize Geçmişi
+        <span data-gecmis-sayi class="ml-1 px-2 rounded-lg bg-marka-700 text-white empty:hidden"></span>
+      </button>
       <button id="revizeModalKapat" title="Kapat"
-              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+              class="w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
                      dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
     </div>
 
@@ -4508,6 +4540,36 @@
 
       <!-- Ürün satırları (renderer.js doldurur) -->
       <div id="revizeGovde"></div>
+
+      <!-- ==========================================================
+           ÜRÜN EKLE (Faz 19) — katalogdan arayıp siparişe ekleme.
+           Fiyat siparişin KENDİ modelinden (saha: liste · web: liste ×
+           mühürlü oran · KDV hariç: KDV düşülmüş). Sipariste zaten olan
+           ürün eklenirse yeni satır açılmaz, adedi artar. Sunucu:
+           B2B_Order_Revision::urun_ekle (son söz orada).
+           ========================================================== -->
+      <div id="revizeEkleKutu"
+           class="rounded-2xl border-2 border-dashed border-emerald-300 dark:border-emerald-500/40
+                  bg-emerald-50/60 dark:bg-emerald-500/10 p-4">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="text-lg font-extrabold text-emerald-900 dark:text-emerald-200">
+            <svg class="ik" aria-hidden="true"><use href="#ik-arti"></use></svg> ÜRÜN EKLE
+          </div>
+          <div class="flex-1 min-w-[16rem]">
+            <label for="revizeUrunAra" class="sr-only">Siparişe eklenecek ürünü arayın</label>
+            <input id="revizeUrunAra" type="search" autocomplete="off" spellcheck="false"
+                   placeholder="Ürün adı, stok kodu veya barkod yazın…"
+                   class="w-full h-12 px-4 rounded-xl text-lg font-bold bg-white dark:bg-slate-900
+                          border-2 border-emerald-300 dark:border-emerald-500/50
+                          focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/20 outline-none transition" />
+          </div>
+        </div>
+        <div class="mt-2 text-base text-emerald-800/80 dark:text-emerald-300/80">
+          Eklenen ürün siparişin kendi fiyat modeliyle fiyatlanır; <b>ödeme iskontosu, KDV ve genel toplam</b>
+          güncel kalemlerden yeniden hesaplanır. Siparişte zaten olan ürün eklenirse satırın adedi artar.
+        </div>
+        <div id="revizeAramaSonuc" class="mt-3 flex flex-col gap-2"></div>
+      </div>
 
       <!-- ==========================================================
            BAYİYE ÖZEL İSKONTO — bu SİPARİŞE özel oran (Faz 15)
@@ -4615,6 +4677,11 @@
         </span>
       </label>
 
+      <!-- ARA KAYIT sonucu (Faz 19): pencere açık kalır, durum değişmez -->
+      <div id="revizeBilgi" class="hidden rounded-xl p-4 text-lg font-bold whitespace-pre-line
+                                   bg-emerald-50 text-emerald-800 border-2 border-emerald-300
+                                   dark:bg-emerald-500/10 dark:text-emerald-200 dark:border-emerald-500/30"></div>
+
       <div id="revizeUyari" class="hidden rounded-xl p-4 text-lg font-bold whitespace-pre-line
                                    bg-red-50 text-red-800 border-2 border-red-300
                                    dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30"></div>
@@ -4625,10 +4692,44 @@
       <button id="revizeVazgec"
               class="flex-1 h-16 rounded-2xl text-xl font-extrabold bg-slate-200 hover:bg-slate-300
                      dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">VAZGEÇ</button>
+      <!-- ARA KAYDET (Faz 19): değişiklikleri siteye yazar, pencere AÇIK
+           kalır, sipariş durumu ASLA değişmez. -->
+      <button id="revizeAraKaydet" type="button"
+              title="Değişiklikleri kaydet ve düzenlemeye devam et (sipariş durumu değişmez)"
+              class="flex-1 h-16 rounded-2xl text-xl font-extrabold text-marka-800 dark:text-marka-200
+                     border-2 border-marka-600 bg-white dark:bg-slate-800 hover:bg-marka-50 dark:hover:bg-marka-900/30
+                     transition active:scale-95"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> ARA KAYDET</button>
       <button id="revizeOnay"
               class="flex-[2] h-16 rounded-2xl text-xl font-extrabold text-white bg-emerald-600 hover:bg-emerald-700
                      transition active:scale-95 shadow-lg"><svg class="ik" aria-hidden="true"><use href="#ik-onay"></use></svg> SİPARİŞİ ONAYLA</button>
     </div>
+  </div>
+</div>
+
+<!-- ==================================================================
+     REVİZE GEÇMİŞİ PENCERESİ (Faz 19)
+     GET /wc-b2b/v1/orders/{id}/revision-history → RevizyonGecmisi.html()
+     Önce / sonra yan yana: eski değer kırmızı, yeni değer yeşil.
+     ================================================================== -->
+<div id="revizeGecmisKatman" data-kabuk="admin" tabindex="-1"
+     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+  <div class="w-full max-w-6xl max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
+              border-2 border-slate-200 dark:border-slate-700">
+    <div class="flex items-center gap-4 p-6 border-b-2 border-slate-200 dark:border-slate-700
+                sticky top-0 bg-white dark:bg-slate-800 rounded-t-3xl z-10">
+      <span class="text-4xl"><svg class="ik" aria-hidden="true"><use href="#ik-saat"></use></svg></span>
+      <div class="min-w-0">
+        <div id="revizeGecmisBaslik" class="text-2xl font-black truncate">Revize Geçmişi</div>
+        <div class="text-base font-bold text-slate-500 dark:text-slate-400">
+          <span class="text-red-700 dark:text-red-300 line-through">eski değer</span> &nbsp;→&nbsp;
+          <span class="text-emerald-700 dark:text-emerald-300 font-black">yeni değer</span> · en yeni kayıt üstte
+        </div>
+      </div>
+      <button id="revizeGecmisKapat" title="Kapat"
+              class="ml-auto w-12 h-12 rounded-xl text-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-200
+                     dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 transition shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-carpi"></use></svg></button>
+    </div>
+    <div id="revizeGecmisGovde" class="p-6"></div>
   </div>
 </div>
 
@@ -5022,6 +5123,10 @@
      (PlasiyerVitrin.sepetAl) için vitrinden SONRA gelir. -->
 <script src="src/renderer/plasiyer-siparis-motor.js"></script>
 <script src="src/renderer/siparis-fisi.js"></script>
+<!-- Faz 19: revize penceresinin önizleme motoru (B2B_Ucret_Motoru ikizi) ve
+     revize geçmişi çizicisi — ikisi de DOM'suz, çağrıldıkları anda okunur. -->
+<script src="src/renderer/revize-onizleme.js"></script>
+<script src="src/renderer/revizyon-gecmisi.js"></script>
 <script src="src/renderer/modules/plasiyer-vitrin.js"></script>
 <script src="src/renderer/modules/plasiyer-musteri.js"></script>
 <!-- Faz 10 — saha "Kendi Siparişlerim" şablonu. Müşteri modülünün kuyruk
@@ -5052,5 +5157,7 @@
 
 <!-- Yönetici Master PIN kartı (Ayarlar sekmesi) — `sekmeAc`'ı SARAR, en sona. -->
 <script src="src/renderer/modules/yonetici-pin.js"></script>
+<!-- Faz 19: Geçmiş Sipariş İskonto Denetimi kartı (Ayarlar) — renderer.js yardımcılarını çağrı anında okur. -->
+<script src="src/renderer/modules/iskonto-denetimi.js"></script>
 </body>
 </html>

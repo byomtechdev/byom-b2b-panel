@@ -417,7 +417,9 @@
    * yöntemin iskontosunu taşımak yanlış fiyat demekti.
    */
   function odemeSec(sepet, yontem) {
-    if (!odemeGecerliMi(yontem)) {
+    /* Bu müşteriye KAPALI yöntem (Faz 19) geçersiz yöntem gibi davranır:
+       seçim temizlenir, eski yöntemin iskontosu taşınmaz. */
+    if (!odemeGecerliMi(yontem) || !odemeIzinliMi(sepet.musteri, yontem)) {
       sepet.odeme = '';
       sepet.odemeIskonto = 0;
       return sepet;
@@ -457,6 +459,17 @@
     }
 
     sepet.iskonto = uygulanabilirIskonto(musteri.iskonto, tavan);
+
+    /*
+     * YENİ MÜŞTERİYE KAPALI YÖNTEM TAŞINMAZ (Faz 19). Önceki müşteride
+     * "Nakit" seçilmişken nakdi kapalı bir bayiye geçilirse seçim düşer —
+     * aksi hâlde düğmesi görünmeyen bir yöntemle sipariş yazılmaya
+     * çalışılırdı (sunucu 400 b2b_plasiyer_odeme_kapali ile reddeder).
+     */
+    if (odemeGecerliMi(sepet.odeme) && !odemeIzinliMi(musteri, sepet.odeme)) {
+      sepet.odeme = '';
+    }
+
     sepet.odemeIskonto = odemeIskontosu(musteri, sepet.odeme);
 
     return sepet;
@@ -724,6 +737,46 @@
   }
 
   /**
+   * Ödeme yöntemi BU MÜŞTERİYE açık mı? (Faz 19 — bayiye özel yetki)
+   *
+   * Kaynak: bayi yükündeki `odemeIzinleri` = { nakit, vade, kart }
+   * (sunucu: B2B_Plasiyer::odeme_izinleri). Alan YOKSA (eski eklenti,
+   * sahada açılmış geçici müşteri) üç yöntem de açıktır — kapatma kararı
+   * sunucunundur ve son sözü o söyler (/plasiyer/siparis → 400).
+   * Yalnızca açıkça `false` yazan yöntem kapalıdır: "bilmiyorum" hâlinde
+   * satışı durdurmak sahada sipariş kaybettirirdi.
+   *
+   * @param {object} musteri Müşteri kaydı.
+   * @param {string} yontem  nakit | vade | kart.
+   * @returns {boolean}
+   */
+  function odemeIzinliMi(musteri, yontem) {
+    if (!odemeGecerliMi(yontem)) return false;
+
+    var tablo = musteri && musteri.odemeIzinleri;
+
+    if (!tablo || 'object' !== typeof tablo) return true;
+
+    return false !== tablo[yontem];
+  }
+
+  /**
+   * Müşterinin kullanabileceği yöntemler (ekran sırası korunur).
+   *
+   * Hepsi kapalı görünürse (bozuk veri) ÜÇÜ DE döner: sunucu da aynı
+   * durumda bayi kısıtını yok sayar (B2B_Odeme_Kurallari "çelişki"); ekranı
+   * düğmesiz bırakmak plasiyeri müşterinin önünde çaresiz bırakırdı.
+   *
+   * @param {object} musteri Müşteri kaydı.
+   * @returns {string[]}
+   */
+  function izinliYontemler(musteri) {
+    var acik = ODEME_YONTEMLERI.filter(function (y) { return odemeIzinliMi(musteri, y); });
+
+    return acik.length ? acik : ODEME_YONTEMLERI.slice();
+  }
+
+  /**
    * Sipariş gönderilmeye hazır mı?
    *
    * @returns {object} { ok, hatalar[] }
@@ -737,7 +790,11 @@
 
     if (!sepet.satirlar.length) hatalar.push('Sepet boş.');
 
-    if (!odemeGecerliMi(sepet.odeme)) hatalar.push('Ödeme yöntemi seçilmedi (Nakit / Vade / Kredi Kartı).');
+    if (!odemeGecerliMi(sepet.odeme)) {
+      hatalar.push('Ödeme yöntemi seçilmedi (Nakit / Vade / Kredi Kartı).');
+    } else if (izinliYontemler(sepet.musteri).indexOf(sepet.odeme) === -1) {
+      hatalar.push('Bu müşteri için ' + (ODEME_ETIKET[sepet.odeme] || sepet.odeme) + ' ödeme yöntemi kapalı; başka bir yöntem seçin.');
+    }
 
     var iskonto = iskontoDenetle(sepet.iskonto, tavan);
 
@@ -828,6 +885,8 @@
     /* siparis */
     kendiSiparisleri: kendiSiparisleri,
     odemeGecerliMi: odemeGecerliMi,
+    odemeIzinliMi: odemeIzinliMi,
+    izinliYontemler: izinliYontemler,
     siparisDenetle: siparisDenetle,
     siparisGovdesi: siparisGovdesi,
     /* sabitler */

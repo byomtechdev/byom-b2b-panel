@@ -25,7 +25,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const MAIN = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+const MAIN = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8').replace(/\r\n?/g, '\n');
 
 /** Kaynaktan bir fonksiyon gövdesi çıkarıp çalıştırılabilir hâle getirir. */
 function fonksiyonuCikar(ad) {
@@ -202,7 +202,7 @@ test('KAYNAK: sekmeAc rozet korumasi ELLE LISTE degil OZNITELIK okur', (t) => {
    * kaciyordu. DOM testleri bunu goremez: onlar kendi `sekmeAc` taklidini
    * kullanir, yani uretimdeki bu satiri yalnizca kaynak denetimi kilitler.
    */
-  const RENDERER = fs.readFileSync(path.join(__dirname, '..', 'renderer.js'), 'utf8');
+  const RENDERER = fs.readFileSync(path.join(__dirname, '..', 'renderer.js'), 'utf8').replace(/\r\n?/g, '\n');
   const blok = RENDERER.slice(RENDERER.indexOf('function sekmeAc')).slice(0, 2000);
 
   assert.match(blok, /const sayacli = '1' === btn\.dataset\.sayacli;/,

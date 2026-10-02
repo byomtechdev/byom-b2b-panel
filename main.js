@@ -2072,6 +2072,55 @@ ipcMain.handle('siparis:kuyrukta-yeniden-bagla', function (olay, veri) {
 });
 
 /**
+ * Kuyruktaki siparişin ÖDEME YÖNTEMİNİ değiştirir (Faz 19).
+ *
+ * Senaryo: plasiyer çevrimdışıyken "Nakit" ile sipariş yazdı; yönetici o
+ * arada bu bayiye nakdi kapattı. Sunucu `400 b2b_plasiyer_odeme_kapali` ile
+ * reddetti ve açık yöntemleri söyledi (`satir.izinliOdeme`). Sipariş
+ * kaybolmasın diye yöntem burada değiştirilir ve kayıt yeniden kuyruğa girer.
+ *
+ * İskonto TUTARI burada hesaplanmaz: oran sunucuda bayinin kimliğinden
+ * okunur (siparis_olustur). Ekrandaki net tutar eskidiği için satır
+ * `odemeDegisti` ile işaretlenir; şerit "kesin tutar merkezde" der.
+ */
+ipcMain.handle('siparis:kuyrukta-odeme-degistir', function (olay, veri) {
+  const yerel = String((veri && veri.yerelKimlik) || '');
+  const odeme = String((veri && veri.odeme) || '');
+
+  if (!yerel) return { ok: false, hata: 'Sipariş kimliği yok.' };
+
+  if (['nakit', 'vade', 'kart'].indexOf(odeme) === -1) {
+    return { ok: false, hata: 'Geçersiz ödeme yöntemi (Nakit / Vade / Kredi Kartı).' };
+  }
+
+  const a = ayarlariOku();
+  const kuyruk = Array.isArray(a.plasiyerSiparisKuyrugu) ? a.plasiyerSiparisKuyrugu : [];
+  const satir = kuyrukSatiriBul(kuyruk, yerel);
+
+  if (!satir) return { ok: false, durum: 404, hata: 'Kayıt bulunamadı.' };
+
+  if (syncMotor.GONDERILDI === satir.durum) {
+    return { ok: false, hata: 'Bu sipariş merkeze iletilmiş; ödeme yöntemi değiştirilemez.' };
+  }
+
+  /* Sunucunun AÇIK dediği liste varsa ona uyulur: kapalı bir yönteme
+     geçmek, siparişi aynı retle yeniden kilitlemek olurdu. */
+  if (Array.isArray(satir.izinliOdeme) && satir.izinliOdeme.length && satir.izinliOdeme.indexOf(odeme) === -1) {
+    return { ok: false, hata: 'Bu ödeme yöntemi de bu müşteri için kapalı. Açık yöntemler: ' + satir.izinliOdeme.join(', ') + '.' };
+  }
+
+  const eski = String(satir.kayit.odeme || '');
+
+  satir.kayit.odeme = odeme;
+  satir.odemeDegisti = { eski: eski, yeni: odeme, zaman: new Date().toISOString() };
+  syncMotor.kayitOnar(satir);
+
+  ayarlariYaz({ plasiyerSiparisKuyrugu: kuyruk });
+
+  return { ok: true, odeme: odeme, eski: eski };
+});
+
+/**
  * Silinmiş müşteriyi KÜNYE YEDEĞİNDEN yeniden açar — saha senaryosunun cevabı.
  *
  * Künye `kimlikKoprusuKur` tarafından satıra yedeklenir. Yeni bir geçici

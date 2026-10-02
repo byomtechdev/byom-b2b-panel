@@ -1094,7 +1094,230 @@ function bayiIskontoHtml(u) {
 
     /* --- Bayiye özel minimum sipariş tutarı --- */
     bayiMinTutarHtml(u) +
+
+    /* --- Bayiye özel ödeme yöntemi yetkileri + oranları (Faz 19) --- */
+    bayiOdemeYetkiHtml(u) +
   '</div>';
+}
+
+/* ==========================================================================
+ *  BAYİYE ÖZEL ÖDEME YÖNTEMİ YETKİLERİ VE ORANLARI (Faz 19)
+ *  --------------------------------------------------------------------------
+ *  [x] Nakit Ödeme   [x] Kredi Kartı   [x] Vadeli Sipariş  + her birine özel %
+ *
+ *  · Kapatılan yöntemi bayi WEB sitesinde de, plasiyer ekranında da GÖRMEZ.
+ *  · Özel oran BOŞ = genel ödeme matrisi; DOLU = yalnızca bu bayiye bu oran.
+ *  · Kural panelde TÜRETİLMEZ: sunucu ham ayarı, tabanı (genel) ve bugün
+ *    UYGULANANI ayrı alanlarda gönderir (B2B_Odeme_Kurallari::panel_ozeti).
+ *  · Eski eklenti alanı göndermez → blok HİÇ basılmaz (çalışmayan ayar
+ *    göstermemek, Faz 11 ilkesi).
+ *  · Geçmiş siparişler etkilenmez: oran siparişe mühürlüdür.
+ * ========================================================================*/
+
+const ODEME_YETKI_YONTEMLERI = [
+  { kod: 'cash', etiket: 'Nakit Ödeme' },
+  { kod: 'card', etiket: 'Kredi Kartı' },
+  { kod: 'term', etiket: 'Vadeli Sipariş' }
+];
+
+/** Bayi kartındaki "Ödeme Yöntemi Yetkileri" bloğu. */
+function bayiOdemeYetkiHtml(u) {
+  const k = u && u.odemeKurallari;
+
+  if (!k || !k.izinler || !k.genel) return '';
+
+  const kaynakAdi = { bayi: 'bayiye özel', matris: 'ödeme matrisi', genel: 'genel ayar' };
+
+  const satirlar = ODEME_YETKI_YONTEMLERI.map(function (y) {
+    const izin = false !== k.izinler[y.kod];
+    const ozel = (k.oranlar && null !== k.oranlar[y.kod] && undefined !== k.oranlar[y.kod]) ? String(k.oranlar[y.kod]) : '';
+    const genel = k.genel[y.kod] || { aktif: true, oran: 0 };
+    const web = (k.web && k.web[y.kod]) || null;
+
+    return '' +
+      '<div data-odeme-yontem="' + y.kod + '" class="rounded-xl border-2 p-3 flex flex-col gap-2 ' +
+           (izin ? 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/40'
+                 : 'border-red-200 dark:border-red-500/30 bg-red-50/60 dark:bg-red-500/10') + '">' +
+        '<label class="flex items-center gap-2 text-lg font-extrabold cursor-pointer select-none">' +
+          '<input type="checkbox" data-odeme-izin="' + y.kod + '" ' + (izin ? 'checked' : '') + ' ' +
+                 'class="w-6 h-6 accent-emerald-600 shrink-0" />' +
+          kacis(y.etiket) +
+        '</label>' +
+        (genel.aktif ? '' : '<div class="text-sm font-bold text-amber-700 dark:text-amber-300">Genel ödeme matrisinde kapalı</div>') +
+        '<label class="flex items-center gap-2 text-base font-bold">' +
+          '<span class="shrink-0">Özel oran</span>' +
+          '<span class="relative">' +
+            '<input data-odeme-oran="' + y.kod + '" type="text" inputmode="decimal" ' +
+                   'value="' + kacis(ozel.replace('.', ',')) + '" ' +
+                   'placeholder="Genel: %' + kacis(oranYaz(genel.oran)) + '" ' +
+                   'title="Boş = genel oran geçerli · dolu = yalnızca bu bayiye bu oran" ' +
+                   'class="w-28 h-11 pl-3 pr-7 rounded-xl text-lg font-black text-right ' +
+                          'bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 ' +
+                          'focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
+            '<span class="absolute right-2 top-1/2 -translate-y-1/2 text-base font-black text-slate-400 pointer-events-none">%</span>' +
+          '</span>' +
+        '</label>' +
+        (web
+          ? '<div class="text-sm font-semibold text-slate-500 dark:text-slate-400" data-odeme-uygulanan>' +
+              (web.aktif
+                ? 'Sitede uygulanan: <b>%' + kacis(oranYaz(web.oran)) + '</b> (' + kacis(kaynakAdi[web.kaynak] || web.kaynak) + ')'
+                : 'Sitede <b>görünmüyor</b>') +
+            '</div>'
+          : '') +
+      '</div>';
+  }).join('');
+
+  return '' +
+  '<div data-odeme-yetki="' + u.id + '" class="w-full pt-4 mt-1 border-t-2 border-dashed border-slate-300 dark:border-slate-600 flex flex-col gap-3">' +
+    '<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">' +
+      '<div class="text-lg font-extrabold">' + ikon('kart') + ' Ödeme Yöntemi Yetkileri</div>' +
+      '<div class="text-base font-semibold text-slate-500 dark:text-slate-400">' +
+        'Kapatılan yöntemi bayi sitede ve saha ekranında görmez. Özel oran boşsa genel oran geçerlidir.' +
+      '</div>' +
+    '</div>' +
+    (k.celiski
+      ? '<div class="rounded-xl border-2 border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10 ' +
+             'px-4 py-2 text-base font-bold text-amber-800 dark:text-amber-200" data-odeme-celiski>' +
+          '⚠️ Genel ödeme matrisi ile bu bayinin kısıtı birlikte hiçbir yöntem bırakmıyor. ' +
+          'Bayi şu an genel matrisle sipariş verir — kısıtı gözden geçirin.' +
+        '</div>'
+      : '') +
+    '<div class="grid gap-3 md:grid-cols-3">' + satirlar + '</div>' +
+    '<div class="flex flex-wrap items-center gap-3">' +
+      '<div data-odeme-yetki-durum="' + u.id + '" class="flex-1 min-w-0 text-base font-bold"></div>' +
+      '<button data-eylem="odeme-yetki-kaydet" data-id="' + u.id + '" ' +
+              'class="h-12 px-6 rounded-xl bg-marka-700 hover:bg-marka-800 active:scale-95 ' +
+                     'text-white text-lg font-extrabold shadow-md transition shrink-0">' +
+        ikon('kaydet') + ' KAYDET</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/**
+ * Kart bloğundaki seçimleri okur ve doğrular — AĞA ÇIKMAZ.
+ *
+ * @param {string|number} id Bayi kimliği.
+ * @returns {{ok:boolean, hata?:string, izinler?:object, oranlar?:object}}
+ */
+function bayiOdemeYetkiOku(id) {
+  const kutu = document.querySelector('[data-odeme-yetki="' + id + '"]');
+
+  if (!kutu) return { ok: false, hata: 'Ödeme yetkileri bloğu bulunamadı.' };
+
+  const izinler = {};
+  const oranlar = {};
+
+  for (let i = 0; i < ODEME_YETKI_YONTEMLERI.length; i++) {
+    const y = ODEME_YETKI_YONTEMLERI[i];
+    const kutucuk = kutu.querySelector('[data-odeme-izin="' + y.kod + '"]');
+    const girdi = kutu.querySelector('[data-odeme-oran="' + y.kod + '"]');
+    const ham = girdi ? String(girdi.value).trim().replace('%', '').replace(',', '.') : '';
+
+    izinler[y.kod] = !!(kutucuk && kutucuk.checked);
+
+    if ('' === ham) {
+      oranlar[y.kod] = '';
+      continue;
+    }
+
+    const n = Number(ham);
+
+    if (!isFinite(n) || n < 0 || n > 100) {
+      if (girdi) { girdi.focus(); if (girdi.select) girdi.select(); }
+      return { ok: false, hata: y.etiket + ' için özel oran 0 ile 100 arasında olmalı (boş = genel oran).' };
+    }
+
+    oranlar[y.kod] = Math.round(n * 100) / 100;
+  }
+
+  if (!izinler.cash && !izinler.card && !izinler.term) {
+    return { ok: false, hata: 'En az bir ödeme yöntemi açık kalmalı — üçünü birden kapatmak bayinin sipariş vermesini engeller.' };
+  }
+
+  return { ok: true, izinler: izinler, oranlar: oranlar };
+}
+
+/** "Ödeme Yöntemi Yetkileri" bloğunu kaydeder: PUT /dealers/{id}. */
+async function bayiOdemeYetkiKaydet(id, dugme) {
+  const u = (durum.uyeler || []).filter(function (x) { return String(x.id) === String(id); })[0] ||
+            (durum.acikBayi && String(durum.acikBayi.id) === String(id) ? durum.acikBayi : null);
+
+  if (!u) return false;
+
+  const kutu = document.querySelector('[data-odeme-yetki-durum="' + id + '"]');
+
+  function durumYaz(mesaj, tip) {
+    if (!kutu) {
+      if (mesaj) bildir(mesaj, tip === 'hata' ? 'hata' : 'uyari');
+      return;
+    }
+
+    kutu.textContent = mesaj || '';
+    kutu.className = 'flex-1 min-w-0 text-base font-bold ' +
+      (tip === 'hata' ? 'text-red-700 dark:text-red-300'
+        : tip === 'basari' ? 'text-emerald-700 dark:text-emerald-300'
+        : 'text-slate-500 dark:text-slate-400');
+  }
+
+  const secim = bayiOdemeYetkiOku(id);
+
+  if (!secim.ok) {
+    durumYaz(secim.hata, 'hata');
+    return false;
+  }
+
+  const geriAl = dugme ? butonuMesgulEt(dugme, 'KAYDEDİLİYOR…') : function () {};
+
+  /* ---------- DEMO ---------- */
+  if (durum.ayarlar && durum.ayarlar.demoModu) {
+    await bekle(200);
+
+    const k = u.odemeKurallari;
+    ODEME_YETKI_YONTEMLERI.forEach(function (y) {
+      k.izinler[y.kod] = secim.izinler[y.kod];
+      k.oranlar[y.kod] = '' === secim.oranlar[y.kod] ? null : secim.oranlar[y.kod];
+    });
+
+    geriAl();
+    uyeleriCiz();
+    bildir((u.firma || u.ad) + '\nÖdeme yöntemi yetkileri kaydedildi.\n(Demo Modu)', 'basari');
+    return true;
+  }
+
+  if (!durum.b2bVar) {
+    geriAl();
+    durumYaz('Bu özellik için sitenizde "B2B Core" eklentisi kurulu ve etkin olmalıdır.', 'hata');
+    return false;
+  }
+
+  const cevap = await b2b('dealers/' + id, {
+    metod: 'PUT',
+    govde: { odeme_izinleri: secim.izinler, odeme_oranlari: secim.oranlar }
+  });
+
+  geriAl();
+
+  if (!cevap || !cevap.ok) {
+    durumYaz('Kaydedilemedi: ' + ((cevap && cevap.hata) || 'Bilinmeyen hata.'), 'hata');
+    return false;
+  }
+
+  /* Sunucunun döndürdüğü ÖZET esas alınır (oranlar orada kırpılır, çelişki orada hesaplanır). */
+  if (cevap.veri) {
+    const taze = bayiNormalle(cevap.veri);
+    if (taze.odemeKurallari) u.odemeKurallari = taze.odemeKurallari;
+  }
+
+  uyeleriCiz();
+
+  const kapali = ODEME_YETKI_YONTEMLERI.filter(function (y) { return !secim.izinler[y.kod]; })
+    .map(function (y) { return y.etiket; });
+
+  bildir((u.firma || u.ad) + '\nÖdeme yöntemi yetkileri kaydedildi.' +
+         (kapali.length ? '\nKapatılan: ' + kapali.join(', ') + ' — bayi bu yöntemleri sitede ve saha ekranında görmeyecek.' : ''),
+         'basari');
+
+  return true;
 }
 
 /**
@@ -1161,6 +1384,25 @@ async function bayiMinTutarKaydet(id, dugme) {
   const girdi = document.querySelector('[data-min-tutar="' + id + '"]');
   const kutu = document.querySelector('[data-iskonto-durum="' + id + '"]');
   const ham = girdi ? String(girdi.value).trim() : '';
+
+  /*
+   * YEREL durum yazıcısı (Faz 19 düzeltmesi). Bu fonksiyon `durumYaz`'ı
+   * çağırıyordu ama o ad yalnızca bayiIskontoKaydet'in İÇİNDE tanımlı:
+   * eklenti kapalıyken ya da kayıt reddedilince ReferenceError fırlıyor,
+   * düğme "KAYDEDİLİYOR…"da kalıp kullanıcıya HİÇBİR ŞEY söylenmiyordu.
+   */
+  function durumYaz(mesaj, tip) {
+    if (!kutu) {
+      if (mesaj) bildir(mesaj, tip === 'hata' ? 'hata' : 'uyari');
+      return;
+    }
+
+    kutu.textContent = mesaj || '';
+    kutu.className = 'w-full text-base font-bold ' +
+      (tip === 'hata' ? 'text-red-700 dark:text-red-300'
+        : tip === 'basari' ? 'text-emerald-700 dark:text-emerald-300'
+        : 'text-slate-500 dark:text-slate-400');
+  }
 
   if (ham !== '') {
     const sayi = sayiCoz(ham);
@@ -1712,6 +1954,8 @@ function b2bSiparisNormalle(s) {
     revizeTarih: (s.revision && s.revision.revised_at) || '',
     revizeDegisim: (s.revision && s.revision.changes) || [],
     revizeEdilebilir: s.revision ? !!s.revision.can_revise : null,
+    /* Revize geçmişi kayıt sayısı (eklenti 2.28.0) — tam geçmiş ayrı uçtan. */
+    revizeGecmisSayisi: Number((s.revision && s.revision.history_count) || 0),
     /*
      * --- SİPARİŞ BAZLI İSKONTO REVİZESİ (eklenti 2.21.0) ---
      *
@@ -1738,6 +1982,9 @@ function b2bSiparisNormalle(s) {
            bulur (ürün id'si değil, sipariş kalemi id'si). */
         kalemId: Number(k.id || 0),
         urunId: Number(k.product_id || 0),
+        /* Varyasyon kimliği (Faz 19): revizede aynı ürün yeniden eklenirse
+           satır birleştirmesi ürün + varyasyon çiftiyle yapılır. */
+        varyasyonId: Number(k.variation_id || 0),
         ad: k.name || '',
         kod: k.sku || '-',
         /* BARKOD (M4): sunucu urunden CANLI okur — gecmis sipariste de gunceldir,
@@ -2166,7 +2413,11 @@ function bayiNormalle(b) {
     ozelMinTutar: (b.custom_min_order === undefined || b.custom_min_order === null || b.custom_min_order === '')
       ? ''
       : String(b.custom_min_order),
-    gecerliMinTutar: Number(b.effective_min_order || 0) || 0
+    gecerliMinTutar: Number(b.effective_min_order || 0) || 0,
+    /* --- Ödeme yöntemi yetkileri + özel oranlar (eklenti 2.28.0) ---
+       Ham ayar / taban / nihai kural sunucudan; panel türetmez. Eski
+       eklenti alanı göndermez → null kalır ve blok HİÇ basılmaz. */
+    odemeKurallari: (b.odeme_kurallari && 'object' === typeof b.odeme_kurallari) ? b.odeme_kurallari : null
   };
 }
 
@@ -3441,6 +3692,16 @@ function siparisleriCiz() {
             '</button>'
           : '') +
 
+        /* Revize geçmişi (Faz 19): kim, ne zaman, neyi değiştirdi — önce/sonra. */
+        (yoneticiEylemleri && Number(s.revizeGecmisSayisi || 0) > 0
+          ? '<button data-eylem="revize-gecmis" data-id="' + s.id + '" ' +
+                    'title="Revize geçmiş kaydını görüntüle (önce / sonra)" ' +
+                    'class="h-14 px-5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 ' +
+                           'hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 text-lg font-extrabold transition">' +
+              ikon('saat') + ' REVİZE GEÇMİŞİ (' + Number(s.revizeGecmisSayisi) + ')' +
+            '</button>'
+          : '') +
+
         (yoneticiEylemleri ? DURUM_DUGMELERI.map(function (t) { return durumDugmesiHtml(s, t); }).join('') : '') +
 
         (yoneticiEylemleri
@@ -3647,8 +3908,20 @@ function revizeSatirlariOku() {
        kaldırma satırı siler ve stoğu iade eder (sunucu: items[].remove). */
     const kaldir = satir.dataset.kaldir === '1';
 
+    /* YENİ satır (Faz 19): siparişte henüz kalem kimliği yoktur; sunucuya
+       ürün kimliğiyle gider ({ product_id, variation_id, quantity }) ve
+       eklenti onu siparişin KENDİ fiyat modeliyle fiyatlar. */
+    const yeni = satir.dataset.revizeYeni === '1';
+
     return {
-      kalemId: Number(satir.dataset.revizeSatir),
+      /* DOM anahtarı: mevcut satırda kalem kimliği, yeni satırda "y1", "y2"… */
+      anahtar: String(satir.dataset.revizeSatir),
+      kalemId: yeni ? 0 : Number(satir.dataset.revizeSatir),
+      yeni: yeni,
+      urunId: Number(satir.dataset.urunId || 0),
+      varyasyonId: Number(satir.dataset.varyasyonId || 0),
+      ad: String(satir.dataset.ad || ''),
+      kod: String(satir.dataset.kod || ''),
       adet: kaldir ? 0 : (isNaN(adet) ? 0 : adet),
       kaldir: kaldir,
       eskiAdet: Number(satir.dataset.eskiAdet || 0),
@@ -3855,6 +4128,24 @@ function revizeToplamiTazele() {
 
   const satirlar = revizeSatirlariOku();
   const kdvDahil = revizeKdvDahilMi();
+  const s0 = durum.revizeSiparis || {};
+
+  /*
+   * KDV KİPİ İKİ YÖNLÜ (Faz 19 düzeltmesi). Satır fiyatı siparişin MEVCUT
+   * kipindedir: KDV hariç yapılmış bir siparişte birim fiyat zaten nettir.
+   * Eski önizleme anahtar HAYIR iken her zaman bölüyordu — KDV hariç sipariş
+   * yeniden açıldığında fiyat İKİNCİ KEZ bölünüyor ve ekranda sitedekinden
+   * düşük bir toplam görünüyordu. Dönüşüm yalnızca hedef kip FARKLIYSA yapılır;
+   * hariçten dâhile dönüşte çarpar (sunucu: apply_vat_mode('include')).
+   */
+  const mevcutHaric = !!s0.kdvHaric;
+  const hedefHaric = !kdvDahil;
+
+  function kipCevir(brut, oran) {
+    if (!(oran > 0) || mevcutHaric === hedefHaric) return brut;
+
+    return hedefHaric ? (brut / (1 + oran / 100)) : (brut * (1 + oran / 100));
+  }
 
   /* İskonto revizesi girildiyse satır fiyatları LİSTE fiyatından yeniden
      kurulur; girilmediyse (null) siparişin mevcut fiyatı aynen kalır. */
@@ -3863,6 +4154,7 @@ function revizeToplamiTazele() {
   let toplam = 0;
   let degisen = 0;
   let kaldirilan = 0;
+  let eklenen = 0;
   let adetToplam = 0;
   let kdvToplam = 0;
   let listeToplam = 0;
@@ -3874,43 +4166,46 @@ function revizeToplamiTazele() {
     listeToplam += (r.listeBirim > 0 ? r.listeBirim : r.birim) * r.adet;
 
     const brut = revizeEtkinBirim(r, iskontoOran) * r.adet;
-
-    /* Ters işlem: net = brüt / (1 + oran/100). Oranı 0 olan ürün etkilenmez. */
-    const net = (!kdvDahil && r.kdvOrani > 0) ? (brut / (1 + r.kdvOrani / 100)) : brut;
+    const net = kipCevir(brut, r.kdvOrani);
 
     toplam += net;
     kdvToplam += (brut - net);
     adetToplam += r.adet;
-    if (r.adet !== r.eskiAdet) degisen++;
+
+    if (r.yeni) {
+      if (r.adet > 0) eklenen++;
+    } else if (r.adet !== r.eskiAdet) {
+      degisen++;
+    }
   });
 
   /* Her satırın kendi tutarını da tazele */
   satirlar.forEach(function (r) {
     const brut = revizeEtkinBirim(r, iskontoOran) * r.adet;
-    const net = (!kdvDahil && r.kdvOrani > 0) ? (brut / (1 + r.kdvOrani / 100)) : brut;
+    const net = kipCevir(brut, r.kdvOrani);
 
-    const hucre = document.querySelector('[data-revize-satir="' + r.kalemId + '"] [data-revize-tutar]');
+    const satir = document.querySelector('[data-revize-satir="' + r.anahtar + '"]');
+    if (!satir) return;
+
+    const hucre = satir.querySelector('[data-revize-tutar]');
     if (hucre) hucre.textContent = r.kaldir ? 'KALDIRILACAK' : para(brut);
 
-    /* KDV hariç modda: yeni BİRİM fiyat ve KDV'siz SATIR toplamı. */
-    const netKutu = document.querySelector('[data-revize-satir="' + r.kalemId + '"] [data-revize-net]');
+    /* Kip değişiyorsa: yeni BİRİM fiyat ve dönüşmüş SATIR toplamı. */
+    const netKutu = satir.querySelector('[data-revize-net]');
 
     if (netKutu) {
-      const goster = !r.kaldir && !kdvDahil && r.kdvOrani > 0 && r.adet > 0;
+      const goster = !r.kaldir && r.kdvOrani > 0 && r.adet > 0 && mevcutHaric !== hedefHaric;
 
       netKutu.classList.toggle('hidden', !goster);
 
       if (goster) {
-        netKutu.textContent = 'KDV hariç: ' + para(net / r.adet) + ' × ' + r.adet + ' = ' + para(net);
+        netKutu.textContent = (hedefHaric ? 'KDV hariç: ' : 'KDV dâhil: ') + para(net / r.adet) + ' × ' + r.adet + ' = ' + para(net);
       }
     }
 
-    const satir = document.querySelector('[data-revize-satir="' + r.kalemId + '"]');
-    if (!satir) return;
-
     /* Kaldırılacak satır: adet kutusu ve ± düğmeleri kilitlenir, [Geri Al]
        görünür; satır soluk + üstü çizili. Değişen satır vurgulanır; 0 adet
-       olan satır soluklaşır. */
+       olan satır soluklaşır. Yeni satır yeşil (Faz 19). */
     satir.classList.toggle('kaldirilacak', r.kaldir);
     satir.classList.toggle('line-through', r.kaldir);
     satir.querySelectorAll('[data-revize-adet], [data-revize-eksi], [data-revize-arti]').forEach(function (el) {
@@ -3921,8 +4216,10 @@ function revizeToplamiTazele() {
     if (kaldirBtn) kaldirBtn.classList.toggle('hidden', r.kaldir);
     if (geriBtn) geriBtn.classList.toggle('hidden', !r.kaldir);
 
-    satir.classList.toggle('bg-amber-50', !r.kaldir && r.adet !== r.eskiAdet && r.adet > 0);
-    satir.classList.toggle('dark:bg-amber-500/10', !r.kaldir && r.adet !== r.eskiAdet && r.adet > 0);
+    satir.classList.toggle('bg-amber-50', !r.yeni && !r.kaldir && r.adet !== r.eskiAdet && r.adet > 0);
+    satir.classList.toggle('dark:bg-amber-500/10', !r.yeni && !r.kaldir && r.adet !== r.eskiAdet && r.adet > 0);
+    satir.classList.toggle('bg-emerald-50', r.yeni && r.adet > 0);
+    satir.classList.toggle('dark:bg-emerald-500/10', r.yeni && r.adet > 0);
     satir.classList.toggle('bg-red-50', r.kaldir);
     satir.classList.toggle('dark:bg-red-500/10', r.kaldir);
     satir.classList.toggle('opacity-50', r.kaldir || r.adet === 0);
@@ -3938,7 +4235,6 @@ function revizeToplamiTazele() {
       onizleme.classList.add('hidden');
       onizleme.innerHTML = '';
     } else {
-      const s0 = durum.revizeSiparis || {};
       const eskiOran = Number(s0.iskontoOrani || 0);
       const yeniAra = listeToplam * (1 - iskontoOran / 100);
       const indirim = listeToplam - yeniAra;
@@ -3961,9 +4257,62 @@ function revizeToplamiTazele() {
             : (fark < 0
                 ? 'Müşteri ' + kacis(para(-fark)) + ' DAHA AZ ödeyecek (%' + kacis(yuzdeYazi(eskiOran)) + ' → %' + kacis(yuzdeYazi(iskontoOran)) + ').'
                 : 'Müşteri ' + kacis(para(fark)) + ' DAHA FAZLA ödeyecek (%' + kacis(yuzdeYazi(eskiOran)) + ' → %' + kacis(yuzdeYazi(iskontoOran)) + ').')) +
-          ' Ödeme yöntemi iskontosu varsa yeni tutar üzerinden sitede tazelenir.' +
+          ' Ödeme yöntemi iskontosu yeni tutar üzerinden aşağıda yeniden hesaplanır.' +
         '</div>';
     }
+  }
+
+  /*
+   * ---- İSKONTO SATIRLARI VE GENEL TOPLAM (Faz 19) ----
+   *
+   * Depo Fişi 6501: kalemler değişti, ödeme iskontosu ESKİ tutarda çakılı
+   * kaldı (3.520,92 → doğrusu 3.943,67). Artık ekranda da sunucudaki AYNI
+   * formülle (RevizeOnizleme ↔ B2B_Ucret_Motoru) güncel kalemlerden
+   * hesaplanır ve "şu an" ile "olacak" yan yana gösterilir. Motor
+   * yüklenemediyse kırılım basılmaz, eski satır toplamı gösterilir.
+   */
+  const motor = (typeof window !== 'undefined' && window.RevizeOnizleme && 'function' === typeof window.RevizeOnizleme.hesapla)
+    ? window.RevizeOnizleme
+    : null;
+
+  let ozet = null;
+
+  if (motor) {
+    const bayiTutar = Number(s0.bayiIskontoTutar || 0);
+    const odemeTutar = Number(s0.odemeIskontoTutar || 0);
+    const odemeOran = Number(s0.odemeIskonto || 0);
+
+    ozet = motor.hesapla({
+      satirlar: satirlar.map(function (r) {
+        return { anahtar: r.anahtar, adet: r.adet, birim: r.birim, listeBirim: r.listeBirim, kdvOrani: r.kdvOrani, kaldir: r.kaldir, yeni: r.yeni };
+      }),
+      iskontoOran: iskontoOran,
+      kdvMevcutHaric: mevcutHaric,
+      kdvHedefHaric: hedefHaric,
+      bayiUcret: { var: bayiTutar > 0, oran: Number(s0.bayiIskontoOrani || 0), eski: bayiTutar },
+      /* Oranı bilinmeyen ödeme satırı sunucuda da tazelenmez (belirsiz) —
+         ekranda da eski tutarında sabit gösterilir. */
+      odemeUcret: { var: odemeTutar > 0, oran: odemeOran, eski: odemeTutar, sabit: !(odemeOran > 0) },
+      kargo: Number(s0.kargoTutar || 0)
+    });
+  }
+
+  const genelToplam = ozet ? ozet.toplam : toplam;
+  const kirilim = ozet && (ozet.bayi.var || ozet.odeme.var || ozet.kargo > 0);
+
+  function iskontoSatiri(veri, etiket, anahtar) {
+    const degisti = Math.abs(veri.fark) >= 0.005;
+
+    return '<div class="flex flex-wrap items-baseline gap-x-3" data-revize-ozet-' + anahtar + '>' +
+      '<span class="text-lg font-bold text-slate-600 dark:text-slate-300">' + kacis(etiket) + '</span>' +
+      (veri.siliniyor
+        ? '<span class="ml-auto text-base font-bold text-amber-700 dark:text-amber-300">kaldırılacak — iskonto satır fiyatına giriyor</span>'
+        : '<span class="ml-auto text-xl font-black text-emerald-700 dark:text-emerald-400">−' + kacis(para(veri.yeni)) + '</span>') +
+      (degisti && !veri.siliniyor
+        ? '<span class="w-full text-right text-sm font-bold text-amber-700 dark:text-amber-300">şu an −' + kacis(para(veri.eski)) +
+            ' → güncel kalemlerden yeniden hesaplanacak (' + (veri.fark > 0 ? '+' : '') + kacis(para(veri.fark)) + ')</span>'
+        : '') +
+    '</div>';
   }
 
   kutu.innerHTML =
@@ -3980,19 +4329,48 @@ function revizeToplamiTazele() {
             'Kaldırılacak ürün: <span class="font-black">' + kaldirilan + '</span>' +
           '</span>'
         : '') +
-      (kdvDahil
-        ? ''
+      (eklenen
+        ? '<span class="text-lg font-bold text-emerald-700 dark:text-emerald-400" data-revize-eklenen>' +
+            'Eklenecek ürün: <span class="font-black">' + eklenen + '</span>' +
+          '</span>'
+        : '') +
+      (mevcutHaric === hedefHaric
+        ? (mevcutHaric
+            ? '<span class="text-lg font-bold text-amber-600 dark:text-amber-400">Sipariş KDV hariç</span>'
+            : '')
         : '<span class="text-lg font-bold text-amber-600 dark:text-amber-400">' +
-            'Düşülen KDV: <span class="font-black">' + kacis(para(kdvToplam)) + '</span>' +
+            (hedefHaric ? 'Düşülen KDV: ' : 'Eklenecek KDV: ') +
+            '<span class="font-black">' + kacis(para(Math.abs(kdvToplam))) + '</span>' +
           '</span>') +
-      '<span class="ml-auto text-2xl font-black text-emerald-600 dark:text-emerald-400">' +
-        kacis(para(toplam)) +
+      '<span class="ml-auto text-2xl font-black text-emerald-600 dark:text-emerald-400" data-revize-genel-toplam>' +
+        kacis(para(genelToplam)) +
       '</span>' +
     '</div>' +
+    (kirilim
+      ? '<div class="mt-3 pt-3 border-t-2 border-dashed border-slate-300 dark:border-slate-600 flex flex-col gap-1">' +
+          '<div class="flex items-baseline" data-revize-ozet-kalemler>' +
+            '<span class="text-lg font-bold text-slate-600 dark:text-slate-300">Kalemler toplamı</span>' +
+            '<span class="ml-auto text-xl font-black">' + kacis(para(ozet.taban)) + '</span>' +
+          '</div>' +
+          (ozet.bayi.var ? iskontoSatiri(ozet.bayi, 'Bayi İskontosu (%' + yuzdeYazi(ozet.bayi.oran) + ')', 'bayi') : '') +
+          (ozet.odeme.var
+            ? iskontoSatiri(ozet.odeme, 'Ödeme Yöntemi İskontosu' + (ozet.odeme.oran > 0 ? ' (%' + yuzdeYazi(ozet.odeme.oran) + ')' : ''), 'odeme')
+            : '') +
+          (ozet.kargo > 0
+            ? '<div class="flex items-baseline"><span class="text-lg font-bold text-slate-600 dark:text-slate-300">Kargo</span>' +
+                '<span class="ml-auto text-xl font-black">' + kacis(para(ozet.kargo)) + '</span></div>'
+            : '') +
+        '</div>'
+      : '') +
     '<div class="text-base text-slate-500 dark:text-slate-400 mt-1">' +
-      (kdvDahil
-        ? 'Fiyatlar KDV dâhil kalır; genel toplam onaydan sonra sitede yeniden hesaplanır.'
-        : 'Her ürünün KENDİ KDV oranıyla ters işlem yapılacak; sipariş KDV hariç net toplama çekilir.') +
+      (mevcutHaric === hedefHaric
+        ? (mevcutHaric
+            ? 'Sipariş KDV hariç kalır; fiyatlar dönüştürülmez.'
+            : 'Fiyatlar KDV dâhil kalır; genel toplam onaydan sonra sitede yeniden hesaplanır.')
+        : (hedefHaric
+            ? 'Her ürünün KENDİ KDV oranıyla ters işlem yapılacak; sipariş KDV hariç net toplama çekilir.'
+            : 'Her ürüne KENDİ KDV oranı geri eklenecek; sipariş KDV dâhil toplama döner.')) +
+      (kirilim ? ' İskonto satırları güncel kalemlerden yeniden hesaplanır; kesin tutar sitede.' : '') +
     '</div>';
 }
 
@@ -4052,6 +4430,10 @@ function revizeModaliAc(id) {
           s.kalemler.map(function (k) {
             return '' +
             '<tr data-revize-satir="' + k.kalemId + '" ' +
+                /* Ürün kimliği (Faz 19): aynı ürün yeniden eklenirse yeni satır
+                   açılmaz, bu satırın adedi artar (sunucunun birleştirmesi). */
+                'data-urun-id="' + (Number(k.urunId) || 0) + '" ' +
+                'data-varyasyon-id="' + (Number(k.varyasyonId) || 0) + '" ' +
                 'data-kaldir="0" ' +
                 'data-eski-adet="' + k.adet + '" ' +
                 'data-birim="' + k.birim + '" ' +
@@ -4136,6 +4518,20 @@ function revizeModaliAc(id) {
 
   $('#revizeNot').value = '';
 
+  /* ÜRÜN EKLE kutusu ve ara kayıt bilgisi her açılışta sıfırlanır (Faz 19). */
+  durum.revizeYeniSayac = 0;
+  durum.revizeAramaSonuclari = [];
+  const urunAra = $('#revizeUrunAra');
+  if (urunAra) urunAra.value = '';
+  const aramaSonuc = $('#revizeAramaSonuc');
+  if (aramaSonuc) aramaSonuc.innerHTML = '';
+  const araBilgi = $('#revizeBilgi');
+  if (araBilgi) araBilgi.classList.add('hidden');
+
+  /* Geçmiş düğmesi: kayıt sayısı sunucudan (revision.history_count). */
+  const gecmisSayi = $('#revizeGecmisAc [data-gecmis-sayi]');
+  if (gecmisSayi) gecmisSayi.textContent = Number(s.revizeGecmisSayisi || 0) > 0 ? String(s.revizeGecmisSayisi) : '';
+
   /* KDV anahtarı siparişin MEVCUT durumundan başlar: KDV hariç yapılmış bir
      sipariş yeniden açıldığında "HAYIR" görünür, yanlışlıkla geri çevrilmez. */
   const kdvAnahtar = $('#revizeKdvDahil');
@@ -4162,17 +4558,31 @@ function revizeModaliAc(id) {
 }
 
 /** "SİPARİŞİ ONAYLA" — adetleri siteye gönderir. */
-async function revizeyiOnayla(buton) {
+async function revizeyiOnayla(buton, secenek) {
   const s = durum.revizeSiparis;
   if (!s) return;
 
+  /*
+   * ARA KAYIT (Faz 19): değişiklikler siteye yazılır ama pencere AÇIK kalır
+   * ve sipariş durumu ASLA değişmez — revize etmek ile siparişi kesinleştirmek
+   * ayrı kararlardır. Depocu ara kayıt yapıp düzenlemeye devam edebilir,
+   * dilediği zaman SİPARİŞİ ONAYLA der.
+   */
+  const ara = !!(secenek && secenek.ara);
+
   const satirlar = revizeSatirlariOku();
-  const degisenler = satirlar.filter(function (r) { return r.kaldir || r.adet !== r.eskiAdet; });
-  const kaldirilanlar = satirlar.filter(function (r) { return r.kaldir; });
+  const mevcutlar = satirlar.filter(function (r) { return !r.yeni; });
+  const yeniler = satirlar.filter(function (r) { return r.yeni && r.adet > 0; });
+  const degisenler = mevcutlar.filter(function (r) { return r.kaldir || r.adet !== r.eskiAdet; });
+  const kaldirilanlar = mevcutlar.filter(function (r) { return r.kaldir; });
+
+  const bilgi = $('#revizeBilgi');
+  if (bilgi) bilgi.classList.add('hidden');
 
   /* Tüm satırlar kaldırılamaz: boş sipariş yerine iptal kullanılır (sunucu
-     da 400 b2b_revision_all_removed döner; burada erken ve açık söylenir). */
-  if (kaldirilanlar.length && kaldirilanlar.length === satirlar.length) {
+     da 400 b2b_revision_all_removed döner; burada erken ve açık söylenir).
+     Aynı istekte ürün EKLENİYORSA sipariş boşalmaz. */
+  if (kaldirilanlar.length && kaldirilanlar.length === mevcutlar.length && !yeniler.length) {
     const uyari = $('#revizeUyari');
     uyari.textContent = 'Siparişteki bütün ürünleri kaldıramazsınız.\n' +
                         'Sipariş tamamen iptal edilecekse "SİPARİŞİ İPTAL ET" düğmesini kullanın.';
@@ -4180,9 +4590,9 @@ async function revizeyiOnayla(buton) {
     return;
   }
 
-  const hazirYap = !!$('#revizeHazirYap').checked;
+  const hazirYap = !ara && !!$('#revizeHazirYap').checked;
   const not = $('#revizeNot').value.trim();
-  const bildirilsinMi = !!$('#revizeBildir').checked;
+  const bildirilsinMi = !ara && !!$('#revizeBildir').checked;
 
   /* KDV modu: siparişin mevcut durumundan FARKLIYSA gönderilir; aynıysa
      boş gider ve eklenti hiçbir şeye dokunmaz (idempotent). */
@@ -4192,9 +4602,11 @@ async function revizeyiOnayla(buton) {
   /* Bayiye özel iskonto: DEĞİŞMEDİYSE null gider ve eklenti orana dokunmaz. */
   const iskontoOran = revizeIskontoOrani();
 
-  if (!degisenler.length && !hazirYap && !kdvModu && null === iskontoOran) {
+  if (!degisenler.length && !yeniler.length && !hazirYap && !kdvModu && null === iskontoOran) {
     const uyari = $('#revizeUyari');
-    uyari.textContent = 'Hiçbir adet değişmedi, KDV seçimi ve iskonto oranı aynı, durum güncellemesi de kapalı. Yapılacak bir işlem yok.';
+    uyari.textContent = ara
+      ? 'Kaydedilecek bir değişiklik yok: adetler, eklenen ürünler, KDV seçimi ve iskonto oranı aynı.'
+      : 'Hiçbir adet değişmedi, KDV seçimi ve iskonto oranı aynı, durum güncellemesi de kapalı. Yapılacak bir işlem yok.';
     uyari.classList.remove('hidden');
     return;
   }
@@ -4237,7 +4649,23 @@ async function revizeyiOnayla(buton) {
   }
 
   const hedefDurum = hazirYap ? (durum.b2bVar ? 'order-ready' : 'processing') : '';
-  const geriAl = butonuMesgulEt(buton, 'GÖNDERİLİYOR…');
+  const geriAl = butonuMesgulEt(buton, ara ? 'KAYDEDİLİYOR…' : 'GÖNDERİLİYOR…');
+
+  /** Ara kayıttan sonra pencereyi TAZE siparişle yeniden kurar ve bilgi yazar. */
+  async function araKayitBitir(metin) {
+    if (!siparisBul(s.id)) await siparisleriYukle(true);
+
+    revizeModaliAc(s.id);
+
+    const kutu = $('#revizeBilgi');
+
+    if (kutu) {
+      kutu.textContent = metin;
+      kutu.classList.remove('hidden');
+    }
+
+    siparisleriCiz();
+  }
 
   /* ---------- DEMO ---------- */
   if (durum.ayarlar.demoModu) {
@@ -4248,7 +4676,7 @@ async function revizeyiOnayla(buton) {
        (siparisDurumDegistir'in demo dalıyla aynı yaklaşım). */
     const kaynak = DEMO_SIPARISLER.filter(function (x) { return String(x.id) === String(s.id); })[0];
 
-    satirlar.forEach(function (r) {
+    mevcutlar.forEach(function (r) {
       [s, kaynak].forEach(function (hedef) {
         if (!hedef || !hedef.kalemler) return;
 
@@ -4262,6 +4690,24 @@ async function revizeyiOnayla(buton) {
         if (!k) return;
         k.adet = r.adet;
         k.tutar = Math.round(r.birim * r.adet * 100) / 100;
+      });
+    });
+
+    /* Eklenen ürünler demo siparişine de yeni kalem olarak girer. */
+    yeniler.forEach(function (r) {
+      [s, kaynak].forEach(function (hedef) {
+        if (!hedef || !hedef.kalemler) return;
+
+        const enBuyuk = hedef.kalemler.reduce(function (m, x) { return Math.max(m, Number(x.kalemId) || 0); }, 0);
+
+        hedef.kalemler.push({
+          kalemId: enBuyuk + 1, urunId: r.urunId, varyasyonId: r.varyasyonId,
+          ad: r.ad, kod: r.kod || '-', adet: r.adet, birim: r.birim,
+          tutar: Math.round(r.birim * r.adet * 100) / 100,
+          araToplam: Math.round(r.birim * r.adet * 100) / 100,
+          listeBirim: r.listeBirim, listeAraToplam: Math.round(r.listeBirim * r.adet * 100) / 100,
+          kdvOrani: r.kdvOrani
+        });
       });
     });
 
@@ -4283,11 +4729,17 @@ async function revizeyiOnayla(buton) {
       }
 
       hedef.tutar = hedef.kalemler.reduce(function (t, k) { return t + k.tutar; }, 0);
-      if (degisenler.length) hedef.revize = true;
+      if (degisenler.length || yeniler.length) hedef.revize = true;
       if (hedefDurum) hedef.durum = hedefDurum;
     });
 
     geriAl();
+
+    if (ara) {
+      await araKayitBitir('Ara kayıt yapıldı (Demo Modu — sitenizde değişiklik yapılmadı). Düzenlemeye devam edebilirsiniz.');
+      return;
+    }
+
     revizeModaliKapat();
 
     /* Durum değiştiyse sipariş bu sekmeden düşmüş olabilir. */
@@ -4296,6 +4748,7 @@ async function revizeyiOnayla(buton) {
 
     bildir('#' + s.numara + ' revize edildi.\n' +
            (degisenler.length ? degisenler.length + ' satırın adedi güncellendi.' : 'Adetlerde değişiklik yok.') +
+           (yeniler.length ? '\n' + yeniler.length + ' ürün siparişe eklendi.' : '') +
            (hedefDurum ? '\nDurum: ' + durumBilgisi(hedefDurum).etiket : '') +
            '\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
     return;
@@ -4311,12 +4764,18 @@ async function revizeyiOnayla(buton) {
       sureAsimi: 45000,
       govde: {
         /* Kaldırılan satır `remove:true` ile gider (eklenti 2.20.0): sunucu
-           satırı siler, stoğu iade eder, deftere "KALDIRILDI" yazar. */
-        items: satirlar.map(function (r) {
+           satırı siler, stoğu iade eder, deftere "KALDIRILDI" yazar.
+           EKLENEN ürün (Faz 19) kalem kimliği OLMADAN, ürün kimliğiyle gider;
+           siparişte zaten varsa sunucu satırın adedini artırır. */
+        items: mevcutlar.map(function (r) {
           return r.kaldir
             ? { id: r.kalemId, quantity: 0, remove: true }
             : { id: r.kalemId, quantity: r.adet };
-        }),
+        }).concat(yeniler.map(function (r) {
+          const kalem = { product_id: r.urunId, quantity: r.adet };
+          if (r.varyasyonId > 0) kalem.variation_id = r.varyasyonId;
+          return kalem;
+        })),
         status: hedefDurum,
         note: not,
         notify: bildirilsinMi,
@@ -4325,15 +4784,16 @@ async function revizeyiOnayla(buton) {
         discount_rate: null === iskontoOran ? '' : iskontoOran
       }
     });
-  } else if (kdvModu || null !== iskontoOran) {
+  } else if (kdvModu || null !== iskontoOran || yeniler.length) {
     /*
-     * KDV dönüşümü ürün başına oran, iskonto revizesi ise liste fiyatı
-     * künyesi gerektirir; ikisini de yalnızca eklenti bilir. WooCommerce
-     * çekirdeği üzerinden "yaklaşık" uygulamak sessiz para hatası olurdu.
+     * KDV dönüşümü ürün başına oran, iskonto revizesi liste fiyatı künyesi,
+     * ürün ekleme siparişin fiyat modeli gerektirir; üçünü de yalnızca
+     * eklenti bilir. WooCommerce çekirdeği üzerinden "yaklaşık" uygulamak
+     * sessiz para hatası olurdu.
      */
     geriAl();
     const uyari = $('#revizeUyari');
-    uyari.textContent = (kdvModu ? 'KDV dâhil/hariç dönüşümü' : 'Bayiye özel iskonto revizesi') +
+    uyari.textContent = (kdvModu ? 'KDV dâhil/hariç dönüşümü' : (null !== iskontoOran ? 'Bayiye özel iskonto revizesi' : 'Siparişe ürün ekleme')) +
                         ' için B2B Core eklentisi gerekir.\n' +
                         'Eklenti bulunamadı; bu seçimi geri alıp tekrar deneyin.';
     uyari.classList.remove('hidden');
@@ -4396,6 +4856,30 @@ async function revizeyiOnayla(buton) {
     if (sira !== -1) durum.siparisler[sira] = guncel;
   }
 
+  /* Kaldırılan / eklenen ürünler ayrı söylenir: "3 satırın adedi güncellendi"
+     bir ürünün siparişten ÇIKTIĞINI ya da GİRDİĞİNİ anlatmaz. */
+  const kaldirilanSayisi = yanit.changes
+    ? yanit.changes.filter(function (c) { return c && c.removed; }).length
+    : kaldirilanlar.length;
+  const eklenenSayisi = yanit.changes
+    ? yanit.changes.filter(function (c) { return c && c.added; }).length
+    : yeniler.length;
+  const adetDegisenSayisi = (yanit.changes ? yanit.changes.length : degisenler.length + yeniler.length) - kaldirilanSayisi - eklenenSayisi;
+
+  const ozet = (adetDegisenSayisi > 0 ? adetDegisenSayisi + ' satırın adedi güncellendi; ' : '') +
+               (kaldirilanSayisi > 0 ? kaldirilanSayisi + ' ürün siparişten kaldırıldı; ' : '') +
+               (eklenenSayisi > 0 ? eklenenSayisi + ' ürün siparişe eklendi; ' : '');
+
+  /* ARA KAYIT: pencere taze siparişle yeniden kurulur, durum değişmedi. */
+  if (ara) {
+    if (!guncelHam) await siparisleriYukle(true);
+
+    await araKayitBitir('Ara kayıt yapıldı. ' + ozet +
+                        'tutar, iskonto ve KDV güncel kalemlerden yeniden hesaplandı. Sipariş durumu DEĞİŞMEDİ — ' +
+                        'düzenlemeye devam edebilir, hazır olduğunda SİPARİŞİ ONAYLA diyebilirsiniz.');
+    return;
+  }
+
   /*
    * Mesaj GÖNDERİLEN isteğe göre değil, SUNUCUNUN döndürdüğüne göre kurulur.
    * (Eski sürümde adet değişmediğinde sunucu durumu değiştirmeden erken
@@ -4405,7 +4889,7 @@ async function revizeyiOnayla(buton) {
   const durumDegisti = (yanit.status_changed === true) ||
                        (!!gercekDurum && !!hedefDurum && durumNormalle(gercekDurum) === durumNormalle(hedefDurum) &&
                         durumNormalle(gercekDurum) !== durumNormalle(s.durum));
-  const adetDegisti = (yanit.changed === true) || degisenler.length > 0;
+  const adetDegisti = (yanit.changed === true) || degisenler.length > 0 || yeniler.length > 0;
 
   revizeModaliKapat();
 
@@ -4416,22 +4900,434 @@ async function revizeyiOnayla(buton) {
     siparisleriCiz();
   }
 
-  /* Kaldırılan ürünler ayrı söylenir: "3 satırın adedi güncellendi" bir
-     ürünün siparişten ÇIKTIĞINI anlatmaz. */
-  const kaldirilanSayisi = yanit.changes
-    ? yanit.changes.filter(function (c) { return c && c.removed; }).length
-    : kaldirilanlar.length;
-  const adetDegisenSayisi = (yanit.changes ? yanit.changes.length : degisenler.length) - kaldirilanSayisi;
-
   bildir('#' + s.numara + ' işlendi.\n' +
          (adetDegisti
-           ? (adetDegisenSayisi > 0 ? adetDegisenSayisi + ' satırın adedi güncellendi; ' : '') +
-             (kaldirilanSayisi > 0 ? kaldirilanSayisi + ' ürün siparişten kaldırıldı; ' : '') +
-             'tutar ve KDV yeniden hesaplandı.'
+           ? ozet + 'tutar ve KDV yeniden hesaplandı.'
            : 'Adetlerde değişiklik yok.') +
          (gercekDurum ? '\nDurum: ' + durumBilgisi(gercekDurum).etiket : '') +
          (durumDegisti && bildirilsinMi ? '\nBayiye bilgilendirme e-postası gönderildi.' : ''),
          'basari');
+}
+
+/* ==========================================================================
+ *  REVİZEDE ÜRÜN EKLEME (Faz 19)
+ *  --------------------------------------------------------------------------
+ *  Depocu revize penceresinden kataloğu arar ve siparişe ürün ekler.
+ *
+ *   · Fiyat SİPARİŞİN KENDİ modelinden: saha siparişinde (bayi iskontosu
+ *     ücret satırında) liste fiyatı, web siparişinde liste × (1 − siparişe
+ *     mühürlü oran); KDV hariç siparişte KDV düşülmüş. Ekrandaki fiyat
+ *     önizlemedir — sunucu (B2B_Order_Revision::urun_ekle) aynı kuralla
+ *     fiyatlar ve son sözü söyler.
+ *   · Ürün siparişte ZATEN VARSA yeni satır açılmaz, mevcut satırın adedi
+ *     artar (sunucunun birleştirme kuralının aynısı). Kaldırılmak üzere
+ *     işaretlenmiş satırla birleştirilmez.
+ *   · Varyasyonlu ürünün kendisi eklenemez: önce varyasyon seçilir.
+ *   · Arama yarışı: yalnızca EN SON aramanın yanıtı çizilir.
+ * ========================================================================*/
+
+let revizeAramaZamanlayici = null;
+let revizeAramaSirasi = 0;
+
+/**
+ * Eklenecek ürünün bu siparişteki birim fiyatı (siparişin MEVCUT KDV kipinde).
+ *
+ * @param {object} s       İç sipariş nesnesi.
+ * @param {number} liste   Ürünün liste fiyatı (KDV dâhil).
+ * @param {number} kdvOrani Ürünün KDV oranı.
+ * @returns {{birim:number, listeBirim:number, sahaModeli:boolean, oran:number}}
+ */
+function revizeYeniBirim(s, liste, kdvOrani) {
+  s = s || {};
+
+  /* Bayi iskontosu ücret satırındaysa satırlar LİSTE fiyatıyla durur (saha). */
+  const sahaModeli = Number(s.bayiIskontoTutar || 0) > 0;
+  const oran = sahaModeli ? 0 : Math.max(0, Math.min(99.99, Number(s.iskontoOrani || s.bayiIskontoOrani || 0)));
+
+  let birim = Number(liste || 0) * (1 - oran / 100);
+  let listeBirim = Number(liste || 0);
+
+  if (s.kdvHaric && Number(kdvOrani) > 0) {
+    birim = birim / (1 + Number(kdvOrani) / 100);
+    listeBirim = listeBirim / (1 + Number(kdvOrani) / 100);
+  }
+
+  return { birim: birim, listeBirim: listeBirim, sahaModeli: sahaModeli, oran: oran };
+}
+
+/**
+ * wc/v3 ürün (ya da varyasyon) yanıtını revize ürün kaydına çevirir.
+ *
+ * @param {object} u       Ham ürün.
+ * @param {object} ebeveyn Varyasyonsa ana ürün kaydı.
+ * @returns {object}
+ */
+function revizeUrunKaydi(u, ebeveyn) {
+  const n = urunNormalle(u || {});
+  const ozellik = Array.isArray(u && u.attributes)
+    ? u.attributes.map(function (a) { return a && a.option ? String(a.option) : ''; }).filter(Boolean).join(', ')
+    : '';
+
+  /* Liste fiyatı = ürünün GÜNCEL fiyatı (indirim dâhil), sunucunun
+     list_unit_price'ı ile aynı kaynak (get_price 'edit'). */
+  const guncel = Number(u && u.price);
+  const liste = guncel > 0 ? guncel : Number(n.fiyat || 0);
+
+  if (ebeveyn) {
+    return {
+      urunId: Number(ebeveyn.urunId),
+      varyasyonId: Number(u.id),
+      ad: ebeveyn.ad + (ozellik ? ' — ' + ozellik : ''),
+      kod: (u.sku ? String(u.sku) : ebeveyn.kod) || '-',
+      gorsel: (u.image && u.image.src) ? String(u.image.src) : ebeveyn.gorsel,
+      kdv: ebeveyn.kdv,
+      liste: liste,
+      stok: n.stok,
+      tip: 'variation'
+    };
+  }
+
+  return {
+    urunId: Number(u.id),
+    varyasyonId: 0,
+    ad: n.ad,
+    kod: n.kod,
+    gorsel: n.gorsel,
+    kdv: n.kdv,
+    liste: liste,
+    stok: n.stok,
+    tip: String((u && u.type) || 'simple')
+  };
+}
+
+/** Arama kutusuna yazıldıkça (300 ms gecikmeli) arar. */
+function revizeUrunAramaTetikle() {
+  const girdi = $('#revizeUrunAra');
+  const kap = $('#revizeAramaSonuc');
+  if (!girdi || !kap) return;
+
+  clearTimeout(revizeAramaZamanlayici);
+
+  const q = String(girdi.value || '').trim();
+
+  if (q.length < 2) {
+    revizeAramaSirasi++;   // uçuştaki eski yanıt çizilmesin
+    kap.innerHTML = q
+      ? '<div class="text-base font-bold text-slate-500 dark:text-slate-400">En az 2 harf yazın.</div>'
+      : '';
+    return;
+  }
+
+  revizeAramaZamanlayici = setTimeout(function () { revizeUrunAra(q); }, 300);
+}
+
+/**
+ * Kataloğu arar ve sonuçları çizer.
+ *
+ * @param {string} sorgu Aranan metin.
+ */
+async function revizeUrunAra(sorgu) {
+  const kap = $('#revizeAramaSonuc');
+  if (!kap) return;
+
+  const sira = ++revizeAramaSirasi;
+  const q = String(sorgu || '').trim();
+
+  kap.innerHTML = '<div class="text-base font-bold text-slate-500 dark:text-slate-400">Aranıyor…</div>';
+
+  let kayitlar = [];
+
+  if (durum.ayarlar && durum.ayarlar.demoModu) {
+    const kucuk = q.toLocaleLowerCase('tr-TR');
+
+    kayitlar = DEMO_URUNLER.filter(function (u) {
+      return String(u.ad || '').toLocaleLowerCase('tr-TR').indexOf(kucuk) !== -1 ||
+             String(u.kod || '').toLocaleLowerCase('tr-TR').indexOf(kucuk) !== -1;
+    }).slice(0, 12).map(function (u) {
+      return { urunId: u.id, varyasyonId: 0, ad: u.ad, kod: u.kod, gorsel: u.gorsel, kdv: VARSAYILAN_KDV, liste: u.fiyat, stok: u.stok, tip: 'simple' };
+    });
+  } else {
+    const cevap = await woo('products', { sorgu: { search: q, per_page: 12, status: 'publish' } });
+
+    if (sira !== revizeAramaSirasi) return;   // kullanıcı yazmaya devam etti
+
+    if (!cevap || !cevap.ok) {
+      kap.innerHTML = '<div class="text-base font-bold text-red-700 dark:text-red-300">Ürünler aranamadı: ' +
+                      kacis((cevap && cevap.hata) || 'Bilinmeyen hata.') + '</div>';
+      return;
+    }
+
+    kayitlar = (Array.isArray(cevap.veri) ? cevap.veri : []).map(function (u) { return revizeUrunKaydi(u, null); });
+  }
+
+  if (sira !== revizeAramaSirasi) return;
+
+  durum.revizeAramaSonuclari = kayitlar;
+  revizeAramaSonuclariniCiz(kayitlar, null);
+}
+
+/**
+ * Sonuç listesini çizer.
+ *
+ * @param {Array}  kayitlar Revize ürün kayıtları.
+ * @param {object} ebeveyn  Varyasyon listesiyse ana ürün (geri düğmesi için).
+ */
+function revizeAramaSonuclariniCiz(kayitlar, ebeveyn) {
+  const kap = $('#revizeAramaSonuc');
+  if (!kap) return;
+
+  const s = durum.revizeSiparis || {};
+
+  if (!kayitlar.length) {
+    kap.innerHTML = (ebeveyn ? '<button type="button" data-revize-liste-geri class="self-start h-10 px-3 rounded-xl text-base font-extrabold border-2 border-slate-300 dark:border-slate-600">← Sonuçlara dön</button>' : '') +
+      '<div class="text-base font-bold text-slate-500 dark:text-slate-400">' +
+      (ebeveyn ? 'Bu ürünün satılabilir varyasyonu yok.' : 'Aramaya uyan ürün bulunamadı.') + '</div>';
+    return;
+  }
+
+  kap.innerHTML =
+    (ebeveyn
+      ? '<div class="flex items-center gap-3"><button type="button" data-revize-liste-geri class="h-10 px-3 rounded-xl text-base font-extrabold border-2 border-slate-300 dark:border-slate-600">← Sonuçlara dön</button>' +
+        '<span class="text-base font-bold">' + kacis(ebeveyn.ad) + ' — varyasyon seçin</span></div>'
+      : '') +
+    kayitlar.map(function (k, i) {
+      const fiyat = revizeYeniBirim(s, k.liste, k.kdv);
+      const varyasyonlu = 'variable' === k.tip;
+
+      return '<div data-revize-sonuc="' + i + '" class="flex flex-wrap items-center gap-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-2">' +
+        '<img src="' + kacis(k.gorsel || YEDEK_GORSEL) + '" alt="" loading="lazy" ' +
+             'onerror="this.onerror=null;this.src=\'' + YEDEK_GORSEL + '\'" ' +
+             'class="w-12 h-12 rounded-lg object-cover bg-slate-100 dark:bg-slate-700 shrink-0" />' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="font-bold break-words">' + kacis(k.ad) + '</div>' +
+          '<div class="text-sm font-semibold text-slate-500 dark:text-slate-400">' +
+            kacis(k.kod || '-') + ' · Stok: ' + kacis(String(k.stok)) +
+            (varyasyonlu ? '' : ' · Liste: ' + kacis(para(k.liste)) +
+              (Math.abs(fiyat.birim - k.liste) >= 0.005 ? ' · Bu siparişte: <b>' + kacis(para(fiyat.birim)) + '</b>' : '')) +
+          '</div>' +
+        '</div>' +
+        (varyasyonlu
+          ? '<button type="button" data-revize-varyasyon="' + i + '" class="h-11 px-4 rounded-xl text-base font-extrabold border-2 border-marka-600 text-marka-700 dark:text-marka-300 hover:bg-marka-50 dark:hover:bg-marka-900/30 transition">Varyasyonları Göster</button>'
+          : (k.liste > 0
+              ? '<button type="button" data-revize-sec="' + i + '" class="h-11 px-4 rounded-xl text-base font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition">+ EKLE</button>'
+              : '<span class="text-sm font-bold text-red-700 dark:text-red-300">Fiyatı tanımlı değil — eklenemez</span>')) +
+      '</div>';
+    }).join('');
+}
+
+/** Varyasyonlu ürünün varyasyonlarını getirir. */
+async function revizeVaryasyonlariGetir(i) {
+  const ana = (durum.revizeAramaSonuclari || [])[i];
+  const kap = $('#revizeAramaSonuc');
+  if (!ana || !kap) return;
+
+  const sira = ++revizeAramaSirasi;
+
+  kap.innerHTML = '<div class="text-base font-bold text-slate-500 dark:text-slate-400">Varyasyonlar yükleniyor…</div>';
+
+  const cevap = await woo('products/' + ana.urunId + '/variations', { sorgu: { per_page: 50, status: 'publish' } });
+
+  if (sira !== revizeAramaSirasi) return;
+
+  if (!cevap || !cevap.ok) {
+    kap.innerHTML = '<div class="text-base font-bold text-red-700 dark:text-red-300">Varyasyonlar alınamadı: ' +
+                    kacis((cevap && cevap.hata) || 'Bilinmeyen hata.') + '</div>';
+    return;
+  }
+
+  const liste = (Array.isArray(cevap.veri) ? cevap.veri : []).map(function (v) { return revizeUrunKaydi(v, ana); });
+
+  durum.revizeVaryasyonEbeveyn = ana;
+  durum.revizeVaryasyonlar = liste;
+  durum.revizeAramaListesi = durum.revizeAramaSonuclari;
+  durum.revizeAramaSonuclari = liste;
+
+  revizeAramaSonuclariniCiz(liste, ana);
+}
+
+/**
+ * Yeni satırın işaretlemesi — mevcut satırlarla AYNI sütunlar.
+ *
+ * @param {string} anahtar DOM anahtarı ("y1").
+ * @param {object} k       Revize ürün kaydı.
+ * @param {object} fiyat   revizeYeniBirim() sonucu.
+ * @returns {string}
+ */
+function revizeYeniSatirHtml(anahtar, k, fiyat) {
+  return '' +
+  '<tr data-revize-satir="' + anahtar + '" data-revize-yeni="1" ' +
+      'data-urun-id="' + Number(k.urunId || 0) + '" ' +
+      'data-varyasyon-id="' + Number(k.varyasyonId || 0) + '" ' +
+      'data-ad="' + kacis(k.ad) + '" data-kod="' + kacis(k.kod || '') + '" ' +
+      'data-kaldir="0" data-eski-adet="0" ' +
+      'data-birim="' + fiyat.birim + '" data-birim-ara="' + fiyat.birim + '" ' +
+      'data-liste-birim="' + fiyat.listeBirim + '" ' +
+      'data-kdv-orani="' + (Number(k.kdv) || 0) + '" ' +
+      'class="border-t-2 border-emerald-200 dark:border-emerald-500/30 transition">' +
+
+    '<td class="p-3">' +
+      '<div class="flex items-center gap-3">' +
+        '<img src="' + kacis(k.gorsel || YEDEK_GORSEL) + '" alt="" loading="lazy" ' +
+             'onerror="this.onerror=null;this.src=\'' + YEDEK_GORSEL + '\'" ' +
+             'class="w-12 h-12 rounded-lg object-cover bg-slate-100 dark:bg-slate-700 shrink-0" />' +
+        '<span class="font-bold">' + kacis(k.ad) + '</span>' +
+        '<span class="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-600 text-white shrink-0">YENİ</span>' +
+      '</div>' +
+    '</td>' +
+
+    '<td class="p-3 font-mono text-base text-slate-500 dark:text-slate-400 whitespace-nowrap">' + kacis(k.kod || '-') + '</td>' +
+
+    '<td class="p-3 text-right font-bold whitespace-nowrap">' +
+      (Number(k.kdv) > 0 ? '%' + String(Math.round(Number(k.kdv) * 100) / 100).replace('.', ',') : '<span class="text-slate-400">—</span>') +
+    '</td>' +
+
+    '<td class="p-3 text-center whitespace-nowrap text-base font-bold text-emerald-700 dark:text-emerald-300">eklenecek</td>' +
+
+    '<td class="p-3 text-center">' +
+      '<div class="inline-flex items-center gap-2">' +
+        '<button type="button" data-revize-eksi="' + anahtar + '" tabindex="-1" ' +
+                'class="w-12 h-12 rounded-xl text-2xl font-black bg-slate-200 hover:bg-slate-300 ' +
+                       'dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">−</button>' +
+        '<input data-revize-adet type="number" min="0" step="1" inputmode="numeric" value="1" ' +
+               'class="w-24 h-12 px-2 rounded-xl text-xl font-black text-center ' +
+                      'bg-slate-50 dark:bg-slate-900 border-2 border-emerald-400 dark:border-emerald-600 ' +
+                      'focus:border-marka-600 focus:ring-4 focus:ring-marka-600/20 outline-none transition" />' +
+        '<button type="button" data-revize-arti="' + anahtar + '" tabindex="-1" ' +
+                'class="w-12 h-12 rounded-xl text-2xl font-black bg-slate-200 hover:bg-slate-300 ' +
+                       'dark:bg-slate-700 dark:hover:bg-slate-600 transition active:scale-95">+</button>' +
+      '</div>' +
+    '</td>' +
+
+    '<td class="p-3 text-right whitespace-nowrap">' +
+      '<div class="text-xl font-black" data-revize-tutar></div>' +
+      '<div class="hidden mt-1 text-base font-bold text-amber-600 dark:text-amber-400" data-revize-net></div>' +
+    '</td>' +
+
+    '<td class="p-3 text-center whitespace-nowrap">' +
+      '<button type="button" data-revize-cikar="' + anahtar + '" tabindex="-1" ' +
+              'title="Eklemekten vazgeç" ' +
+              'class="h-12 px-3 rounded-xl text-base font-extrabold border-2 border-slate-300 dark:border-slate-600 ' +
+                     'hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-95">✕ ÇIKAR</button>' +
+    '</td>' +
+  '</tr>';
+}
+
+/**
+ * Ürünü siparişe ekler (pencere içinde — sunucuya ONAY / ARA KAYIT ile gider).
+ *
+ * @param {object} k Revize ürün kaydı.
+ * @returns {string} 'birlesti' | 'eklendi' | '' (eklenemedi)
+ */
+function revizeUrunEkle(k) {
+  const s = durum.revizeSiparis;
+  const govde = $('#revizeGovde tbody');
+
+  if (!s || !k || !govde) return '';
+
+  if ('variable' === k.tip) {
+    bildir('Varyasyonlu ürün — önce varyasyonu seçin.', 'uyari');
+    return '';
+  }
+
+  if (!(Number(k.liste) > 0)) {
+    bildir('Bu ürünün fiyatı tanımlı değil; siparişe eklenemez.', 'uyari');
+    return '';
+  }
+
+  /* Aynı ürün (ve varyasyon) siparişte VARSA ve kaldırılmayacaksa: adet artar. */
+  const mevcut = $$('#revizeGovde [data-revize-satir]').filter(function (tr) {
+    return Number(tr.dataset.urunId || 0) === Number(k.urunId) &&
+           Number(tr.dataset.varyasyonId || 0) === Number(k.varyasyonId || 0) &&
+           tr.dataset.kaldir !== '1';
+  })[0];
+
+  if (mevcut) {
+    const girdi = mevcut.querySelector('[data-revize-adet]');
+
+    if (girdi) girdi.value = String(Math.max(0, Math.floor(Number(girdi.value) || 0)) + 1);
+
+    revizeToplamiTazele();
+
+    if (girdi) { girdi.focus(); if (girdi.select) girdi.select(); }
+
+    return 'birlesti';
+  }
+
+  durum.revizeYeniSayac = Number(durum.revizeYeniSayac || 0) + 1;
+
+  const anahtar = 'y' + durum.revizeYeniSayac;
+
+  govde.insertAdjacentHTML('beforeend', revizeYeniSatirHtml(anahtar, k, revizeYeniBirim(s, k.liste, k.kdv)));
+
+  revizeToplamiTazele();
+
+  const yeniGirdi = document.querySelector('[data-revize-satir="' + anahtar + '"] [data-revize-adet]');
+  if (yeniGirdi) { yeniGirdi.focus(); if (yeniGirdi.select) yeniGirdi.select(); }
+
+  return 'eklendi';
+}
+
+/* ==========================================================================
+ *  REVİZE GEÇMİŞİ PENCERESİ (Faz 19)
+ *  --------------------------------------------------------------------------
+ *  GET /wc-b2b/v1/orders/{id}/revision-history → RevizyonGecmisi.html()
+ *  Önce / sonra yan yana; eski değer kırmızı, yeni değer yeşil. Fark
+ *  SUNUCUDA hesaplanır, panel ikinci bir fark motoru tutmaz.
+ * ========================================================================*/
+
+/**
+ * Geçmiş penceresini açar.
+ *
+ * @param {string|number} id Sipariş kimliği.
+ */
+async function revizeGecmisiAc(id) {
+  const katman = $('#revizeGecmisKatman');
+  const govde = $('#revizeGecmisGovde');
+
+  if (!katman || !govde || !id) return;
+
+  const s = siparisBul(id) || durum.revizeSiparis || {};
+  const baslik = $('#revizeGecmisBaslik');
+
+  if (baslik) baslik.textContent = 'Revize Geçmişi — #' + (s.numara || id);
+
+  govde.innerHTML = '<div class="py-10 text-center text-lg font-bold text-slate-500 dark:text-slate-400">Yükleniyor…</div>';
+  katman.classList.remove('hidden');
+
+  if (durum.ayarlar && durum.ayarlar.demoModu) {
+    govde.innerHTML = '<div class="py-10 text-center text-lg font-bold text-slate-500 dark:text-slate-400">' +
+                      'Demo Modunda revize geçmişi tutulmaz. Canlı bağlantıda her revize burada önce/sonra olarak listelenir.</div>';
+    return;
+  }
+
+  if (!durum.b2bVar) {
+    govde.innerHTML = '<div class="py-10 text-center text-lg font-bold text-red-700 dark:text-red-300">' +
+                      'Revize geçmişi için sitenizde "B2B Core" eklentisi kurulu ve etkin olmalıdır.</div>';
+    return;
+  }
+
+  const cevap = await b2b('orders/' + id + '/revision-history', { sureAsimi: 20000 });
+
+  if (!cevap || !cevap.ok) {
+    govde.innerHTML = '<div class="py-10 text-center text-lg font-bold text-red-700 dark:text-red-300">' +
+      kacis(ucBulunamadiMi(cevap)
+        ? 'Sitenizdeki B2B Core eklentisi revize geçmişini desteklemiyor (2.28.0 ve üstü gerekir).'
+        : 'Geçmiş alınamadı: ' + ((cevap && cevap.hata) || 'Bilinmeyen hata.')) +
+      '</div>';
+    return;
+  }
+
+  const kayitlar = (cevap.veri && Array.isArray(cevap.veri.kayitlar)) ? cevap.veri.kayitlar : [];
+
+  govde.innerHTML = (window.RevizyonGecmisi && 'function' === typeof window.RevizyonGecmisi.html)
+    ? window.RevizyonGecmisi.html(kayitlar)
+    : '<pre class="text-sm whitespace-pre-wrap">' + kacis(JSON.stringify(kayitlar, null, 2)) + '</pre>';
+}
+
+/** Geçmiş penceresini kapatır. */
+function revizeGecmisiKapat() {
+  const katman = $('#revizeGecmisKatman');
+  if (katman) katman.classList.add('hidden');
 }
 
 /**
@@ -8474,6 +9370,9 @@ function olaylariBagla() {
     const revizeBtn = o.target.closest('[data-eylem="siparis-revize"]');
     if (revizeBtn) { revizeModaliAc(revizeBtn.dataset.id); return; }
 
+    const gecmisBtn = o.target.closest('[data-eylem="revize-gecmis"]');
+    if (gecmisBtn) { revizeGecmisiAc(gecmisBtn.dataset.id); return; }
+
     /* siparisIptalEt / siparisSil renderer-ek.js içinde tanımlıdır. */
     const iptalBtn = o.target.closest('[data-eylem="siparis-iptal"]');
     if (iptalBtn && typeof siparisIptalEt === 'function') {
@@ -8572,6 +9471,85 @@ function olaylariBagla() {
     satir.dataset.kaldir = kaldir ? '1' : '0';
     revizeToplamiTazele();
   });
+
+  /* --- ARA KAYDET (Faz 19): durum DEĞİŞMEZ, pencere açık kalır --- */
+  if ($('#revizeAraKaydet')) {
+    $('#revizeAraKaydet').addEventListener('click', function () {
+      revizeyiOnayla($('#revizeAraKaydet'), { ara: true });
+    });
+  }
+
+  /* --- REVİZEDE ÜRÜN EKLEME (Faz 19) --- */
+  if ($('#revizeUrunAra')) {
+    $('#revizeUrunAra').addEventListener('input', revizeUrunAramaTetikle);
+
+    /* Enter beklemeden arar — ve revize penceresinin "Enter = onayla"
+       kısayoluna DÜŞMEZ (o kısayol yalnızca adet kutularında). */
+    $('#revizeUrunAra').addEventListener('keydown', function (o) {
+      if (o.key !== 'Enter') return;
+
+      o.preventDefault();
+      clearTimeout(revizeAramaZamanlayici);
+
+      const q = String(o.target.value || '').trim();
+      if (q.length >= 2) revizeUrunAra(q);
+    });
+  }
+
+  if ($('#revizeAramaSonuc')) {
+    $('#revizeAramaSonuc').addEventListener('click', function (o) {
+      const sec = o.target.closest('[data-revize-sec]');
+
+      if (sec) {
+        const k = (durum.revizeAramaSonuclari || [])[Number(sec.dataset.revizeSec)];
+        const sonuc = revizeUrunEkle(k);
+
+        if ('birlesti' === sonuc) bildir((k && k.ad ? k.ad : 'Ürün') + ' siparişte zaten var — adedi 1 artırıldı.', 'bilgi');
+        return;
+      }
+
+      const varyasyon = o.target.closest('[data-revize-varyasyon]');
+      if (varyasyon) { revizeVaryasyonlariGetir(Number(varyasyon.dataset.revizeVaryasyon)); return; }
+
+      const geri = o.target.closest('[data-revize-liste-geri]');
+
+      if (geri) {
+        durum.revizeAramaSonuclari = durum.revizeAramaListesi || [];
+        revizeAramaSonuclariniCiz(durum.revizeAramaSonuclari, null);
+      }
+    });
+  }
+
+  /* Yeni eklenen satırdan vazgeç: satır pencereden kalkar (sunucuya hiç gitmedi). */
+  $('#revizeGovde').addEventListener('click', function (o) {
+    const cikar = o.target.closest('[data-revize-cikar]');
+    if (!cikar) return;
+
+    const satir = document.querySelector('[data-revize-satir="' + cikar.dataset.revizeCikar + '"]');
+    if (satir && satir.dataset.revizeYeni === '1') satir.remove();
+
+    revizeToplamiTazele();
+  });
+
+  /* --- REVİZE GEÇMİŞİ (Faz 19) --- */
+  if ($('#revizeGecmisAc')) {
+    $('#revizeGecmisAc').addEventListener('click', function () {
+      const s = durum.revizeSiparis;
+      if (s) revizeGecmisiAc(s.id);
+    });
+  }
+
+  if ($('#revizeGecmisKapat')) $('#revizeGecmisKapat').addEventListener('click', revizeGecmisiKapat);
+
+  if ($('#revizeGecmisKatman')) {
+    $('#revizeGecmisKatman').addEventListener('mousedown', function (o) {
+      if (o.target === $('#revizeGecmisKatman')) revizeGecmisiKapat();
+    });
+
+    $('#revizeGecmisKatman').addEventListener('keydown', function (o) {
+      if (o.key === 'Escape') { o.stopPropagation(); revizeGecmisiKapat(); }
+    });
+  }
 
   $('#revizeModalKatman').addEventListener('keydown', function (o) {
     if (o.key === 'Escape') { revizeModaliKapat(); return; }
@@ -8731,6 +9709,10 @@ function olaylariBagla() {
     const minKaydet = o.target.closest('[data-eylem="min-tutar-kaydet"]');
     if (minKaydet) { bayiMinTutarKaydet(minKaydet.dataset.id, minKaydet); return; }
 
+    /* --- Bayiye özel ödeme yöntemi yetkileri (Faz 19) --- */
+    const odemeKaydet = o.target.closest('[data-eylem="odeme-yetki-kaydet"]');
+    if (odemeKaydet) { bayiOdemeYetkiKaydet(odemeKaydet.dataset.id, odemeKaydet); return; }
+
     /* Oran / minimum tutar kutusuna tıklamak bayi kartını açmasın. */
     if (o.target.closest('[data-iskonto-kutu]') || o.target.closest('[data-min-tutar]')) return;
 
@@ -8743,6 +9725,21 @@ function olaylariBagla() {
   /* Oran kutusunda Enter → kaydet (fare kullanmadan girip geçmek için). */
   $('#uyeListesi').addEventListener('keydown', function (o) {
     if (o.key !== 'Enter') return;
+
+    /* Ödeme oranı kutusunda Enter → bloğu kaydet. */
+    const odemeGirdi = o.target.closest('[data-odeme-oran]');
+
+    if (odemeGirdi) {
+      o.preventDefault();
+
+      const blok = odemeGirdi.closest('[data-odeme-yetki]');
+      const odemeId = blok ? blok.dataset.odemeYetki : '';
+
+      if (odemeId) {
+        bayiOdemeYetkiKaydet(odemeId, document.querySelector('[data-eylem="odeme-yetki-kaydet"][data-id="' + odemeId + '"]'));
+      }
+      return;
+    }
 
     const minGirdi = o.target.closest('[data-min-tutar]');
 

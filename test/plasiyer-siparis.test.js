@@ -972,3 +972,69 @@ test('siparisGovdesi: subeId taşınır, yoksa boş gider', (t) => {
   assert.equal(ile.subeId, 'sube_9');
   assert.equal(ile.musteriId, 42, 'sipariş yine ANA cariye yazılır');
 });
+
+/* ------------------------------------------------------------------ *
+ *  FAZ 19 — BAYİYE ÖZEL ÖDEME YETKİSİ
+ *  Kapatılan yöntem sahada seçilemez; alan yoksa (eski eklenti, geçici
+ *  müşteri) üç yöntem de açıktır — son söz sunucuda.
+ * ------------------------------------------------------------------ */
+
+const NAKITSIZ = { id: 42, unvan: 'Vadeli Bayi', iskonto: 0, odemeIskontolari: { nakit: 12, vade: 0, kart: 8 }, odemeIzinleri: { nakit: false, vade: true, kart: true } };
+
+test('Faz 19: odemeIzinliMi — kapalı yöntem false, alan yoksa hepsi açık', () => {
+  assert.equal(M.odemeIzinliMi(NAKITSIZ, 'nakit'), false, 'kapatılan yöntem KAPALI');
+  assert.equal(M.odemeIzinliMi(NAKITSIZ, 'vade'), true);
+  assert.equal(M.odemeIzinliMi({ id: 1 }, 'nakit'), true, 'izin tablosu yoksa AÇIK (eski eklenti)');
+  assert.equal(M.odemeIzinliMi(null, 'kart'), true, 'müşterisiz sepette açık');
+  assert.equal(M.odemeIzinliMi(NAKITSIZ, 'havale'), false, 'bilinmeyen yöntem her zaman kapalı');
+  assert.equal(M.odemeIzinliMi({ odemeIzinleri: { nakit: 0 } }, 'nakit'), true, 'yalnızca AÇIKÇA false kapatır (0 / undefined kapatmaz)');
+});
+
+test('Faz 19: izinliYontemler — sıra korunur, hepsi kapalıysa üçü de döner (ekran düğmesiz kalmaz)', () => {
+  assert.deepEqual(M.izinliYontemler(NAKITSIZ), ['vade', 'kart']);
+  assert.deepEqual(M.izinliYontemler({ odemeIzinleri: { nakit: false, vade: false, kart: false } }), ['nakit', 'vade', 'kart'],
+    'bozuk veri: sunucunun çelişki kuralıyla aynı — kısıt yok sayılır');
+});
+
+test('Faz 19: kapalı yöntem SEÇİLEMEZ ve eski yöntemin iskontosu taşınmaz', () => {
+  let sepet = M.musteriIskontosuUygula(M.sepetKur(), NAKITSIZ, 100);
+  sepet = M.odemeSec(sepet, 'nakit');
+
+  assert.equal(sepet.odeme, '', 'nakit seçimi reddedildi');
+  assert.equal(sepet.odemeIskonto, 0, 'nakdin %12 iskontosu sepete girmedi');
+
+  sepet = M.odemeSec(sepet, 'kart');
+  assert.equal(sepet.odeme, 'kart');
+  assert.equal(sepet.odemeIskonto, 8);
+});
+
+test('Faz 19: müşteri değişince yeni müşteriye KAPALI yöntem seçili kalmaz', () => {
+  let sepet = M.musteriIskontosuUygula(M.sepetKur(), { id: 7, unvan: 'Nakitçi', odemeIskontolari: { nakit: 12 } }, 100);
+  sepet = M.odemeSec(sepet, 'nakit');
+  assert.equal(sepet.odeme, 'nakit');
+
+  sepet = M.musteriIskontosuUygula(sepet, NAKITSIZ, 100);
+  assert.equal(sepet.odeme, '', 'nakdi kapalı bayiye geçince seçim düştü');
+  assert.equal(sepet.odemeIskonto, 0, 've iskontosu da');
+
+  /* Açık yöntem müşteri değişince KORUNUR. */
+  sepet = M.odemeSec(sepet, 'vade');
+  sepet = M.musteriIskontosuUygula(sepet, { id: 9, unvan: 'Diğer', odemeIskontolari: { vade: 2 } }, 100);
+  assert.equal(sepet.odeme, 'vade', 'açık yöntem korunur');
+  assert.equal(sepet.odemeIskonto, 2, 'oranı yeni müşterinin tablosundan');
+});
+
+test('Faz 19: siparisDenetle kapalı yöntemi adıyla REDDEDER', () => {
+  let sepet = M.musteriIskontosuUygula(M.sepetKur(), NAKITSIZ, 100);
+  sepet = M.ekle(sepet, { id: 1, ad: 'Vida', fiyat: 10, koli_ici_adet: 1 }, 1);
+
+  /* Motoru atlatıp alanı doğrudan yazan (eski kayıt / hatalı kod) durumu. */
+  sepet.odeme = 'nakit';
+
+  const karar = M.siparisDenetle(sepet, 100);
+  assert.equal(karar.ok, false);
+  assert.ok(karar.hatalar.some(function (h) { return /Nakit ödeme yöntemi kapalı/.test(h); }), karar.hatalar.join(' | '));
+
+  sepet = M.odemeSec(sepet, 'vade');
+  assert.equal(M.siparisDenetle(sepet, 100).ok, true, 'açık yöntemle sipariş hazır');
+});

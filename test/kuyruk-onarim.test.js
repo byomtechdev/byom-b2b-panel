@@ -26,7 +26,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const MAIN = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+const MAIN = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8').replace(/\r\n?/g, '\n');
 const syncMotor = require('../src/renderer/plasiyer-sync-motor.js');
 
 /* ------------------------------------------------------------------ *
@@ -384,4 +384,62 @@ test('KAYNAK: üç onarım kanalı da kayıtlıdır', (t) => {
   ['siparis:kuyruktan-sil', 'siparis:kuyrukta-yeniden-bagla', 'musteri:kunyeden-dirilt'].forEach((k) => {
     assert.ok(MAIN.indexOf("ipcMain.handle('" + k + "'") !== -1, k + ' kanali YOK');
   });
+});
+
+/* =========================================================================
+ * FAZ 19 — siparis:kuyrukta-odeme-degistir
+ * ====================================================================== */
+
+function odemeSatiri(ek) {
+  return satir('sip-o', 44, Object.assign({
+    durum: syncMotor.ONARIM_GEREKLI, deneme: 1, hata: 'Nakit kapalı.',
+    hataKodu: 'b2b_plasiyer_odeme_kapali', izinliOdeme: ['vade', 'kart']
+  }, ek || {}));
+}
+
+test('Faz 19: kuyrukta-odeme-degistir: yöntemi değiştirir, kaydı ONARIR, eski yöntemi not eder', async (t) => {
+  const kutu = sahteAyarlar({ plasiyerSiparisKuyrugu: [odemeSatiri()] });
+  const h = handler('siparis:kuyrukta-odeme-degistir', { ayarlariOku: kutu.ayarlariOku, ayarlariYaz: kutu.ayarlariYaz, syncMotor });
+
+  const sonuc = await h(null, { yerelKimlik: 'sip-o', odeme: 'kart' });
+
+  assert.equal(sonuc.ok, true);
+  assert.equal(sonuc.eski, 'nakit');
+
+  const s = kutu.veri.plasiyerSiparisKuyrugu[0];
+
+  assert.equal(s.kayit.odeme, 'kart');
+  assert.equal(s.durum, syncMotor.BEKLIYOR, 'yeniden kuyrukta');
+  assert.equal(s.deneme, 0);
+  assert.equal(s.hataKodu, '', 'onarim kodu temizlendi');
+  assert.equal(s.odemeDegisti.eski, 'nakit');
+  assert.equal(s.odemeDegisti.yeni, 'kart');
+  assert.equal(kutu.yazma, 1, 'TEK yazma');
+  assert.equal(s.kayit.musteriId, 44, 'musteri DEGISMEDI');
+  assert.equal(s.kayit.yerelKimlik, 'sip-o', 'mukerrer korumasi (yerelKimlik) korunur');
+});
+
+test('Faz 19: kuyrukta-odeme-degistir: sunucunun KAPALI dediği yönteme geçilemez', async (t) => {
+  const kutu = sahteAyarlar({ plasiyerSiparisKuyrugu: [odemeSatiri({ izinliOdeme: ['vade'] })] });
+  const h = handler('siparis:kuyrukta-odeme-degistir', { ayarlariOku: kutu.ayarlariOku, ayarlariYaz: kutu.ayarlariYaz, syncMotor });
+
+  const sonuc = await h(null, { yerelKimlik: 'sip-o', odeme: 'kart' });
+
+  assert.equal(sonuc.ok, false);
+  assert.match(sonuc.hata, /kapalı/);
+  assert.equal(kutu.yazma, 0, 'reddedilen istek DISKE YAZMAZ');
+  assert.equal(kutu.veri.plasiyerSiparisKuyrugu[0].kayit.odeme, 'nakit');
+});
+
+test('Faz 19: kuyrukta-odeme-degistir: geçersiz yöntem, kimliksiz istek, gönderilmiş kayıt REDDEDİLİR', async (t) => {
+  const g = odemeSatiri({ durum: syncMotor.GONDERILDI, siparisId: 900 });
+  const kutu = sahteAyarlar({ plasiyerSiparisKuyrugu: [g] });
+  const h = handler('siparis:kuyrukta-odeme-degistir', { ayarlariOku: kutu.ayarlariOku, ayarlariYaz: kutu.ayarlariYaz, syncMotor });
+
+  assert.equal((await h(null, { yerelKimlik: 'sip-o', odeme: 'havale' })).ok, false, 'gecersiz yontem');
+  assert.equal((await h(null, { odeme: 'kart' })).ok, false, 'kimliksiz');
+  assert.equal((await h(null, null)).ok, false, 'bos govde');
+  assert.equal((await h(null, { yerelKimlik: 'sip-o', odeme: 'kart' })).ok, false, 'gonderilmis siparis degistirilemez');
+  assert.equal((await h(null, { yerelKimlik: 'yok', odeme: 'kart' })).durum, 404);
+  assert.equal(kutu.yazma, 0);
 });

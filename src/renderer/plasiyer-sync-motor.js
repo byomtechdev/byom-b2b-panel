@@ -58,10 +58,14 @@
    *
    * KOD ŞARTTIR, durum kodu tek başına yetmez: "bilmediğim bir 404" için
    * onarım kapısı açmak, kullanıcıya çözemeyeceği bir düğme göstermek olurdu.
-   * Bugün tek üye: müşterisi sunucudan silinmiş sipariş
-   * (B2B_REST_Plasiyer::siparis_olustur → 404 b2b_plasiyer_musteri_yok).
+   * Üyeler ve EYLEM DÜĞMELERİ (her koda karşılık bir düğme yazılır — yoksa
+   * kullanıcı yine çaresiz kalır):
+   *   · b2b_plasiyer_musteri_yok   (404) müşterisi sunucudan silinmiş sipariş
+   *       → [Yeniden Oluştur] [Başka Müşteriye Bağla] [Sil]
+   *   · b2b_plasiyer_odeme_kapali  (400, Faz 19) yönetici bu bayiye o ödeme
+   *       yöntemini sipariş kuyruktayken kapattı → [Ödeme Yöntemini Değiştir] [Sil]
    */
-  var ONARIM_KODLARI = ['b2b_plasiyer_musteri_yok'];
+  var ONARIM_KODLARI = ['b2b_plasiyer_musteri_yok', 'b2b_plasiyer_odeme_kapali'];
 
   /* ------------------------------------------------------------------ *
    *  YARDIMCILAR
@@ -130,6 +134,20 @@
     var tur = retTuru(cevap);
 
     kayit.hata = String((cevap && cevap.hata) || 'Gönderilemedi.');
+
+    /*
+     * Sunucu kodu satırda SAKLANIR (Faz 19): şerit hangi onarım düğmesini
+     * basacağını buna bakarak seçer. Ödeme yöntemi reddinde sunucu AÇIK
+     * yöntemleri de söyler (`data.izinli`); seçici bundan kurulur, ikinci
+     * bir istek atılmaz.
+     */
+    kayit.hataKodu = String((cevap && cevap.kod) || '');
+
+    var veri = cevap && cevap.veri && cevap.veri.data;
+
+    if ('b2b_plasiyer_odeme_kapali' === kayit.hataKodu && veri && Array.isArray(veri.izinli)) {
+      kayit.izinliOdeme = veri.izinli.map(String);
+    }
 
     /*
      * ONARIM: deneme hakkı YAKILMAZ. Sebep insanın düzeltmesini beklemek;
@@ -203,6 +221,8 @@
     kayit.durum = BEKLIYOR;
     kayit.deneme = 0;
     kayit.hata = '';
+    kayit.hataKodu = '';
+    delete kayit.izinliOdeme;
 
     return true;
   }

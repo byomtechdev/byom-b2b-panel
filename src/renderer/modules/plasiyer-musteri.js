@@ -257,6 +257,13 @@
           /* Faz 9 — bileşik iskontonun iki girdisi sunucudan gelir. */
           iskonto: Number(b.iskonto) || 0,
           odemeIskontolari: (b.odemeIskontolari && 'object' === typeof b.odemeIskontolari) ? b.odemeIskontolari : {},
+          /* ÖDEME YÖNTEMİ YETKİLERİ (Faz 19) — yönetici bu bayiye bir yöntemi
+             kapattıysa düğmesi saha ekranında HİÇ basılmaz. Alan yoksa (eski
+             eklenti) null kalır ve motor üç yöntemi de açık sayar. */
+          odemeIzinleri: (b.odemeIzinleri && 'object' === typeof b.odemeIzinleri) ? b.odemeIzinleri : null,
+          /* Bayiye özel oran/yetki VAR: sıfır oranlar BİLİNÇLİDİR, oturum
+             varsayılanıyla doldurulmaz (odemeTablosunuTamamla). */
+          odemeOzelAyar: !!b.odemeOzelAyar,
           /* TESLİM ŞUBELERİ (Faz 16-E) — bayi yükünde gelir; müşteri seçilir
              seçilmez kutu dolsun diye ikinci istek atılmaz. Eski eklenti
              alanı göndermez: boş dizi kalır ve kutu hiç basılmaz. */
@@ -753,6 +760,15 @@
    */
   function odemeTablosunuTamamla(m) {
     if (!m || 'object' !== typeof m) return m;
+
+    /*
+     * BAYİYE ÖZEL AYAR (Faz 19): yönetici bu bayiye oran/yetki tanımladıysa
+     * sunucunun gönderdiği tablo KESİNDİR — kapalı yöntemin %0'ı da, "bu
+     * bayiye kart iskontosu yok" diye bilerek girilmiş %0 da. Kurumsal
+     * varsayılanla doldurmak, plasiyerin sunucunun uygulamayacağı bir
+     * iskontoyu müşteriye söylemesi olurdu (2.21.0'da kapatılan hata sınıfı).
+     */
+    if (m.odemeOzelAyar) return m;
 
     var tablo = m.odemeIskontolari;
     var dolu = tablo && 'object' === typeof tablo &&
@@ -1269,10 +1285,23 @@
    * @param {object} s Sepet.
    * @returns {string} HTML
    */
+  function kapaliYontemNotu(musteri) {
+    var mot = M();
+    var acik = mot.izinliYontemler(musteri);
+    var kapali = mot.ODEME_YONTEMLERI.filter(function (y) { return acik.indexOf(y) === -1; });
+
+    if (!kapali.length) return '';
+
+    return '<div class="mt-2 px-1 text-xs font-bold text-slate-500 dark:text-slate-400" data-kapali-yontem>' +
+           '🔒 Bu müşteri için yönetici tarafından kapatılan ödeme yöntemi: ' +
+           kacis(kapali.map(function (y) { return mot.ODEME_ETIKET[y]; }).join(', ')) +
+           '</div>';
+  }
+
   function odemeIskontoSeridi(s) {
     var mot = M();
     var musteri = durumM.secili;
-    var oranlar = mot.ODEME_YONTEMLERI.map(function (y) { return mot.odemeIskontosu(musteri, y); });
+    var oranlar = mot.izinliYontemler(musteri).map(function (y) { return mot.odemeIskontosu(musteri, y); });
     var hicOranYok = !oranlar.some(function (o) { return Number(o) > 0; });
 
     /* Hiçbir yöntemde oran yoksa: bu bir ayar sorunudur, kullanıcı bilmeli. */
@@ -1338,8 +1367,14 @@
       /* ÖDEME — ÜÇ SEÇENEK, fazlası yok (şirket politikası). Her düğme o
          yöntemin iskontosunu da söyler: seçim tutarı DEĞİŞTİRİR. */
       '<div class="mt-6 text-sm font-bold text-slate-600 dark:text-slate-300">Ödeme Yöntemi *</div>' +
-      '<div class="mt-2 grid grid-cols-3 gap-2">' +
-        M().ODEME_YONTEMLERI.map(function (y) {
+      /*
+       * YALNIZCA İZİNLİ YÖNTEMLER (Faz 19). Yöneticinin bu bayiye kapattığı
+       * yöntemin düğmesi BASILMAZ — gizlenmiş/soluk bir düğme bile "belki
+       * seçilir" diye okunur. Altındaki tek satır plasiyerin müşteriye
+       * "neden nakit yok?" sorusunu cevaplayabilmesi içindir; seçenek sunmaz.
+       */
+      '<div class="mt-2 grid ' + ({ 1: 'grid-cols-1', 2: 'grid-cols-2' }[M().izinliYontemler(durumM.secili).length] || 'grid-cols-3') + ' gap-2">' +
+        M().izinliYontemler(durumM.secili).map(function (y) {
           var oran = M().odemeIskontosu(durumM.secili, y);
 
           return '<button type="button" class="odeme-sec px-4 py-4 rounded-xl border-2 font-extrabold transition ' +
@@ -1354,6 +1389,7 @@
           '</button>';
         }).join('') +
       '</div>' +
+      kapaliYontemNotu(durumM.secili) +
 
       /*
        * ÖDEME İSKONTOSU — RAKAMSAL, DÜĞMELERİN ALTINDA (Faz 15).
@@ -1728,7 +1764,31 @@
 
     var eylemler = '';
 
-    if (onarim) {
+    /*
+     * ÖDEME YÖNTEMİ KAPALI (Faz 19): yönetici bu bayiye yöntemi sipariş
+     * kuyruktayken kapattı. Müşteri onarımı (dirilt / bağla) burada
+     * ANLAMSIZDIR — müşteri doğru, yöntem yanlış. Seçici sunucunun AÇIK
+     * dediği yöntemlerden kurulur; liste gelmediyse müşterinin bilinen
+     * izinlerinden.
+     */
+    if (onarim && 'b2b_plasiyer_odeme_kapali' === satir.hataKodu) {
+      var acikYontemler = (Array.isArray(satir.izinliOdeme) && satir.izinliOdeme.length)
+        ? satir.izinliOdeme.filter(function (y) { return M().odemeGecerliMi(y) && y !== satir.kayit.odeme; })
+        : M().izinliYontemler(musteriBul(satir.kayit.musteriId)).filter(function (y) { return y !== satir.kayit.odeme; });
+
+      eylemler =
+        '<div class="w-full flex items-center gap-2 flex-wrap pt-2 mt-1 border-t border-red-200 dark:border-red-900">' +
+          (acikYontemler.length
+            ? '<select class="kuyruk-odeme-sec px-2 py-1 rounded-lg border-2 border-slate-300 dark:border-slate-600 dark:bg-slate-900 text-sm font-semibold">' +
+                acikYontemler.map(function (y) {
+                  return '<option value="' + kacis(y) + '">' + kacis(M().ODEME_ETIKET[y] || y) + '</option>';
+                }).join('') +
+              '</select>' +
+              '<button type="button" class="kuyruk-odeme px-3 py-1.5 rounded-lg bg-marka-700 text-white text-xs font-extrabold hover:bg-marka-600 transition">💳 Ödeme Yöntemini Değiştir</button>'
+            : '<span class="text-xs font-bold text-red-700 dark:text-red-300">Bu müşteri için açık başka ödeme yöntemi yok — yöneticiyle görüşün.</span>') +
+          '<button type="button" class="kuyruk-sil ml-auto px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-extrabold hover:bg-red-500 transition">🗑️ Siparişi Sil</button>' +
+        '</div>';
+    } else if (onarim) {
       /* Künye yedeği YOKSA düğme hiç basılmaz: 2.2.0 öncesi köprülenen
          kayıtlarda yedek yoktur ve boş bir müşteri açmak isimsiz cari üretirdi
          (Faz 11'in "çalışan/çalışmayan ayar" reddiyle aynı ilke). */
@@ -1756,7 +1816,12 @@
         '<div class="font-bold">' + kacis(kuyrukMusteriAdi(satir)) +
           ' <span class="text-xs font-semibold text-slate-500">' + kacis(zamanYaz(satir.zaman)) + '</span></div>' +
         '<div class="text-sm text-slate-600 dark:text-slate-300">' +
-          kalem + ' kalem · net ' + kacis(paraYaz(t.genelToplam || 0)) +
+          kalem + ' kalem · ' +
+          /* Ödeme yöntemi kuyrukta DEĞİŞTİYSE ekrandaki net eski yöntemin
+             iskontosuyla hesaplanmıştır: uydurulmaz, "merkezde" denir. */
+          (satir.odemeDegisti
+            ? 'net merkezde yeniden hesaplanacak (ödeme yöntemi değişti)'
+            : 'net ' + kacis(paraYaz(t.genelToplam || 0))) +
           ' · ' + kacis(M().ODEME_ETIKET[satir.kayit.odeme] || satir.kayit.odeme || '') +
         '</div>' +
         (satir.hata ? '<div class="text-xs font-semibold ' + (sorunlu ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300') + '">' + (sorunlu ? '⛔ ' : '⏳ ') + kacis(satir.hata) + '</div>' : '') +
@@ -1797,6 +1862,35 @@
       var bagla = sat.querySelector('.kuyruk-bagla');
       var tekrar = sat.querySelector('.kuyruk-tekrar');
       var sil = sat.querySelector('.kuyruk-sil');
+      var odemeDegis = sat.querySelector('.kuyruk-odeme');
+
+      if (odemeDegis) {
+        odemeDegis.addEventListener('click', async function () {
+          var sec = sat.querySelector('.kuyruk-odeme-sec');
+          var yeni = sec ? String(sec.value || '') : '';
+
+          if (!yeni) {
+            bildir('Önce yeni ödeme yöntemini seçin.', 'hata');
+            return;
+          }
+
+          /* Yöntem değişince İSKONTO DA değişir: müşteriyle teyit edilmeli. */
+          var onay = await onayla(
+            'Ödeme Yöntemi Değiştirilecek',
+            'Siparişin ödeme yöntemi ' + (M().ODEME_ETIKET[yeni] || yeni) + ' olarak değiştirilecek.\n\n' +
+            'Ödeme yöntemi iskontosu değişebilir; kesin tutar merkezde hesaplanır.\n' +
+            'Müşteriyle teyit ettiniz mi?',
+            'EVET, DEĞİŞTİR',
+            false
+          );
+
+          if (!onay) return;
+
+          onarimIstegi('siparis:kuyrukta-odeme-degistir', { yerelKimlik: yerel, odeme: yeni }, function () {
+            return 'Ödeme yöntemi ' + (M().ODEME_ETIKET[yeni] || yeni) + ' oldu; sipariş eşitlemede merkeze gidecek.';
+          });
+        });
+      }
 
       if (dirilt) {
         dirilt.addEventListener('click', function () {
@@ -2079,7 +2173,11 @@
           '<div class="text-xs font-bold text-slate-500">BAYİ İSKONTOSU</div>' +
           '<div class="text-2xl font-black">%' + kacis(yuzdeYaz(m.iskonto)) + '</div>' +
           '<div class="text-xs text-slate-500 mt-1">Ödeme: ' +
-            M().ODEME_YONTEMLERI.map(function (y) { return kacis(M().ODEME_ETIKET[y]) + ' %' + kacis(yuzdeYaz(M().odemeIskontosu(m, y))); }).join(' · ') +
+            M().ODEME_YONTEMLERI.map(function (y) {
+              return M().izinliYontemler(m).indexOf(y) === -1
+                ? kacis(M().ODEME_ETIKET[y]) + ' 🔒 kapalı'
+                : kacis(M().ODEME_ETIKET[y]) + ' %' + kacis(yuzdeYaz(M().odemeIskontosu(m, y)));
+            }).join(' · ') +
           '</div>' +
         '</div>' +
         '<div class="p-4 rounded-xl ' + (Number(m.acikBakiye) > 0 ? 'bg-red-50 dark:bg-red-950/30' : 'bg-slate-50 dark:bg-slate-900/50') + '">' +

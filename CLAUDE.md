@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.7.0** (Faz 16-E).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.10.0** (Faz 19).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -91,6 +91,9 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/modules/harita-kokpit.js`** | **Faz 13:** yönetici kartı tıklanınca **mevcut** `window.bayiDetayiAc` profil modalı açılır (ikinci kopya yok); saha kabuğunda **bilerek** tıklanamaz (→ §4.17.8). **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. **Faz 10:** `yollariBesle()` — gerçek `<path>` sınırlar. **Faz 12: FABRİKA** `olustur({kip, kapId, onek})` → `window.HaritaKokpit` (yönetici, renk hâkimiyeti + lejant + zengin kartlar) ve `window.SahaHarita` (plasiyer, `plasiyer:harita`, kendi illeri/bayileri, kart kısayolları). `sekmeAc` sarmalı yalnızca saha örneği için (→ §4.16) | — |
 | **`src/renderer/modules/plasiyer-ziyaret.js`** | **Saha ziyaret notu** (Faz 3): plasiyerin not girişi (İSTEĞE BAĞLI) + patron yanıtlarının düştüğü bildirim zili. `PlasiyerMusteri.seridiCiz`'i SARAR | — |
 | **`src/renderer/modules/plasiyer-siparislerim.js`** | **Kendi Siparişlerim — bağımsız saha şablonu** (Faz 10): `plasiyer:get-orders` ile **sunucudan daraltılmış** liste (`GET /plasiyer/siparislerim`), kartta TEK eylem `[📄 Sipariş / Fiş Detayı]`, kuyruk şeridi (`PlasiyerMusteri.kuyrukSeridiniCiz`). Yönetici sipariş isteği **hiç atılmaz**. **Faz 14:** detayda `.sk-iptal` / `.sk-sil` (→ `plasiyer:siparis-iptal` / `plasiyer:siparis-sil`), fiş `pencere()` ile (Yazdır · PDF · WhatsApp · Kapat) (→ §4.18). `sekmeAc`'ı SARAR (→ §4.14) | — |
+| **`src/renderer/revize-onizleme.js`** | **Revize önizleme motoru** (Faz 19, DOM'suz, çift modlu): `tutarlar` (**sunucu `B2B_Ucret_Motoru::tutarlar` ikizi** — 500 vakada kuruşu kuruşuna karşılaştırılır), `birimHesapla` (iskonto revizesi listeden, KDV kipi iki yönlü ve yalnızca farklıysa), `hesapla` (taban · bayi · ödeme · kargo · toplam; belirsiz oranda iki satır da sabit) (→ §4.25) | `node --test` altında koşar |
+| **`src/renderer/revizyon-gecmisi.js`** | **Revize geçmişi çizicisi** (Faz 19, DOM'suz): `html(kayitlar)` — önce/sonra yan yana, eski değer kırmızı + üstü çizili, yeni yeşil, en yeni üstte; fark SUNUCUDAN (ikinci fark motoru yok); bütün metin kaçışlanır (→ §4.25) | `node --test` / `<script src>` |
+| **`src/renderer/modules/iskonto-denetimi.js`** | **Ayarlar › Geçmiş Sipariş İskonto Denetimi** (Faz 19): `GET maintenance/fee-audit` kuru denetim (sayfa sayfa), seçilenleri onaylı `POST`; formül YOK (→ §4.25.4) | — |
 | **`src/renderer/siparis-fisi.js`** | **Kurumsal sipariş fişi motoru** (Faz 12, DOM'suz, çift modlu): `normalle` (yönetici / plasiyer / ham `prepare_order`), `html` (A4 / 80 mm termal, inline CSS), `whatsappMetni` (kalın başlıklar, koli×adet, iskontolar, net, ≤ 1800 kr), `waTelefon`, `waAdresi`, `paraYaz`. **Faz 13:** KDV sütunları + `KDV UYGULANMADI` bloğu; **KDV yeniden HESAPLANMAZ**, sunucudan geleni basar (→ §4.17.4). **Faz 14:** sabit 8 sütun + kalem `listeBirim`; **`ozetBlogu`** (altı sabit satır — depo fişi de bunu çağırır), **`sayfalaraBol`** (sabit sayfa ölçüsü), **`aracCubugu` + `pencere`** (Yazdır · PDF · WhatsApp · Kapat; `html()` saf kalır) (→ §4.18). İki kabuk aynı fişi basar (→ §4.16.4) | `node --test` altında koşar |
 | **`src/renderer/modules/plasiyer-performansim.js`** | **Performansım** (Faz 11): saha 4. sekmesi — TEK IPC `plasiyer:performans` ile gün/7 gün/30 gün sipariş + net ciro kartları, bayi katkı çubukları (`scaleX`), il dağılımı; yönetici uçlarına gidilmez; `sekmeAc`'ı SARAR (→ §4.15) | — |
 | **`src/renderer/modules/plasiyer-otosync.js`** | **Otomatik eşitleme tetikleyicisi** (Faz 4): `online` olayı + 60 sn hafif yoklama + `visibilitychange`. Kuyruk boşsa **ağa çıkmaz**, hata sessizdir (→ §4.7) | — |
@@ -137,6 +140,8 @@ modules/plasiyer-yonetimi.js   ← sekmeAc'ı SARAR      (4226)
 ─── Plasiyer Faz 2 ────────────────────────────────────────────
 src/renderer/plasiyer-siparis-motor.js  ← DOM'suz; vitrinden ÖNCE  (4233)
 src/renderer/siparis-fisi.js            ← Faz 12: DOM'suz fiş motoru; modüllerden ÖNCE
+src/renderer/revize-onizleme.js         ← Faz 19: DOM'suz; revize penceresi çağrı anında okur
+src/renderer/revizyon-gecmisi.js        ← Faz 19: DOM'suz; geçmiş penceresi çağrı anında okur
 modules/plasiyer-vitrin.js  ← sekmeAc'ı SARAR         (4234)
 modules/plasiyer-musteri.js ← vitrinin sepetini okur → ondan SONRA (4235)
 modules/plasiyer-siparislerim.js ← Faz 10: musteri'nin kuyruk şeridini çağırır → ondan SONRA
@@ -191,7 +196,7 @@ listeye **elle** eklemen gerekir.
 | `katalog:` | `main.js` § 3.7 | `katalog:guncelle` (sunucudan eşitle + görsel kuyruğu), `katalog:ara` (**AĞA ÇIKMAZ**, yerel indeks; **Faz 13:** yanıt `toplam` + `ofset` taşır → §4.17.2), `katalog:kategoriler`, `katalog:urun`, `katalog:barkod`, `katalog:durum` |
 | `gorsel:` | `main.js` § 3.7 | `gorsel:onbellege-al` (indirmeyi tetikle), `gorsel:yol` (yerel `file://` ya da uzak adres — **base64 DÖNMEZ**) |
 | `sync:` | `main.js` § 3.8 | `sync:esitle` (kuyruğu boşalt — **sıra: müşteri → köprü → sipariş → not**), `sync:durum` (bekleyen/hatalı sayıları) |
-| `siparis:` / `musteri:` **onarım** | `main.js` § 3.8 | **Faz 16-A:** `siparis:kuyruktan-sil` (kuyruktan düşür; gönderilmiş silinemez), `siparis:kuyrukta-yeniden-bagla` (hedefi değiştir + sayacı sıfırla; **geçici kimliğe bağlanamaz**), `musteri:kunyeden-dirilt` (künye yedeğinden yeni geçici müşteri açar, **aynı ölü kimliğe bağlı bütün** bekleyen sipariş/notu ona taşır; künye yoksa **reddeder**) |
+| `siparis:` / `musteri:` **onarım** | `main.js` § 3.8 | **Faz 16-A:** `siparis:kuyruktan-sil` (kuyruktan düşür; gönderilmiş silinemez), `siparis:kuyrukta-yeniden-bagla` (hedefi değiştir + sayacı sıfırla; **geçici kimliğe bağlanamaz**), `musteri:kunyeden-dirilt` (künye yedeğinden yeni geçici müşteri açar, **aynı ölü kimliğe bağlı bütün** bekleyen sipariş/notu ona taşır; künye yoksa **reddeder**), **`siparis:kuyrukta-odeme-degistir`** (Faz 19: `b2b_plasiyer_odeme_kapali` reddinde yöntemi değiştirir; sunucunun kapalı dediği yönteme geçilemez, gönderilmiş değiştirilemez, satır `odemeDegisti` ile işaretlenir) |
 | `ziyaret:` | `main.js` § 3.8 | `ziyaret:kuyruga` (notu **önce diske** yaz) |
 | `siparis:` / `musteri:` | `main.js` § 3.8 | `siparis:kuyruga`, `musteri:kuyruga` (Faz 9: kuyruğa ekleme ana süreçte, oku-değiştir-yaz yarışı yok), **`musteri:esitle-tek`** (Faz 10: çevrimiçiyken tek müşteriyi hemen `POST /plasiyer/musteri-esitle`; başarıda `senkron/gercekId` işaretlenir, kayıt bir sonraki turda köprülenir/temizlenir), **`musteri:kuyruktan-sil`** (Faz 11: yalnızca `temp_musteri_` + eşitlenmemiş kayıt; bekleyen sipariş/not varsa RET), **`musteri:kuyrukta-guncelle`** (Faz 13: ÇEVRİMDIŞI kaydı cihazda düzenler — kimlik `GECICI_ONEK` ile başlamalı ve kayıt eşitlenmemiş olmalı; **beyaz listeli alanlar**, `id`/`gecici`/`senkron`/`gercekId` gövdeden ALINMAZ, mevcut kayıttan geri yazılır), **`musteri:guncelle`** (Faz 13: sunucudaki bayi → `POST /plasiyer/musteri-guncelle`; `plasiyerId`/`token` ana süreç belleğinden EZİLİR) |
 
@@ -1893,6 +1898,75 @@ kök `CLAUDE.md §10 Faz 16-E`.
 
 ---
 
+## 4.25 Faz 19 — Revize penceresi (ürün ekle · ara kayıt · iskonto kırılımı), revize geçmişi, ödeme yetkileri, iskonto denetimi
+
+Panel **2.10.0** · eklenti **2.28.0** → `../BYOM-REGISTRY.md §5.53`, kök `CLAUDE.md §10 Faz 19`.
+
+### 4.25.1 Revize penceresi
+
+| Ne | Yer |
+|---|---|
+| **ÜRÜN EKLE** kutusu (`#revizeEkleKutu`, `#revizeUrunAra`, `#revizeAramaSonuc`) — 300 ms gecikmeli arama, **yalnızca en son aramanın yanıtı çizilir** (`revizeAramaSirasi`), varyasyonlu ürün için "Varyasyonları Göster" | `index.html`, `renderer.js → revizeUrunAra/revizeAramaSonuclariniCiz/revizeVaryasyonlariGetir` |
+| Yeni satır `data-revize-satir="y1" data-revize-yeni="1"` (+ `data-urun-id`/`data-varyasyon-id`/`data-ad`/`data-kod`); `[✕ ÇIKAR]` (`data-revize-cikar`) satırı pencereden kaldırır | `revizeYeniSatirHtml`, olay bağlama |
+| Fiyat siparişin **kendi modelinden** (`revizeYeniBirim`): bayi iskontosu ücret satırındaysa (saha) **liste**, değilse liste × (1 − mühürlü oran); KDV hariç siparişte KDV düşülmüş — sunucu (`urun_ekle`) aynı kuralla fiyatlar | `renderer.js` |
+| **Birleştirme**: aynı ürün + varyasyon varsa adet +1; **kaldırılacak satırla birleşmez** (sunucu kuralı) | `revizeUrunEkle` |
+| **ARA KAYDET** (`#revizeAraKaydet`) → `revizeyiOnayla(btn, { ara: true })`: `status:''` + `notify:false` **her zaman**, pencere açık, taze siparişle yeniden kurulur, `#revizeBilgi` ne yapıldığını yazar | `renderer.js`, `index.html` |
+| Gövde: mevcut satır `{id, quantity}` / `{id, quantity:0, remove:true}` (**şekil değişmedi**), eklenen `{product_id, variation_id?, quantity}`; adedi 0 olan yeni satır **gitmez**; eklentisiz yolda ürün ekleme **reddedilir** (yaklaşık fiyat yok) | `revizeyiOnayla` |
+| **İskonto kırılımı** (`data-revize-ozet-kalemler/bayi/odeme`, `data-revize-genel-toplam`): `window.RevizeOnizleme.hesapla` — sunucu motorunun ikizi; "şu an −3.520,92 → güncel kalemlerden yeniden hesaplanacak". Motor yüklenemezse kırılım basılmaz, satır toplamı gösterilir (graceful) | `src/renderer/revize-onizleme.js` |
+| 🔴 **KDV çift bölme düzeltmesi**: KDV hariç sipariş yeniden açılınca önizleme fiyatı ikinci kez bölüyordu. Kip artık iki yönlü (`kipCevir`) ve yalnızca hedef ≠ mevcut iken dönüştürür; "Eklenecek KDV" ters yön | `revizeToplamiTazele` |
+| **REVİZE GEÇMİŞİ**: kart düğmesi `data-eylem="revize-gecmis"` (yalnızca `revizeGecmisSayisi > 0`) + pencere başlığında `#revizeGecmisAc` → `#revizeGecmisKatman` (`data-kabuk="admin"`, z-50) → `GET orders/{id}/revision-history` → `window.RevizyonGecmisi.html` | `renderer.js → revizeGecmisiAc`, `src/renderer/revizyon-gecmisi.js` |
+
+**Normalleştirici ekleri:** kalemde `varyasyonId`, siparişte `revizeGecmisSayisi`
+(`revision.history_count`).
+
+> ⚠️ `revize-kaldir` / `revize-iskonto` / `revize-urun-ekle` DOM testleri
+> fonksiyonları `renderer.js`'ten **keser**. İmza `revizeyiOnayla(buton, secenek)`
+> oldu; yeni yardımcı eklerken `kes(...)` listelerine de ekle (→ §4.19 uyarısı).
+
+### 4.25.2 Bayi kartı — Ödeme Yöntemi Yetkileri
+
+`bayiOdemeYetkiHtml(u)` iskonto kartının **içinde** (kart tıklaması bayi penceresini
+açmasın): üç onay kutusu (`data-odeme-izin`), özel oran (`data-odeme-oran`, boş =
+"Genel: %X" yer tutucusu), sunucunun UYGULADIĞI oran (`data-odeme-uygulanan`),
+çelişki uyarısı (`data-odeme-celiski`). Kayıt `bayiOdemeYetkiKaydet` →
+`PUT dealers/{id}` `{ odeme_izinleri, odeme_oranlari }`; sunucu özeti esas alınır.
+Eski eklenti (`odeme_kurallari` yok) → blok **hiç basılmaz**. Üçünü kapatmak ve
+geçersiz oran **ağa çıkmadan** reddedilir.
+
+**Düzeltme:** `bayiMinTutarKaydet` tanımsız `durumYaz` çağırıyordu (yalnızca
+`bayiIskontoKaydet`'in içinde tanımlı) → eklenti kapalıyken `ReferenceError`,
+kullanıcıya hiçbir şey söylenmiyordu. Yerel yazıcı eklendi; regresyon testi var.
+
+### 4.25.3 Saha — kapalı yöntem
+
+| Ne | Yer |
+|---|---|
+| `odemeIzinliMi(musteri, yontem)` (alan yoksa AÇIK, yalnızca açık `false` kapatır) · `izinliYontemler()` (hepsi kapalı görünürse üçü — sunucunun çelişki kuralı) · `odemeSec` kapalıyı temizler · müşteri değişince kapalı yöntem taşınmaz · `siparisDenetle` adıyla reddeder | `plasiyer-siparis-motor.js` |
+| Tamamlama perdesinde **yalnızca izinli düğmeler basılır**, ızgara sayıya göre, `[data-kapali-yontem]` notu; profil kartında "🔒 kapalı" | `plasiyer-musteri.js` |
+| Yükte `odemeIzinleri` + `odemeOzelAyar`; **özel ayarlı bayinin bilinçli %0'ı** `odemeTablosunuTamamla` ile kurumsal varsayılanla **ezilmez** | `plasiyer-musteri.js` |
+| Kuyruk: `b2b_plasiyer_odeme_kapali` artık **ONARIM** kodu; `hataIsle` `hataKodu` + `izinliOdeme` (sunucunun `data.izinli`) saklar, `kayitOnar` temizler; şerit bu kodda müşteri onarımı yerine `.kuyruk-odeme-sec` + `[💳 Ödeme Yöntemini Değiştir]` (onaylı) | `plasiyer-sync-motor.js`, `plasiyer-musteri.js` |
+| `siparis:kuyrukta-odeme-degistir {yerelKimlik, odeme}` — geçersiz yöntem / kimliksiz / gönderilmiş / sunucunun kapalı dediği yöntem **reddedilir**, reddedilen istek diske yazmaz; satır `odemeDegisti` ile işaretlenir ve eski net uydurulmaz ("merkezde yeniden hesaplanacak") | `main.js § 3.8` |
+
+### 4.25.4 Ayarlar › Geçmiş Sipariş İskonto Denetimi
+
+`#iskontoDenetimKart` (Lisans & Bakım kartının altında) + `src/renderer/modules/iskonto-denetimi.js`
+(`window.IskontoDenetimi`). `[Siparişleri Denetle]` → `GET maintenance/fee-audit`
+sayfa sayfa (50 × en çok 60) — **hiçbir şey yazılmaz**; satırlarda eski → yeni
+iskonto ve toplam. Varsayılan seçim **yalnızca "düzeltilecek"**; belirsiz / iadeli /
+hatalı **seçilemez**. `[Seçilenleri Düzelt]` toplam farkı söyleyen onaydan sonra
+`POST` (100'lük paket). Formül modülde **yok** (kaynak testi).
+
+### Bozmaman gereken sözler (Faz 19)
+- Revize gövdesinde mevcut satırın şekli `{id, quantity}` kalır; ürün ekleme ayrı öğe.
+- ARA KAYDET durumu **asla** göndermez.
+- `RevizeOnizleme.tutarlar` ↔ `B2B_Ucret_Motoru::tutarlar` birebir (test 500 vaka).
+- KDV dönüşümü yalnızca hedef kip ≠ mevcut kip iken.
+- Kapalı ödeme yöntemi saha ekranında **basılmaz** (gizlenmez).
+- `odemeOzelAyar` olan bayinin tablosu varsayılanla doldurulmaz.
+- Denetim aracı kuru çalışır; "hepsini düzelt" düğmesi yoktur.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -1900,10 +1974,10 @@ kök `CLAUDE.md §10 Faz 16-E`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**918 test**: panel 379 + kök 539).
+İkisini birden `../scripts/check-all.js` koşar (**1.095 test**: panel 429 + kök 644 + hub 22).
 
 ```bash
-# Bu submodule'un kendi birim testleri (323 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (429 test) — Electron GEREKMEZ
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
@@ -1956,6 +2030,10 @@ node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki ro
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
 node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
+node --test scripts/tests/revize-urun-ekle.dom.test.js # 17 — Faz 19: ürün ekle, ARA KAYDET, iskonto kırılımı, KDV çift bölme, geçmiş penceresi
+node --test scripts/tests/revize-onizleme.test.js     # 11 — Faz 19: önizleme motoru (PHP_BIN verilirse sunucu motoruyla 500 vaka)
+node --test scripts/tests/odeme-yetki.dom.test.js     # 12 — Faz 19: bayi kartı ödeme yetkileri + bayiMinTutarKaydet regresyonu
+node --test scripts/tests/iskonto-denetimi.dom.test.js # 9 — Faz 19: Ayarlar › geçmiş sipariş iskonto denetimi
 node --test scripts/tests/sube-panel.dom.test.js      # 11 — Faz 16-E: şube seçici, ana müşteri değişmez, adsız kayıt ağa çıkmaz
 node --test scripts/tests/php-sube.test.js            # 65 iddia — Faz 16-E: şube motoru, fatura adresi değişmez (PHP)
 node --test scripts/tests/kunye-tablo.test.js         # 7  — Faz 16-D: uzun ad tabloyu taşırmaz, barkod SKU'dan ayrı
@@ -1976,7 +2054,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (918 test)
+# Bitirirken: üç katmanın tamamı (1.095 test)
 node scripts/check-all.js
 ```
 
@@ -2057,7 +2135,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 191 php / 115 js / 918 test
+cd .. && node scripts/check-all.js     # 0 hata / 202 php / 143 js / 1.095 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.
