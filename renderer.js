@@ -174,10 +174,20 @@ function bildir(mesaj, tur) {
 
 /** Büyük butonlu onay penceresi. Promise<boolean> döner. */
 function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
+  /*
+   * TEK PENCERE (Faz 21 — canlı #6503). Açık bir onay varken yeni onay
+   * istenirse önceki VAZGEÇİLDİ sayılır. Eskiden her çağrı ortak EVET
+   * düğmesine bir dinleyici daha ekliyordu: tek tıklama bekleyen bütün
+   * onayları birden "evet" sayıyor, aynı revize üst üste gönderiliyordu.
+   * Durum fonksiyonun kendi özelliğinde tutulur (genel değişken açılmaz).
+   */
+  if ('function' === typeof onayla.acik) onayla.acik(false);
+
   return new Promise(function (cozumle) {
     const katman = $('#modalKatman');
     const tamamBtn = $('#modalTamam');
     const vazgecBtn = $('#modalVazgec');
+    let bitti = false;
 
     $('#modalBaslik').textContent = baslik;
     $('#modalMesaj').textContent = mesaj;
@@ -189,6 +199,9 @@ function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
     tamamBtn.focus();
 
     function kapat(sonuc) {
+      if (bitti) return;
+      bitti = true;
+      if (onayla.acik === kapat) onayla.acik = null;
       katman.classList.add('hidden');
       tamamBtn.removeEventListener('click', evet);
       vazgecBtn.removeEventListener('click', hayir);
@@ -205,6 +218,7 @@ function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
     vazgecBtn.addEventListener('click', hayir);
     katman.addEventListener('mousedown', disariTikla);
     document.addEventListener('keydown', tusla);
+    onayla.acik = kapat;
   });
 }
 
@@ -213,11 +227,15 @@ function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
  * Promise<string|null> döner — VAZGEÇ'te null.
  */
 function metinSor(baslik, mesaj, varsayilan, tamamMetni) {
+  /* Tek pencere (Faz 21): açık olan vazgeçildi sayılır — bkz. onayla(). */
+  if ('function' === typeof metinSor.acik) metinSor.acik(null);
+
   return new Promise(function (cozumle) {
     const katman = $('#metinModalKatman');
     const girdi = $('#metinModalGirdi');
     const tamamBtn = $('#metinModalTamam');
     const vazgecBtn = $('#metinModalVazgec');
+    let bitti = false;
 
     $('#metinModalBaslik').textContent = baslik;
     $('#metinModalMesaj').textContent = mesaj || '';
@@ -228,6 +246,9 @@ function metinSor(baslik, mesaj, varsayilan, tamamMetni) {
     setTimeout(function () { girdi.focus(); }, 30);
 
     function kapat(sonuc) {
+      if (bitti) return;
+      bitti = true;
+      if (metinSor.acik === kapat) metinSor.acik = null;
       katman.classList.add('hidden');
       tamamBtn.removeEventListener('click', evet);
       vazgecBtn.removeEventListener('click', hayir);
@@ -248,6 +269,7 @@ function metinSor(baslik, mesaj, varsayilan, tamamMetni) {
     vazgecBtn.addEventListener('click', hayir);
     katman.addEventListener('mousedown', disariTikla);
     document.addEventListener('keydown', tusla);
+    metinSor.acik = kapat;
   });
 }
 
@@ -258,12 +280,17 @@ function metinSor(baslik, mesaj, varsayilan, tamamMetni) {
  */
 function durumPenceresi(secenek) {
   secenek = secenek || {};
+
+  /* Tek pencere (Faz 21): açık olan vazgeçildi sayılır — bkz. onayla(). */
+  if ('function' === typeof durumPenceresi.acik) durumPenceresi.acik(null);
+
   return new Promise(function (cozumle) {
     const katman = $('#kargoModalKatman');
     const onayBtn = $('#kargoOnay');
     const vazgecBtn = $('#kargoVazgec');
     const alanlar = $('#kargoAlanlar');
     const uyari = $('#kargoUyari');
+    let bitti = false;
 
     $('#kargoModalBaslik').textContent = secenek.baslik || 'Durumu Güncelle';
     $('#kargoModalAciklama').textContent = secenek.aciklama || '';
@@ -289,6 +316,9 @@ function durumPenceresi(secenek) {
     }, 30);
 
     function kapat(sonuc) {
+      if (bitti) return;
+      bitti = true;
+      if (durumPenceresi.acik === kapat) durumPenceresi.acik = null;
       katman.classList.add('hidden');
       onayBtn.removeEventListener('click', evet);
       vazgecBtn.removeEventListener('click', hayir);
@@ -315,6 +345,7 @@ function durumPenceresi(secenek) {
     vazgecBtn.addEventListener('click', hayir);
     katman.addEventListener('mousedown', disariTikla);
     document.addEventListener('keydown', tusla);
+    durumPenceresi.acik = kapat;
   });
 }
 
@@ -1998,7 +2029,15 @@ function b2bSiparisNormalle(s) {
      * `iskontoKalanGun`         : geri sayım (panel kendi takvim hesabını yapmaz)
      * `iskontoRevizeEdildi`     : sipariş kartındaki ⟳ rozeti
      */
-    iskontoOrani: Number((s.revision && s.revision.discount_rate) || (s.pricing && s.pricing.order_rate) || 0),
+    /*
+     * SON YEDEK ücret satırındaki bayi oranı (Faz 21 — canlı #6512): eklenti
+     * 2.28.1 öncesi `discount_rate`i yalnızca fiyata işlenmiş orandan okur ve
+     * %3 bayi satırı olan saha siparişinde 0 döner. Pencere "%0" gösterince
+     * yönetici %3'ü yeniden giriyor, indirim İKİ KEZ düşüyordu.
+     */
+    iskontoOrani: Number((s.revision && s.revision.discount_rate) || (s.pricing && s.pricing.order_rate) || ucret.bayiOran || 0),
+    /* Eklenti 2.28.1: indirim hem fiyatta hem ayrı satırda — pencere uyarır. */
+    bayiIkiYerde: !!(s.revision && s.revision.dealer_discount_twice),
     bayiProfilIskonto: Number((bayi && bayi.discount_rate) || 0),
     iskontoRevizeEdilebilir: !!(s.revision && s.revision.can_revise_discount),
     iskontoKalanGun: Number((s.revision && s.revision.discount_days_left) || 0),
@@ -4301,9 +4340,27 @@ function revizeToplamiTazele() {
       /* Oranı bilinmeyen ödeme satırı sunucuda da tazelenmez (belirsiz) —
          ekranda da eski tutarında sabit gösterilir. */
       odemeUcret: { var: odemeTutar > 0, oran: odemeOran, eski: odemeTutar, sabit: !(odemeOran > 0) },
+      /* İndirim hem fiyatta hem ayrı satırda (eklenti 2.28.1): sunucu motoru
+         iskonto satırlarına dokunmaz; önizleme de dokunmaz (Faz 21). */
+      bayiIkiYerde: !!s0.bayiIkiYerde,
       kargo: Number(s0.kargoTutar || 0)
     });
   }
+
+  /*
+   * ÇİFT İSKONTO UYARISI (Faz 21 — canlı #6512). Oran hem satır fiyatlarına
+   * işlenmiş hem ayrı bir iskonto satırında: müşteri indirimi iki kez alıyor.
+   * Bu pencere onu sessizce "düzeltemez" (motor belirsiz siparişe dokunmaz);
+   * doğru araç onarım denetimidir. Yeni bir oran seçildiyse ayrı satır
+   * silinip fiyat listeden kurulacağı için uyarı susar.
+   */
+  const ciftUyari = (s0.bayiIkiYerde && null === iskontoOran)
+    ? '<div class="mb-3 rounded-xl p-4 text-lg font-bold bg-red-50 text-red-800 border-2 border-red-300 ' +
+        'dark:bg-red-500/10 dark:text-red-200 dark:border-red-500/30" role="alert" data-revize-cift-uyari>' +
+        'Bu siparişte bayi iskontosu İKİ KEZ düşüyor: oran hem satır fiyatlarına işlenmiş hem ayrı bir iskonto satırında duruyor. ' +
+        'Bu revize iskonto satırlarına dokunmaz. Düzeltmek için Ayarlar › Geçmiş Sipariş İskonto Denetimi\'ni çalıştırın.' +
+      '</div>'
+    : '';
 
   const genelToplam = ozet ? ozet.toplam : toplam;
   const kirilim = ozet && (ozet.bayi.var || ozet.odeme.var || ozet.kargo > 0);
@@ -4324,6 +4381,7 @@ function revizeToplamiTazele() {
   }
 
   kutu.innerHTML =
+    ciftUyari +
     '<div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">' +
       '<span class="text-lg font-bold text-slate-500 dark:text-slate-400">' +
         'Toplam adet: <span class="text-slate-900 dark:text-slate-100 font-black">' + adetToplam + '</span>' +
@@ -4414,6 +4472,14 @@ function revizeModaliAc(id) {
   }
 
   durum.revizeSiparis = s;
+
+  /*
+   * PENCERE OTURUMU (Faz 21): her açılışta yeni. Revize gönderiminin tekrar
+   * kimliği bu oturum + gövdenin özetidir — zaman aşımından sonra AYNI içerik
+   * yeniden gönderilirse sunucu onu ikinci kez uygulamaz (bkz. revizeyiOnayla).
+   * Ara kayıttan sonra pencere yeniden kurulduğu için kimlik de yenilenir.
+   */
+  durum.revizeOturumu = Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36);
 
   $('#revizeModalBaslik').textContent = 'Siparişi Hazırla & Revize Et';
   $('#revizeModalAciklama').textContent =
@@ -4563,210 +4629,221 @@ function revizeModaliAc(id) {
 
 /** "SİPARİŞİ ONAYLA" — adetleri siteye gönderir. */
 async function revizeyiOnayla(buton, secenek) {
-  const s = durum.revizeSiparis;
-  if (!s) return;
-
   /*
-   * ARA KAYIT (Faz 19): değişiklikler siteye yazılır ama pencere AÇIK kalır
-   * ve sipariş durumu ASLA değişmez — revize etmek ile siparişi kesinleştirmek
-   * ayrı kararlardır. Depocu ara kayıt yapıp düzenlemeye devam edebilir,
-   * dilediği zaman SİPARİŞİ ONAYLA der.
+   * TEK UÇUŞ (Faz 21 — canlı #6503): süren bir gönderim varken (onay
+   * penceresi açık ya da istek yolda) gelen ikinci çağrı YENİ İŞ AÇMAZ.
+   * Düğme ancak istek başlarken meşgul oluyordu; Enter kısayolu ise
+   * düğmeden bağımsız çağırıyordu — aynı revize 11 kez gönderilmişti.
+   * Bayrak her çıkışta (hata dahil) finally ile iner.
    */
-  const ara = !!(secenek && secenek.ara);
-
-  const satirlar = revizeSatirlariOku();
-  const mevcutlar = satirlar.filter(function (r) { return !r.yeni; });
-  const yeniler = satirlar.filter(function (r) { return r.yeni && r.adet > 0; });
-  const degisenler = mevcutlar.filter(function (r) { return r.kaldir || r.adet !== r.eskiAdet; });
-  const kaldirilanlar = mevcutlar.filter(function (r) { return r.kaldir; });
-
-  const bilgi = $('#revizeBilgi');
-  if (bilgi) bilgi.classList.add('hidden');
-
-  /* Tüm satırlar kaldırılamaz: boş sipariş yerine iptal kullanılır (sunucu
-     da 400 b2b_revision_all_removed döner; burada erken ve açık söylenir).
-     Aynı istekte ürün EKLENİYORSA sipariş boşalmaz. */
-  if (kaldirilanlar.length && kaldirilanlar.length === mevcutlar.length && !yeniler.length) {
-    const uyari = $('#revizeUyari');
-    uyari.textContent = 'Siparişteki bütün ürünleri kaldıramazsınız.\n' +
-                        'Sipariş tamamen iptal edilecekse "Siparişi İptal Et" düğmesini kullanın.';
-    uyari.classList.remove('hidden');
+  if (revizeyiOnayla.suruyor) {
+    bildir('Revize zaten gönderiliyor; bitmesini bekleyin.', 'bilgi');
     return;
   }
 
-  const hazirYap = !ara && !!$('#revizeHazirYap').checked;
-  const not = $('#revizeNot').value.trim();
-  const bildirilsinMi = !ara && !!$('#revizeBildir').checked;
+  revizeyiOnayla.suruyor = true;
 
-  /* KDV modu: siparişin mevcut durumundan FARKLIYSA gönderilir; aynıysa
-     boş gider ve eklenti hiçbir şeye dokunmaz (idempotent). */
-  const kdvDahil = revizeKdvDahilMi();
-  const kdvModu = (kdvDahil === !s.kdvHaric) ? '' : (kdvDahil ? 'include' : 'exclude');
+  try {
+    const s = durum.revizeSiparis;
+    if (!s) return;
 
-  /* Bayiye özel iskonto: DEĞİŞMEDİYSE null gider ve eklenti orana dokunmaz. */
-  const iskontoOran = revizeIskontoOrani();
+    /*
+     * ARA KAYIT (Faz 19): değişiklikler siteye yazılır ama pencere AÇIK kalır
+     * ve sipariş durumu ASLA değişmez — revize etmek ile siparişi kesinleştirmek
+     * ayrı kararlardır. Depocu ara kayıt yapıp düzenlemeye devam edebilir,
+     * dilediği zaman SİPARİŞİ ONAYLA der.
+     */
+    const ara = !!(secenek && secenek.ara);
 
-  if (!degisenler.length && !yeniler.length && !hazirYap && !kdvModu && null === iskontoOran) {
-    const uyari = $('#revizeUyari');
-    uyari.textContent = ara
-      ? 'Kaydedilecek bir değişiklik yok: adetler, eklenen ürünler, KDV seçimi ve iskonto oranı aynı.'
-      : 'Hiçbir adet değişmedi, KDV seçimi ve iskonto oranı aynı, durum güncellemesi de kapalı. Yapılacak bir işlem yok.';
-    uyari.classList.remove('hidden');
-    return;
-  }
+    const satirlar = revizeSatirlariOku();
+    const mevcutlar = satirlar.filter(function (r) { return !r.yeni; });
+    const yeniler = satirlar.filter(function (r) { return r.yeni && r.adet > 0; });
+    const degisenler = mevcutlar.filter(function (r) { return r.kaldir || r.adet !== r.eskiAdet; });
+    const kaldirilanlar = mevcutlar.filter(function (r) { return r.kaldir; });
 
-  /*
-   * İskonto revizesi tutarı DEĞİŞTİRİR: teyit istenir. Adet revizesinde
-   * böyle bir onay yok çünkü orada depocu zaten fiilen saydığı adedi
-   * giriyor; burada ise müşterinin ödeyeceği tutar elle değiştiriliyor.
-   */
-  if (null !== iskontoOran && !durum.ayarlar.demoModu) {
-    const eskiOran = Number(s.iskontoOrani || 0);
-    const eminMi = await onayla(
-      'İskonto Oranı Değiştirilecek',
-      '#' + s.numara + ' numaralı siparişin bayi iskontosu\n\n' +
-      '    %' + yuzdeYazi(eskiOran) + '   →   %' + yuzdeYazi(iskontoOran) + '\n\n' +
-      'olarak değiştirilecek. Fiyatlar LİSTE fiyatı üzerinden yeniden hesaplanır;\n' +
-      'mevcut iskontonun üstüne eklenmez.\n\n' +
-      'Bu değişiklik YALNIZCA bu siparişte geçerlidir — bayinin tanımlı oranı (%' +
-      yuzdeYazi(s.bayiProfilIskonto || 0) + ') değişmez.',
-      'EVET, UYGULA',
-      false
-    );
+    const bilgi = $('#revizeBilgi');
+    if (bilgi) bilgi.classList.add('hidden');
 
-    if (!eminMi) return;
-  }
-
-  /* Tümü sıfırlanmışsa bu bir iptal demektir; yanlışlıkla olmadığı teyit edilir. */
-  const toplamAdet = satirlar.reduce(function (t, r) { return t + r.adet; }, 0);
-
-  if (toplamAdet === 0) {
-    const eminMi = await onayla(
-      'Tüm Adetler Sıfır',
-      'Siparişteki bütün ürünlerin adedini 0 yaptınız.\n\n' +
-      'Bu, siparişin içini boşaltır ve tutarı sıfırlar. Siparişi iptal etmek istiyorsanız\n' +
-      '"Siparişi İptal Et" düğmesini kullanmalısınız.\n\nYine de devam edilsin mi?',
-      'EVET, DEVAM ET',
-      true
-    );
-    if (!eminMi) return;
-  }
-
-  const hedefDurum = hazirYap ? (durum.b2bVar ? 'order-ready' : 'processing') : '';
-  const geriAl = butonuMesgulEt(buton, ara ? 'KAYDEDİLİYOR…' : 'GÖNDERİLİYOR…');
-
-  /** Ara kayıttan sonra pencereyi TAZE siparişle yeniden kurar ve bilgi yazar. */
-  async function araKayitBitir(metin) {
-    if (!siparisBul(s.id)) await siparisleriYukle(true);
-
-    revizeModaliAc(s.id);
-
-    const kutu = $('#revizeBilgi');
-
-    if (kutu) {
-      kutu.textContent = metin;
-      kutu.classList.remove('hidden');
-    }
-
-    siparisleriCiz();
-  }
-
-  /* ---------- DEMO ---------- */
-  if (durum.ayarlar.demoModu) {
-    await bekle(400);
-
-    /* Hem ekrandaki kopya hem DEMO_SIPARISLER kaynağı güncellenir; yalnızca
-       kopya değişseydi ilk yenilemede/sekme geçişinde revize geri alınırdı
-       (siparisDurumDegistir'in demo dalıyla aynı yaklaşım). */
-    const kaynak = DEMO_SIPARISLER.filter(function (x) { return String(x.id) === String(s.id); })[0];
-
-    mevcutlar.forEach(function (r) {
-      [s, kaynak].forEach(function (hedef) {
-        if (!hedef || !hedef.kalemler) return;
-
-        /* Kaldırılan satır demo siparişinden de düşer (fişte görünmesin). */
-        if (r.kaldir) {
-          hedef.kalemler = hedef.kalemler.filter(function (x) { return x.kalemId !== r.kalemId; });
-          return;
-        }
-
-        const k = hedef.kalemler.filter(function (x) { return x.kalemId === r.kalemId; })[0];
-        if (!k) return;
-        k.adet = r.adet;
-        k.tutar = Math.round(r.birim * r.adet * 100) / 100;
-      });
-    });
-
-    /* Eklenen ürünler demo siparişine de yeni kalem olarak girer. */
-    yeniler.forEach(function (r) {
-      [s, kaynak].forEach(function (hedef) {
-        if (!hedef || !hedef.kalemler) return;
-
-        const enBuyuk = hedef.kalemler.reduce(function (m, x) { return Math.max(m, Number(x.kalemId) || 0); }, 0);
-
-        hedef.kalemler.push({
-          kalemId: enBuyuk + 1, urunId: r.urunId, varyasyonId: r.varyasyonId,
-          ad: r.ad, kod: r.kod || '-', adet: r.adet, birim: r.birim,
-          tutar: Math.round(r.birim * r.adet * 100) / 100,
-          araToplam: Math.round(r.birim * r.adet * 100) / 100,
-          listeBirim: r.listeBirim, listeAraToplam: Math.round(r.listeBirim * r.adet * 100) / 100,
-          kdvOrani: r.kdvOrani
-        });
-      });
-    });
-
-    [s, kaynak].forEach(function (hedef) {
-      if (!hedef || !hedef.kalemler) return;
-
-      /* Demo modunda KDV dönüşümü de aynı formülle uygulanır. */
-      if (kdvModu) {
-        hedef.kalemler.forEach(function (k) {
-          const oran = Number(k.kdvOrani) || 0;
-          if (oran <= 0) return;
-          const carpan = 1 + (oran / 100);
-          k.tutar = (kdvModu === 'exclude') ? (k.tutar / carpan) : (k.tutar * carpan);
-          k.araToplam = (kdvModu === 'exclude') ? (k.araToplam / carpan) : (k.araToplam * carpan);
-          k.listeAraToplam = (kdvModu === 'exclude') ? (k.listeAraToplam / carpan) : (k.listeAraToplam * carpan);
-        });
-
-        hedef.kdvHaric = (kdvModu === 'exclude');
-      }
-
-      hedef.tutar = hedef.kalemler.reduce(function (t, k) { return t + k.tutar; }, 0);
-      if (degisenler.length || yeniler.length) hedef.revize = true;
-      if (hedefDurum) hedef.durum = hedefDurum;
-    });
-
-    geriAl();
-
-    if (ara) {
-      await araKayitBitir('Ara kayıt yapıldı (Demo Modu — sitenizde değişiklik yapılmadı). Düzenlemeye devam edebilirsiniz.');
+    /* Tüm satırlar kaldırılamaz: boş sipariş yerine iptal kullanılır (sunucu
+       da 400 b2b_revision_all_removed döner; burada erken ve açık söylenir).
+       Aynı istekte ürün EKLENİYORSA sipariş boşalmaz. */
+    if (kaldirilanlar.length && kaldirilanlar.length === mevcutlar.length && !yeniler.length) {
+      const uyari = $('#revizeUyari');
+      uyari.textContent = 'Siparişteki bütün ürünleri kaldıramazsınız.\n' +
+                          'Sipariş tamamen iptal edilecekse "Siparişi İptal Et" düğmesini kullanın.';
+      uyari.classList.remove('hidden');
       return;
     }
 
-    revizeModaliKapat();
+    const hazirYap = !ara && !!$('#revizeHazirYap').checked;
+    const not = $('#revizeNot').value.trim();
+    const bildirilsinMi = !ara && !!$('#revizeBildir').checked;
 
-    /* Durum değiştiyse sipariş bu sekmeden düşmüş olabilir. */
-    if (hedefDurum) await siparisleriYukle(true);
-    else siparisleriCiz();
+    /* KDV modu: siparişin mevcut durumundan FARKLIYSA gönderilir; aynıysa
+       boş gider ve eklenti hiçbir şeye dokunmaz (idempotent). */
+    const kdvDahil = revizeKdvDahilMi();
+    const kdvModu = (kdvDahil === !s.kdvHaric) ? '' : (kdvDahil ? 'include' : 'exclude');
 
-    bildir('#' + s.numara + ' revize edildi.\n' +
-           (degisenler.length ? degisenler.length + ' satırın adedi güncellendi.' : 'Adetlerde değişiklik yok.') +
-           (yeniler.length ? '\n' + yeniler.length + ' ürün siparişe eklendi.' : '') +
-           (hedefDurum ? '\nDurum: ' + durumBilgisi(hedefDurum).etiket : '') +
-           '\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
-    return;
-  }
+    /* Bayiye özel iskonto: DEĞİŞMEDİYSE null gider ve eklenti orana dokunmaz. */
+    const iskontoOran = revizeIskontoOrani();
 
-  /* ---------- CANLI ---------- */
-  let cevap;
+    if (!degisenler.length && !yeniler.length && !hazirYap && !kdvModu && null === iskontoOran) {
+      const uyari = $('#revizeUyari');
+      uyari.textContent = ara
+        ? 'Kaydedilecek bir değişiklik yok: adetler, eklenen ürünler, KDV seçimi ve iskonto oranı aynı.'
+        : 'Hiçbir adet değişmedi, KDV seçimi ve iskonto oranı aynı, durum güncellemesi de kapalı. Yapılacak bir işlem yok.';
+      uyari.classList.remove('hidden');
+      return;
+    }
 
-  if (durum.b2bVar) {
-    /* Tercih edilen yol: tek istekte doğrula + hesapla + durum değiştir. */
-    cevap = await b2b('orders/' + s.id + '/revise', {
-      metod: 'POST',
-      sureAsimi: 45000,
-      govde: {
+    /*
+     * İskonto revizesi tutarı DEĞİŞTİRİR: teyit istenir. Adet revizesinde
+     * böyle bir onay yok çünkü orada depocu zaten fiilen saydığı adedi
+     * giriyor; burada ise müşterinin ödeyeceği tutar elle değiştiriliyor.
+     */
+    if (null !== iskontoOran && !durum.ayarlar.demoModu) {
+      const eskiOran = Number(s.iskontoOrani || 0);
+      const eminMi = await onayla(
+        'İskonto Oranı Değiştirilecek',
+        '#' + s.numara + ' numaralı siparişin bayi iskontosu\n\n' +
+        '    %' + yuzdeYazi(eskiOran) + '   →   %' + yuzdeYazi(iskontoOran) + '\n\n' +
+        'olarak değiştirilecek. Fiyatlar LİSTE fiyatı üzerinden yeniden hesaplanır;\n' +
+        'mevcut iskontonun üstüne eklenmez.\n\n' +
+        'Bu değişiklik YALNIZCA bu siparişte geçerlidir — bayinin tanımlı oranı (%' +
+        yuzdeYazi(s.bayiProfilIskonto || 0) + ') değişmez.',
+        'EVET, UYGULA',
+        false
+      );
+
+      if (!eminMi) return;
+    }
+
+    /* Tümü sıfırlanmışsa bu bir iptal demektir; yanlışlıkla olmadığı teyit edilir. */
+    const toplamAdet = satirlar.reduce(function (t, r) { return t + r.adet; }, 0);
+
+    if (toplamAdet === 0) {
+      const eminMi = await onayla(
+        'Tüm Adetler Sıfır',
+        'Siparişteki bütün ürünlerin adedini 0 yaptınız.\n\n' +
+        'Bu, siparişin içini boşaltır ve tutarı sıfırlar. Siparişi iptal etmek istiyorsanız\n' +
+        '"Siparişi İptal Et" düğmesini kullanmalısınız.\n\nYine de devam edilsin mi?',
+        'EVET, DEVAM ET',
+        true
+      );
+      if (!eminMi) return;
+    }
+
+    const hedefDurum = hazirYap ? (durum.b2bVar ? 'order-ready' : 'processing') : '';
+    const geriAl = butonuMesgulEt(buton, ara ? 'KAYDEDİLİYOR…' : 'GÖNDERİLİYOR…');
+
+    /** Ara kayıttan sonra pencereyi TAZE siparişle yeniden kurar ve bilgi yazar. */
+    async function araKayitBitir(metin) {
+      if (!siparisBul(s.id)) await siparisleriYukle(true);
+
+      revizeModaliAc(s.id);
+
+      const kutu = $('#revizeBilgi');
+
+      if (kutu) {
+        kutu.textContent = metin;
+        kutu.classList.remove('hidden');
+      }
+
+      siparisleriCiz();
+    }
+
+    /* ---------- DEMO ---------- */
+    if (durum.ayarlar.demoModu) {
+      await bekle(400);
+
+      /* Hem ekrandaki kopya hem DEMO_SIPARISLER kaynağı güncellenir; yalnızca
+         kopya değişseydi ilk yenilemede/sekme geçişinde revize geri alınırdı
+         (siparisDurumDegistir'in demo dalıyla aynı yaklaşım). */
+      const kaynak = DEMO_SIPARISLER.filter(function (x) { return String(x.id) === String(s.id); })[0];
+
+      mevcutlar.forEach(function (r) {
+        [s, kaynak].forEach(function (hedef) {
+          if (!hedef || !hedef.kalemler) return;
+
+          /* Kaldırılan satır demo siparişinden de düşer (fişte görünmesin). */
+          if (r.kaldir) {
+            hedef.kalemler = hedef.kalemler.filter(function (x) { return x.kalemId !== r.kalemId; });
+            return;
+          }
+
+          const k = hedef.kalemler.filter(function (x) { return x.kalemId === r.kalemId; })[0];
+          if (!k) return;
+          k.adet = r.adet;
+          k.tutar = Math.round(r.birim * r.adet * 100) / 100;
+        });
+      });
+
+      /* Eklenen ürünler demo siparişine de yeni kalem olarak girer. */
+      yeniler.forEach(function (r) {
+        [s, kaynak].forEach(function (hedef) {
+          if (!hedef || !hedef.kalemler) return;
+
+          const enBuyuk = hedef.kalemler.reduce(function (m, x) { return Math.max(m, Number(x.kalemId) || 0); }, 0);
+
+          hedef.kalemler.push({
+            kalemId: enBuyuk + 1, urunId: r.urunId, varyasyonId: r.varyasyonId,
+            ad: r.ad, kod: r.kod || '-', adet: r.adet, birim: r.birim,
+            tutar: Math.round(r.birim * r.adet * 100) / 100,
+            araToplam: Math.round(r.birim * r.adet * 100) / 100,
+            listeBirim: r.listeBirim, listeAraToplam: Math.round(r.listeBirim * r.adet * 100) / 100,
+            kdvOrani: r.kdvOrani
+          });
+        });
+      });
+
+      [s, kaynak].forEach(function (hedef) {
+        if (!hedef || !hedef.kalemler) return;
+
+        /* Demo modunda KDV dönüşümü de aynı formülle uygulanır. */
+        if (kdvModu) {
+          hedef.kalemler.forEach(function (k) {
+            const oran = Number(k.kdvOrani) || 0;
+            if (oran <= 0) return;
+            const carpan = 1 + (oran / 100);
+            k.tutar = (kdvModu === 'exclude') ? (k.tutar / carpan) : (k.tutar * carpan);
+            k.araToplam = (kdvModu === 'exclude') ? (k.araToplam / carpan) : (k.araToplam * carpan);
+            k.listeAraToplam = (kdvModu === 'exclude') ? (k.listeAraToplam / carpan) : (k.listeAraToplam * carpan);
+          });
+
+          hedef.kdvHaric = (kdvModu === 'exclude');
+        }
+
+        hedef.tutar = hedef.kalemler.reduce(function (t, k) { return t + k.tutar; }, 0);
+        if (degisenler.length || yeniler.length) hedef.revize = true;
+        if (hedefDurum) hedef.durum = hedefDurum;
+      });
+
+      geriAl();
+
+      if (ara) {
+        await araKayitBitir('Ara kayıt yapıldı (Demo Modu — sitenizde değişiklik yapılmadı). Düzenlemeye devam edebilirsiniz.');
+        return;
+      }
+
+      revizeModaliKapat();
+
+      /* Durum değiştiyse sipariş bu sekmeden düşmüş olabilir. */
+      if (hedefDurum) await siparisleriYukle(true);
+      else siparisleriCiz();
+
+      bildir('#' + s.numara + ' revize edildi.\n' +
+             (degisenler.length ? degisenler.length + ' satırın adedi güncellendi.' : 'Adetlerde değişiklik yok.') +
+             (yeniler.length ? '\n' + yeniler.length + ' ürün siparişe eklendi.' : '') +
+             (hedefDurum ? '\nDurum: ' + durumBilgisi(hedefDurum).etiket : '') +
+             '\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
+      return;
+    }
+
+    /* ---------- CANLI ---------- */
+    let cevap;
+
+    if (durum.b2bVar) {
+      const govde = {
         /* Kaldırılan satır `remove:true` ile gider (eklenti 2.20.0): sunucu
            satırı siler, stoğu iade eder, deftere "KALDIRILDI" yazar.
            EKLENEN ürün (Faz 19) kalem kimliği OLMADAN, ürün kimliğiyle gider;
@@ -4786,131 +4863,184 @@ async function revizeyiOnayla(buton, secenek) {
         vat_mode: kdvModu,
         /* '' = DOKUNMA. Eklenti 2.21.0 öncesi bu alanı yok sayar. */
         discount_rate: null === iskontoOran ? '' : iskontoOran
-      }
-    });
-  } else if (kdvModu || null !== iskontoOran || yeniler.length) {
-    /*
-     * KDV dönüşümü ürün başına oran, iskonto revizesi liste fiyatı künyesi,
-     * ürün ekleme siparişin fiyat modeli gerektirir; üçünü de yalnızca
-     * eklenti bilir. WooCommerce çekirdeği üzerinden "yaklaşık" uygulamak
-     * sessiz para hatası olurdu.
-     */
-    geriAl();
-    const uyari = $('#revizeUyari');
-    uyari.textContent = (kdvModu ? 'KDV dâhil/hariç dönüşümü' : (null !== iskontoOran ? 'Bayiye özel iskonto revizesi' : 'Siparişe ürün ekleme')) +
-                        ' için B2B Core eklentisi gerekir.\n' +
-                        'Eklenti bulunamadı; bu seçimi geri alıp tekrar deneyin.';
-    uyari.classList.remove('hidden');
-    return;
-  } else {
-    /*
-     * Yedek yol — WooCommerce çekirdeği.
-     *
-     * Satır toplamları BURADA hesaplanır: WooCommerce mevcut bir kalemde
-     * yalnızca "quantity" gönderildiğinde tutarı yeniden türetmez, adet
-     * değişir ama tutar eski adede ait kalırdı.
-     *
-     * NOT: Bu uçta adet 0 gönderilen satır SIFIRLANMAZ, tamamen SİLİNİR
-     * (WooCommerce'in kendi davranışı). Eklenti kuruluyken kullanılan
-     * /revise ucu ise satırı korur ve adedini 0 yapar.
-     */
-    cevap = await woo('orders/' + s.id, {
-      metod: 'PUT',
-      sureAsimi: 45000,
-      govde: {
-        line_items: degisenler.map(function (r) {
-          return {
-            id: r.kalemId,
-            quantity: r.adet,
-            subtotal: (r.birimAra * r.adet).toFixed(2),
-            total: (r.birim * r.adet).toFixed(2)
-          };
-        })
-      }
-    });
+      };
 
-    if (cevap.ok && hedefDurum) {
-      cevap = await woo('orders/' + s.id, { metod: 'PUT', govde: { status: hedefDurum } });
-    }
+      /*
+       * TEKRAR KİMLİĞİ (Faz 21 — canlı #6503): pencere oturumu + gövdenin özeti
+       * (FNV-1a). Zaman aşımından sonra AYNI içerik yeniden gönderilirse aynı
+       * kimliği taşır ve eklenti (2.28.1) onu ikinci kez UYGULAMAZ — ürün iki kez
+       * eklenmez. İçerik değiştiyse kimlik de değişir. Eski eklenti alanı yok sayar.
+       */
+      const govdeMetni = JSON.stringify(govde);
+      let ozetSayi = 2166136261;
 
-    if (cevap.ok && not) {
-      await woo('orders/' + s.id + '/notes', {
+      for (let i = 0; i < govdeMetni.length; i++) {
+        ozetSayi = Math.imul(ozetSayi ^ govdeMetni.charCodeAt(i), 16777619) >>> 0;
+      }
+
+      govde.istek_kimligi = ('r' + s.id + '-' + (durum.revizeOturumu || '0') + '-' + ozetSayi.toString(16))
+        .toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64);
+
+      /* Tercih edilen yol: tek istekte doğrula + hesapla + durum değiştir. */
+      cevap = await b2b('orders/' + s.id + '/revise', {
         metod: 'POST',
-        govde: { note: not, customer_note: bildirilsinMi }
+        sureAsimi: 45000,
+        govde: govde
       });
+    } else if (kdvModu || null !== iskontoOran || yeniler.length) {
+      /*
+       * KDV dönüşümü ürün başına oran, iskonto revizesi liste fiyatı künyesi,
+       * ürün ekleme siparişin fiyat modeli gerektirir; üçünü de yalnızca
+       * eklenti bilir. WooCommerce çekirdeği üzerinden "yaklaşık" uygulamak
+       * sessiz para hatası olurdu.
+       */
+      geriAl();
+      const uyari = $('#revizeUyari');
+      uyari.textContent = (kdvModu ? 'KDV dâhil/hariç dönüşümü' : (null !== iskontoOran ? 'Bayiye özel iskonto revizesi' : 'Siparişe ürün ekleme')) +
+                          ' için B2B Core eklentisi gerekir.\n' +
+                          'Eklenti bulunamadı; bu seçimi geri alıp tekrar deneyin.';
+      uyari.classList.remove('hidden');
+      return;
+    } else {
+      /*
+       * Yedek yol — WooCommerce çekirdeği.
+       *
+       * Satır toplamları BURADA hesaplanır: WooCommerce mevcut bir kalemde
+       * yalnızca "quantity" gönderildiğinde tutarı yeniden türetmez, adet
+       * değişir ama tutar eski adede ait kalırdı.
+       *
+       * NOT: Bu uçta adet 0 gönderilen satır SIFIRLANMAZ, tamamen SİLİNİR
+       * (WooCommerce'in kendi davranışı). Eklenti kuruluyken kullanılan
+       * /revise ucu ise satırı korur ve adedini 0 yapar.
+       */
+      cevap = await woo('orders/' + s.id, {
+        metod: 'PUT',
+        sureAsimi: 45000,
+        govde: {
+          line_items: degisenler.map(function (r) {
+            return {
+              id: r.kalemId,
+              quantity: r.adet,
+              subtotal: (r.birimAra * r.adet).toFixed(2),
+              total: (r.birim * r.adet).toFixed(2)
+            };
+          })
+        }
+      });
+
+      if (cevap.ok && hedefDurum) {
+        cevap = await woo('orders/' + s.id, { metod: 'PUT', govde: { status: hedefDurum } });
+      }
+
+      if (cevap.ok && not) {
+        await woo('orders/' + s.id + '/notes', {
+          metod: 'POST',
+          govde: { note: not, customer_note: bildirilsinMi }
+        });
+      }
     }
+
+    geriAl();
+
+    if (!cevap.ok) {
+      const uyari = $('#revizeUyari');
+      uyari.textContent = 'Sipariş güncellenemedi:\n' + (cevap.hata || 'Bilinmeyen hata.');
+      uyari.classList.remove('hidden');
+      return;
+    }
+
+    /* Yanıttan güncel siparişi al; yoksa listeyi tazele. */
+    const yanit = cevap.veri || {};
+    const guncelHam = yanit.order || null;
+
+    if (guncelHam && durum.b2bVar) {
+      const guncel = b2bSiparisNormalle(guncelHam);
+      const sira = durum.siparisler.map(function (x) { return String(x.id); }).indexOf(String(s.id));
+      if (sira !== -1) durum.siparisler[sira] = guncel;
+    }
+
+    /*
+     * TEKRAR (Faz 21): sunucu bu isteği zaten işlemişti, revize YİNELENMEDİ.
+     * Bunu söylemek gerekir — "işlendi" demek ikinci kez uygulandığı
+     * izlenimini verirdi.
+     */
+    if (true === yanit.tekrar) {
+      if (ara) {
+        if (!guncelHam) await siparisleriYukle(true);
+        await araKayitBitir('Bu kayıt zaten yapılmıştı: aynı istek ikinci kez gönderildi ve site onu yinelemedi. Güncel sipariş gösteriliyor.');
+        return;
+      }
+
+      revizeModaliKapat();
+
+      /* İlk (yanıtı kaybolan) istek durumu değiştirmiş olabilir: sipariş bu
+         sekmeden düşmüşse liste tazelenir — normal yoldaki kuralın aynısı. */
+      const tekrarDurum = (guncelHam && guncelHam.status) || yanit.status || '';
+
+      if (tekrarDurum && durumNormalle(tekrarDurum) !== durumNormalle(s.durum)) {
+        await siparisleriYukle(true);
+      } else {
+        siparisleriCiz();
+      }
+
+      bildir('#' + s.numara + ': bu revize zaten uygulanmıştı; ikinci kez uygulanmadı.', 'bilgi');
+      return;
+    }
+
+    /* Kaldırılan / eklenen ürünler ayrı söylenir: "3 satırın adedi güncellendi"
+       bir ürünün siparişten ÇIKTIĞINI ya da GİRDİĞİNİ anlatmaz. */
+    const kaldirilanSayisi = yanit.changes
+      ? yanit.changes.filter(function (c) { return c && c.removed; }).length
+      : kaldirilanlar.length;
+    const eklenenSayisi = yanit.changes
+      ? yanit.changes.filter(function (c) { return c && c.added; }).length
+      : yeniler.length;
+    const adetDegisenSayisi = (yanit.changes ? yanit.changes.length : degisenler.length + yeniler.length) - kaldirilanSayisi - eklenenSayisi;
+
+    const ozet = (adetDegisenSayisi > 0 ? adetDegisenSayisi + ' satırın adedi güncellendi; ' : '') +
+                 (kaldirilanSayisi > 0 ? kaldirilanSayisi + ' ürün siparişten kaldırıldı; ' : '') +
+                 (eklenenSayisi > 0 ? eklenenSayisi + ' ürün siparişe eklendi; ' : '');
+
+    /* ARA KAYIT: pencere taze siparişle yeniden kurulur, durum değişmedi. */
+    if (ara) {
+      if (!guncelHam) await siparisleriYukle(true);
+
+      await araKayitBitir('Ara kayıt yapıldı. ' + ozet +
+                          'tutar, iskonto ve KDV güncel kalemlerden yeniden hesaplandı. Sipariş durumu DEĞİŞMEDİ — ' +
+                          'düzenlemeye devam edebilir, hazır olduğunda SİPARİŞİ ONAYLA diyebilirsiniz.');
+      return;
+    }
+
+    /*
+     * Mesaj GÖNDERİLEN isteğe göre değil, SUNUCUNUN döndürdüğüne göre kurulur.
+     * (Eski sürümde adet değişmediğinde sunucu durumu değiştirmeden erken
+     * dönüyordu ama arayüz yine "Durum: Sipariş Hazır" yazıyordu.)
+     */
+    const gercekDurum = (guncelHam && guncelHam.status) || yanit.status || '';
+    const durumDegisti = (yanit.status_changed === true) ||
+                         (!!gercekDurum && !!hedefDurum && durumNormalle(gercekDurum) === durumNormalle(hedefDurum) &&
+                          durumNormalle(gercekDurum) !== durumNormalle(s.durum));
+    const adetDegisti = (yanit.changed === true) || degisenler.length > 0 || yeniler.length > 0;
+
+    revizeModaliKapat();
+
+    /* Durum değiştiyse sipariş bu sekmeden düşmüş olabilir; listeyi tazele. */
+    if (gercekDurum && durumNormalle(gercekDurum) !== durumNormalle(s.durum)) {
+      await siparisleriYukle(true);
+    } else {
+      siparisleriCiz();
+    }
+
+    bildir('#' + s.numara + ' işlendi.\n' +
+           (adetDegisti
+             ? ozet + 'tutar ve KDV yeniden hesaplandı.'
+             : 'Adetlerde değişiklik yok.') +
+           (gercekDurum ? '\nDurum: ' + durumBilgisi(gercekDurum).etiket : '') +
+           (durumDegisti && bildirilsinMi ? '\nBayiye bilgilendirme e-postası gönderildi.' : ''),
+           'basari');
+  } finally {
+    revizeyiOnayla.suruyor = false;
   }
-
-  geriAl();
-
-  if (!cevap.ok) {
-    const uyari = $('#revizeUyari');
-    uyari.textContent = 'Sipariş güncellenemedi:\n' + (cevap.hata || 'Bilinmeyen hata.');
-    uyari.classList.remove('hidden');
-    return;
-  }
-
-  /* Yanıttan güncel siparişi al; yoksa listeyi tazele. */
-  const yanit = cevap.veri || {};
-  const guncelHam = yanit.order || null;
-
-  if (guncelHam && durum.b2bVar) {
-    const guncel = b2bSiparisNormalle(guncelHam);
-    const sira = durum.siparisler.map(function (x) { return String(x.id); }).indexOf(String(s.id));
-    if (sira !== -1) durum.siparisler[sira] = guncel;
-  }
-
-  /* Kaldırılan / eklenen ürünler ayrı söylenir: "3 satırın adedi güncellendi"
-     bir ürünün siparişten ÇIKTIĞINI ya da GİRDİĞİNİ anlatmaz. */
-  const kaldirilanSayisi = yanit.changes
-    ? yanit.changes.filter(function (c) { return c && c.removed; }).length
-    : kaldirilanlar.length;
-  const eklenenSayisi = yanit.changes
-    ? yanit.changes.filter(function (c) { return c && c.added; }).length
-    : yeniler.length;
-  const adetDegisenSayisi = (yanit.changes ? yanit.changes.length : degisenler.length + yeniler.length) - kaldirilanSayisi - eklenenSayisi;
-
-  const ozet = (adetDegisenSayisi > 0 ? adetDegisenSayisi + ' satırın adedi güncellendi; ' : '') +
-               (kaldirilanSayisi > 0 ? kaldirilanSayisi + ' ürün siparişten kaldırıldı; ' : '') +
-               (eklenenSayisi > 0 ? eklenenSayisi + ' ürün siparişe eklendi; ' : '');
-
-  /* ARA KAYIT: pencere taze siparişle yeniden kurulur, durum değişmedi. */
-  if (ara) {
-    if (!guncelHam) await siparisleriYukle(true);
-
-    await araKayitBitir('Ara kayıt yapıldı. ' + ozet +
-                        'tutar, iskonto ve KDV güncel kalemlerden yeniden hesaplandı. Sipariş durumu DEĞİŞMEDİ — ' +
-                        'düzenlemeye devam edebilir, hazır olduğunda SİPARİŞİ ONAYLA diyebilirsiniz.');
-    return;
-  }
-
-  /*
-   * Mesaj GÖNDERİLEN isteğe göre değil, SUNUCUNUN döndürdüğüne göre kurulur.
-   * (Eski sürümde adet değişmediğinde sunucu durumu değiştirmeden erken
-   * dönüyordu ama arayüz yine "Durum: Sipariş Hazır" yazıyordu.)
-   */
-  const gercekDurum = (guncelHam && guncelHam.status) || yanit.status || '';
-  const durumDegisti = (yanit.status_changed === true) ||
-                       (!!gercekDurum && !!hedefDurum && durumNormalle(gercekDurum) === durumNormalle(hedefDurum) &&
-                        durumNormalle(gercekDurum) !== durumNormalle(s.durum));
-  const adetDegisti = (yanit.changed === true) || degisenler.length > 0 || yeniler.length > 0;
-
-  revizeModaliKapat();
-
-  /* Durum değiştiyse sipariş bu sekmeden düşmüş olabilir; listeyi tazele. */
-  if (gercekDurum && durumNormalle(gercekDurum) !== durumNormalle(s.durum)) {
-    await siparisleriYukle(true);
-  } else {
-    siparisleriCiz();
-  }
-
-  bildir('#' + s.numara + ' işlendi.\n' +
-         (adetDegisti
-           ? ozet + 'tutar ve KDV yeniden hesaplandı.'
-           : 'Adetlerde değişiklik yok.') +
-         (gercekDurum ? '\nDurum: ' + durumBilgisi(gercekDurum).etiket : '') +
-         (durumDegisti && bildirilsinMi ? '\nBayiye bilgilendirme e-postası gönderildi.' : ''),
-         'basari');
 }
 
 /* ==========================================================================

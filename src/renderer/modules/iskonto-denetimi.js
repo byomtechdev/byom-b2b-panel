@@ -29,6 +29,9 @@
 
   var SONUC = {
     duzeltilecek: { etiket: 'Düzeltilecek', sinif: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200', secilebilir: true, varsayilan: true },
+    /* Faz 21 (canlı #6512): bayi oranı hem satır fiyatında hem ayrı satırda —
+       onarım ayrı satırı kaldırır, ödeme iskontosunu güncel kalemlerden kurar. */
+    cift_bayi: { etiket: 'Bayi iskontosu iki kez düşüyor', sinif: 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-200', secilebilir: true, varsayilan: true },
     isaret_eksik: { etiket: 'Tutar doğru · işaret eksik', sinif: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200', secilebilir: true, varsayilan: false },
     tamam: { etiket: 'Tamam', sinif: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200', secilebilir: false },
     iskonto_yok: { etiket: 'İskonto yok', sinif: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300', secilebilir: false },
@@ -42,7 +45,8 @@
     iade_var: 'siparişte iade var — iade tutarları eski toplama göre verildi',
     ayni_turden_iki_satir: 'aynı türden iki iskonto satırı',
     oran_cozulemedi: 'iskonto oranı çözülemedi',
-    motor_yok: 'eklentide ücret motoru yok'
+    motor_yok: 'eklentide ücret motoru yok',
+    bayi_iskontosu_iki_yerde: 'bayi iskontosu hem satır fiyatında hem ayrı satırda — müşteri indirimi iki kez almış'
   };
 
   var durumD = { satirlar: [], secili: {}, calisiyor: false, ozet: null };
@@ -95,7 +99,7 @@
       '<span class="px-2 py-0.5 rounded-lg text-xs font-black ' + tanim.sinif + '" data-denetim-sonuc="' + k(r.sonuc) + '">' + k(tanim.etiket) + '</span>' +
       (r.kunye_eksik ? '<span class="px-2 py-0.5 rounded-lg text-xs font-black bg-slate-100 dark:bg-slate-700">ödeme tipi künyesi eksik</span>' : '') +
       (degisim ? '<span class="w-full text-sm font-bold">' + degisim + '</span>' : '') +
-      ('duzeltilecek' === r.sonuc || 'duzeltildi' === r.sonuc
+      ('duzeltilecek' === r.sonuc || 'cift_bayi' === r.sonuc || 'duzeltildi' === r.sonuc
         ? '<span class="w-full text-sm font-bold">Toplam: ' + k(p(r.toplam_eski)) + ' → <b>' + k(p(r.toplam_yeni)) + '</b>' +
             ' <span class="' + (fark < 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300') + '">(' + (fark > 0 ? '+' : '') + k(p(fark)) + ')</span></span>'
         : '') +
@@ -212,15 +216,19 @@
 
       durumD.ozet = { taranan: toplamTaranan, sayac: sayac, fark: Math.round(farkToplami * 100) / 100 };
 
+      /* Düzeltme bekleyen = tutarı yanlış olanlar + bayi iskontosu iki kez düşenler. */
+      var bekleyen = (sayac.duzeltilecek || 0) + (sayac.cift_bayi || 0);
+
       ozetYaz(
         toplamTaranan + ' sipariş tarandı · düzeltilecek ' + (sayac.duzeltilecek || 0) +
+        ((sayac.cift_bayi || 0) ? ' · çift bayi iskontosu ' + sayac.cift_bayi : '') +
         ' · elle bakılmalı ' + (sayac.belirsiz || 0) +
         ' · iade nedeniyle atlanan ' + (sayac.atlandi || 0) +
         ((sayac.kunye_eksik || 0) ? ' · künyesi eksik ' + sayac.kunye_eksik : '') +
         ((sayac.hata || 0) ? ' · okunamayan ' + sayac.hata : '') +
-        ((sayac.duzeltilecek || 0) ? ' · toplam fark ' + p(durumD.ozet.fark) : '') +
+        (bekleyen ? ' · toplam fark ' + p(durumD.ozet.fark) : '') +
         '. Hiçbir sipariş değiştirilmedi.',
-        (sayac.duzeltilecek || 0) ? '' : 'basari'
+        bekleyen ? '' : 'basari'
       );
     } finally {
       durumD.calisiyor = false;
@@ -237,11 +245,14 @@
 
     var secilenler = durumD.satirlar.filter(function (r) { return durumD.secili[Number(r.id)]; });
     var fark = secilenler.reduce(function (t, r) { return t + (Number(r.fark) || 0); }, 0);
+    var cift = secilenler.filter(function (r) { return 'cift_bayi' === r.sonuc; }).length;
 
     var onay = ('function' === typeof window.onayla)
       ? await window.onayla(
           'Geçmiş Siparişler Düzeltilecek',
-          kimlikler.length + ' siparişin iskonto satırları GÜNCEL kalemlerden yeniden hesaplanacak.\n\n' +
+          kimlikler.length + ' siparişin iskonto satırları GÜNCEL kalemlerden yeniden hesaplanacak.\n' +
+          (cift ? cift + ' siparişte iki kez düşen bayi iskontosu satırı kaldırılacak (oran satır fiyatlarında kalır).\n' : '') +
+          '\n' +
           'Toplam tutar farkı: ' + p(Math.round(fark * 100) / 100) + '\n\n' +
           'Her siparişe not ve revize geçmişi kaydı düşülür. İadeli siparişlere dokunulmaz.\n' +
           'Devam edilsin mi?',

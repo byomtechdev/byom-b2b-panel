@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.11.0** (Faz 20).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.11.1** (Faz 21).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -71,7 +71,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | Dosya | Sorumluluk | İç bölüm haritası (satır) |
 |---|---|---|
 | `index.html` (233 KB) | Tüm işaretleme + Tailwind yapılandırması + 4 satır içi betik. **Betik yükleme sırası dosyanın sonundadır ve kritiktir** (→ §2). **Faz 13:** saha perdeleri (`#satisPerde`/`#ziyaretPerde`/`#urunPerde`) `<body>` altındaki `#sahaPerdeleri` kapsayıcısında — **asla bir `.sekme-govde` içine konmaz** (→ §4.17.1); `--logo-height` değişkeni ve `header.h-20 { min-height }` | — |
-| `renderer.js` (330 KB) | **Arayüz çekirdeği.** **Faz 14:** depo fişi sabit ölçü + sayfalama + ortak özet (`depoFisiHtml` → ortak iskelet + `SiparisFisi.sayfalayiciBetigi/ozetBlogu/kdvDipnotu/aracCubugu`; 14-C çizgili tablo + sabit özet, "Kapanmayan Fark" satırı yok), revize penceresi `[KALDIR]`/`[GERİ AL]` (`data-kaldir`, gövde `remove:true`), `#revizeHazirYap` KAPALI başlar, `siparisFisiAc` → `pencere()` (→ §4.18). **Faz 13:** `logoGenisligiUygula` `--logo-height` DE yazar (dönüş değeri hâlâ genişlik), Üye Onayları `UYE_ALT_SEKMELER` üç sekme + `sahaMusterileriYukle`/`uyeIletisimHtml` (→ §4.17.6/§4.17.9). Diğer tüm dosyalar buradaki `durum`, `$`, `bildir`, `api/woo/b2b`, `sekmeAc`, `kacis`, `ikon` yardımcılarını kullanır | `1` yardımcılar **14** · `2` demo veri **337** · `3` durum/sabitler **555** · `4` REST köprüsü **1214** · `5` üst çubuk **2083** · `6` sekme yönetimi **2293** · `7` siparişler **2343** (revize **2944**) · `8` ürün & stok **3644** · `9` üye onayları **4613** · `10` depo fişi **5558** · `11` ayarlar **6377** · `12` tema/zoom **7033** · `13` olay bağlama + başlangıç **7096** |
+| `renderer.js` (330 KB) | **Arayüz çekirdeği.** **Faz 21:** onay pencereleri tek pencere, revize gönderimi tek uçuş + `istek_kimligi`, başlangıç oranı ücret satırından, çift iskonto uyarısı (→ §4.27). **Faz 14:** depo fişi sabit ölçü + sayfalama + ortak özet (`depoFisiHtml` → ortak iskelet + `SiparisFisi.sayfalayiciBetigi/ozetBlogu/kdvDipnotu/aracCubugu`; 14-C çizgili tablo + sabit özet, "Kapanmayan Fark" satırı yok), revize penceresi `[KALDIR]`/`[GERİ AL]` (`data-kaldir`, gövde `remove:true`), `#revizeHazirYap` KAPALI başlar, `siparisFisiAc` → `pencere()` (→ §4.18). **Faz 13:** `logoGenisligiUygula` `--logo-height` DE yazar (dönüş değeri hâlâ genişlik), Üye Onayları `UYE_ALT_SEKMELER` üç sekme + `sahaMusterileriYukle`/`uyeIletisimHtml` (→ §4.17.6/§4.17.9). Diğer tüm dosyalar buradaki `durum`, `$`, `bildir`, `api/woo/b2b`, `sekmeAc`, `kacis`, `ikon` yardımcılarını kullanır | `1` yardımcılar **14** · `2` demo veri **337** · `3` durum/sabitler **555** · `4` REST köprüsü **1214** · `5` üst çubuk **2083** · `6` sekme yönetimi **2293** · `7` siparişler **2343** (revize **2944**) · `8` ürün & stok **3644** · `9` üye onayları **4613** · `10` depo fişi **5558** · `11` ayarlar **6377** · `12` tema/zoom **7033** · `13` olay bağlama + başlangıç **7096** |
 | `renderer-ek.js` (136 KB) | Ek modül — `renderer.js`'ten **SONRA** yüklenir, onun fonksiyonlarını sarar | `0` yardımcılar **23** · `A` ödeme matrisi **100** (kalıcılık **274**, min. sipariş **977**) · `B` sipariş rozeti **1103** · `C` ürün düzenle **1160** · `D` sürükle-bırak sıralama **1956** · `E` ürün silme **2832** · `F` sipariş iptali **2903** · `F2` kalıcı silme **3193** · `G` bayi silme **3272** · `H` olay bağlama **3351** |
 | `renderer-izgara.js` (115 KB) | Excel tipi ürün veri ızgarası. `renderer.js` + `renderer-ek.js`'e bağımlı | `0` durum **32** · `A` sanallaştırılmış ızgara **224** · `B` hücre içi düzenleme **663** · `C` kısmi güncelleme **845** · `D` seçim/toplu işlem **958** · `E` kategori ağacı **1725** · `F` görünüm + olay bağlama **2062** · `G` mevcut akışlara bağlanma **2270** · `H` yapışkan haplar/kısayollar **2329** · `I` domino sıralama + 60 FPS **2472** |
 | `renderer-excel.js` (41 KB) | Excel dökümü + sütun eşleştirmeli içe aktarma. Izgaranın `izgOlaylariBagla`'sını sarar → ondan **SONRA** | `0` durum **30** · `A` dışa aktarma **90** · `B` eşleştirme sihirbazı **198** · `C` içe aktarma motoru **592** · `D` olay bağlama **1050** · `E` mevcut akışa bağlanma **1125** |
@@ -91,9 +91,9 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/modules/harita-kokpit.js`** | **Faz 13:** yönetici kartı tıklanınca **mevcut** `window.bayiDetayiAc` profil modalı açılır (ikinci kopya yok); saha kabuğunda **bilerek** tıklanamaz (→ §4.17.8). **Türkiye harita kokpiti** (Faz 3): yerel SVG, hover + ipucu, bölünmüş ekran + zoom, uyarı ikonu, tarih/ölçüt filtreleri, not işlemleri. **Faz 10:** `yollariBesle()` — gerçek `<path>` sınırlar. **Faz 12: FABRİKA** `olustur({kip, kapId, onek})` → `window.HaritaKokpit` (yönetici, renk hâkimiyeti + lejant + zengin kartlar) ve `window.SahaHarita` (plasiyer, `plasiyer:harita`, kendi illeri/bayileri, kart kısayolları). `sekmeAc` sarmalı yalnızca saha örneği için (→ §4.16) | — |
 | **`src/renderer/modules/plasiyer-ziyaret.js`** | **Saha ziyaret notu** (Faz 3): plasiyerin not girişi (İSTEĞE BAĞLI) + patron yanıtlarının düştüğü bildirim zili. `PlasiyerMusteri.seridiCiz`'i SARAR | — |
 | **`src/renderer/modules/plasiyer-siparislerim.js`** | **Kendi Siparişlerim — bağımsız saha şablonu** (Faz 10): `plasiyer:get-orders` ile **sunucudan daraltılmış** liste (`GET /plasiyer/siparislerim`), kartta TEK eylem `[📄 Sipariş / Fiş Detayı]`, kuyruk şeridi (`PlasiyerMusteri.kuyrukSeridiniCiz`). Yönetici sipariş isteği **hiç atılmaz**. **Faz 14:** detayda `.sk-iptal` / `.sk-sil` (→ `plasiyer:siparis-iptal` / `plasiyer:siparis-sil`), fiş `pencere()` ile (Yazdır · PDF · WhatsApp · Kapat) (→ §4.18). `sekmeAc`'ı SARAR (→ §4.14) | — |
-| **`src/renderer/revize-onizleme.js`** | **Revize önizleme motoru** (Faz 19, DOM'suz, çift modlu): `tutarlar` (**sunucu `B2B_Ucret_Motoru::tutarlar` ikizi** — 500 vakada kuruşu kuruşuna karşılaştırılır), `birimHesapla` (iskonto revizesi listeden, KDV kipi iki yönlü ve yalnızca farklıysa), `hesapla` (taban · bayi · ödeme · kargo · toplam; belirsiz oranda iki satır da sabit) (→ §4.25) | `node --test` altında koşar |
+| **`src/renderer/revize-onizleme.js`** | **Revize önizleme motoru** (Faz 19, DOM'suz, çift modlu): `tutarlar` (**sunucu `B2B_Ucret_Motoru::tutarlar` ikizi** — 500 vakada kuruşu kuruşuna karşılaştırılır), `birimHesapla` (iskonto revizesi listeden, KDV kipi iki yönlü ve yalnızca farklıysa), `hesapla` (taban · bayi · ödeme · kargo · toplam; belirsiz oranda iki satır da sabit). **Faz 21:** `bayiIkiYerde` → belirsiz, indirim iki yerdeyse iskonto satırlarına dokunulmaz (→ §4.25, §4.27) | `node --test` altında koşar |
 | **`src/renderer/revizyon-gecmisi.js`** | **Revize geçmişi çizicisi** (Faz 19, DOM'suz): `html(kayitlar)` — önce/sonra yan yana, eski değer kırmızı + üstü çizili, yeni yeşil, en yeni üstte; fark SUNUCUDAN (ikinci fark motoru yok); bütün metin kaçışlanır (→ §4.25) | `node --test` / `<script src>` |
-| **`src/renderer/modules/iskonto-denetimi.js`** | **Ayarlar › Geçmiş Sipariş İskonto Denetimi** (Faz 19): `GET maintenance/fee-audit` kuru denetim (sayfa sayfa), seçilenleri onaylı `POST`; formül YOK (→ §4.25.4) | — |
+| **`src/renderer/modules/iskonto-denetimi.js`** | **Ayarlar › Geçmiş Sipariş İskonto Denetimi** (Faz 19): `GET maintenance/fee-audit` kuru denetim (sayfa sayfa), seçilenleri onaylı `POST`; formül YOK. **Faz 21:** `cift_bayi` sonucu — varsayılan seçili, özete ve farka girer (→ §4.25.4, §4.27) | — |
 | **`src/renderer/siparis-fisi.js`** | **Kurumsal sipariş fişi motoru** (Faz 12, DOM'suz, çift modlu): `normalle` (yönetici / plasiyer / ham `prepare_order`), `html` (A4 / 80 mm termal, inline CSS), `whatsappMetni` (kalın başlıklar, koli×adet, iskontolar, net, ≤ 1800 kr), `waTelefon`, `waAdresi`, `paraYaz`. **Faz 13:** KDV sütunları + `KDV UYGULANMADI` bloğu; **KDV yeniden HESAPLANMAZ**, sunucudan geleni basar (→ §4.17.4). **Faz 14:** sabit 8 sütun + kalem `listeBirim`; **`ozetBlogu`** (altı sabit satır — depo fişi de bunu çağırır), **`sayfalaraBol`** (sabit sayfa ölçüsü), **`aracCubugu` + `pencere`** (Yazdır · PDF · WhatsApp · Kapat; `html()` saf kalır) (→ §4.18). İki kabuk aynı fişi basar (→ §4.16.4) | `node --test` altında koşar |
 | **`src/renderer/modules/plasiyer-performansim.js`** | **Performansım** (Faz 11): saha 4. sekmesi — TEK IPC `plasiyer:performans` ile gün/7 gün/30 gün sipariş + net ciro kartları, bayi katkı çubukları (`scaleX`), il dağılımı; yönetici uçlarına gidilmez; `sekmeAc`'ı SARAR (→ §4.15) | — |
 | **`src/renderer/modules/plasiyer-otosync.js`** | **Otomatik eşitleme tetikleyicisi** (Faz 4): `online` olayı + 60 sn hafif yoklama + `visibilitychange`. Kuyruk boşsa **ağa çıkmaz**, hata sessizdir (→ §4.7) | — |
@@ -2040,6 +2040,40 @@ Kart: görsel 4:3 → ad (2 satır) → kod → koli + fiyat → **dibe oturan**
 
 ---
 
+## 4.27 Faz 21 — Onay pencereleri tek tek, revize tek uçuş + tekrar kimliği, çift bayi iskontosu uyarısı
+
+Panel **2.11.1** · eklenti **2.28.1** → `../BYOM-REGISTRY.md §5.55`, kök `CLAUDE.md §10 Faz 21`.
+
+### 4.27.1 🔴 Tek tıklama on bir revize gönderiyordu (canlı #6503)
+
+`onayla()` her çağrıda ortak `#modalTamam` düğmesine **bir dinleyici daha** ekliyor ve açık
+onayı kapatmadan yenisini aynı pencerede açıyordu. Önceki onayın sözü askıda kalıyor, sonraki
+EVET tıklaması bekleyen **bütün** sözleri birden `true` ile çözüyordu. `revizeyiOnayla` da
+girişte "zaten gönderiliyor mu?" diye bakmıyordu: düğme ancak onaylardan SONRA meşgul oluyordu,
+Enter kısayolu (son adet kutusu) ise düğmeden bağımsız çağırıyordu.
+
+| Ne | Kural |
+|---|---|
+| `onayla` / `metinSor` / `durumPenceresi` | **Tek pencere:** yeni çağrı açık olanı vazgeçildi sayar (`false` / `null`). Açık pencerenin kapatıcısı fonksiyonun kendi özelliğinde durur (`onayla.acik`): genel değişken açılmaz, `kes()` ile kesen testler ek yardımcı istemez. `kapat` tek seferliktir (`bitti`) |
+| `revizeyiOnayla` | **Tek uçuş:** `revizeyiOnayla.suruyor` bayrağı `try/finally` ile iner; süren gönderim varken ikinci çağrı bilgi verip döner |
+| `istek_kimligi` | `r<sipariş>-<pencere oturumu>-<FNV-1a(gövde)>`. Pencere oturumu (`durum.revizeOturumu`) her `revizeModaliAc`'ta yenilenir. Zaman aşımından sonra AYNI içerik AYNI kimlikle gider ve sunucu (2.28.1) onu yinelemez; içerik değişince kimlik de değişir. Eski eklenti alanı yok sayar |
+| `tekrar: true` | Kullanıcıya "zaten uygulanmıştı; ikinci kez uygulanmadı" denir. "İşlendi" demek ikinci kez uygulandığı izlenimini verirdi. İlk (yanıtı kaybolan) istek durumu değiştirmişse liste yeniden yüklenir; sipariş yanlış sekmede kalmaz |
+
+### 4.27.2 Revize penceresi — gerçek oran ve çift iskonto uyarısı (canlı #6512)
+
+- `b2bSiparisNormalle → iskontoOrani`'nın son yedeği **`ucret.bayiOran`**. Eski eklenti `discount_rate`'i 0 döndürse de pencere ücret satırındaki %3'ü başlangıç yapar; aynı %3'ü girmek `revizeIskontoOrani() === null` verir ve **istek gitmez**. #6512 tam olarak "%0"ı görüp %3 girmekle oluşmuştu.
+- `bayiIkiYerde` (`revision.dealer_discount_twice`): `#revizeToplam`'ın başında `[data-revize-cift-uyari]` kırmızı uyarısı basılır ("İKİ KEZ … Ayarlar › Geçmiş Sipariş İskonto Denetimi"). `RevizeOnizleme.hesapla({ bayiIkiYerde })` belirsiz döner ve iskonto satırları eski tutarında kalır — sunucu motoruyla aynı karar. Yeni bir oran seçilince uyarı susar ve kural kalkar, çünkü bayi satırı silinip fiyat listeden kurulacaktır.
+- İskonto Denetimi: `SONUC.cift_bayi` (kırmızı, seçilebilir, **varsayılan seçili**), `SEBEP.bayi_iskontosu_iki_yerde`, özette "çift bayi iskontosu N"; toplam fark çift satırları da kapsar ve onay penceresi "N siparişte iki kez düşen bayi iskontosu satırı kaldırılacak" der.
+
+### Bozmaman gereken sözler (Faz 21)
+- Onay pencereleri üst üste **açılmaz**; açık olan yeni çağrıda vazgeçildi sayılır.
+- `revizeyiOnayla` gövdesi `try/finally` içinde kalır; bayrak her çıkışta iner.
+- `istek_kimligi` gövdenin tamamından türetilir: gövdeye alan eklenirse kimlik ondan SONRA hesaplanmalı, yoksa farklı iki istek aynı kimliği alır ve sunucu ikincisini atlar.
+- Başlangıç oranı ücret satırındaki bayi oranını da bilir; "%0" yeniden doğmasın.
+- İndirim iki yerdeyse önizleme iskonto satırlarına dokunmaz (`RevizeOnizleme` ↔ `B2B_Ucret_Motoru::tani` aynı karar).
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -2047,7 +2081,7 @@ Kart: görsel 4:3 → ad (2 satır) → kod → koli + fiyat → **dibe oturan**
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.126 test**: panel 441 + kök 663 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.140 test**: panel 441 + kök 677 + hub 22).
 
 ```bash
 # Bu submodule'un kendi birim testleri (441 test) — Electron GEREKMEZ
@@ -2106,9 +2140,10 @@ node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe
 node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
 node --test scripts/tests/arayuz-sistemi.dom.test.js  # 17 — Faz 20: üç kademe, meşgul CSS'i, gizli kazanır, Yenile bağlamaları, ÖLÜ DÜĞME KORUMASI, bildir('ok')
 node --test scripts/tests/revize-urun-ekle.dom.test.js # 17 — Faz 19: ürün ekle, ARA KAYDET, iskonto kırılımı, KDV çift bölme, geçmiş penceresi
-node --test scripts/tests/revize-onizleme.test.js     # 11 — Faz 19: önizleme motoru (PHP_BIN verilirse sunucu motoruyla 500 vaka)
+node --test scripts/tests/revize-onizleme.test.js     # 12 — Faz 19-21: önizleme motoru (PHP_BIN verilirse sunucu motoruyla 500 vaka) + iki yerde kuralı
 node --test scripts/tests/odeme-yetki.dom.test.js     # 12 — Faz 19: bayi kartı ödeme yetkileri + bayiMinTutarKaydet regresyonu
-node --test scripts/tests/iskonto-denetimi.dom.test.js # 9 — Faz 19: Ayarlar › geçmiş sipariş iskonto denetimi
+node --test scripts/tests/iskonto-denetimi.dom.test.js # 11 — Faz 19-21: Ayarlar › geçmiş sipariş iskonto denetimi + cift_bayi
+node --test scripts/tests/revize-tekrar.dom.test.js    # 9 — Faz 21: onay pencereleri tek tek, revize tek uçuş + istek_kimligi, çift bayi uyarısı
 node --test scripts/tests/sube-panel.dom.test.js      # 11 — Faz 16-E: şube seçici, ana müşteri değişmez, adsız kayıt ağa çıkmaz
 node --test scripts/tests/php-sube.test.js            # 65 iddia — Faz 16-E: şube motoru, fatura adresi değişmez (PHP)
 node --test scripts/tests/kunye-tablo.test.js         # 7  — Faz 16-D: uzun ad tabloyu taşırmaz, barkod SKU'dan ayrı
@@ -2129,7 +2164,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.126 test)
+# Bitirirken: üç katmanın tamamı (1.140 test)
 node scripts/check-all.js
 ```
 
@@ -2210,7 +2245,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 202 php / 143 js / 1.095 test
+cd .. && node scripts/check-all.js     # 0 hata / 204 php / 149 js / 1.140 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

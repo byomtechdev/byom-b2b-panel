@@ -94,6 +94,7 @@
    *   kdvMevcutHaric: bool, kdvHedefHaric: bool,
    *   bayiUcret:  { var, oran, eski },
    *   odemeUcret: { var, oran, eski },
+   *   bayiIkiYerde: bool  (eklenti 2.28.1 `dealer_discount_twice`),
    *   kargo: number
    * }
    * @returns {object}
@@ -156,7 +157,16 @@
      * sayar ve iskonto satırlarının HİÇBİRİNE dokunmaz (B2B_Ucret_Motoru::tani).
      * Ekran da aynısını söylemeli — iki satır da eski tutarında sabit.
      */
-    var belirsiz = (bayiVar && !(sayi(bayiU.oran) > 0)) || (!!odemeU.var && (!!odemeU.sabit || !(sayi(odemeU.oran) > 0)));
+    /*
+     * İNDİRİM İKİ YERDE (Faz 21 — canlı #6512): bayi oranı hem satır
+     * fiyatlarına işlenmiş hem ayrı ücret satırında. Sunucu motoru bu
+     * siparişi de "belirsiz" sayar (sorun: bayi_iskontosu_iki_yerde) ve
+     * iskonto satırlarına dokunmaz; düzeltme onarım aracının işidir. İskonto
+     * revizesi seçildiyse bayi satırı silinip fiyat listeden kurulacağı için
+     * (bayiVar false) sipariş artık iki yerde değildir — kural uygulanmaz.
+     */
+    var belirsiz = (bayiVar && (!(sayi(bayiU.oran) > 0) || !!g.bayiIkiYerde)) ||
+                   (!!odemeU.var && (!!odemeU.sabit || !(sayi(odemeU.oran) > 0)));
 
     if (belirsiz) {
       t = { bayi: bayiVar ? kurus(bayiU.eski) : 0, odeme: odemeU.var ? kurus(odemeU.eski) : 0 };
