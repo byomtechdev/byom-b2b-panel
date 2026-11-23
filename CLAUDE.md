@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.11.1** (Faz 21).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.12.0** (Faz 22-A).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -83,7 +83,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`renderer-plasiyer.js`** | **Çift kapılı giriş + rol kısıtlaması.** Kapı kaplaması, `durum.oturum`, menü daraltma, üst bar, çıkış. EN SONA yüklenir (→ §5) | — |
 | **`src/renderer/modules/plasiyer-yonetimi.js`** | **Yöneticinin "Pazarlamacılar" sekmesi:** tanımlama, PIN, bayi atama, performans tablosu + ciro çubuğu, **cihaz tahsis düğmesi** (→ §4.9), **alt sekme denetleyicisi** (Ciro / Harita → §4.10). **Faz 13:** `DONEMLER` sözlüğü + `[Bu Ay][Bu Yıl][Tümü]` çipleri — **tıklamak ağa çıkmaz** (→ §4.17.7). `sekmeAc`'ı SARAR | — |
 | **`src/renderer/plasiyer-siparis-motor.js`** | **DOM'suz sipariş motoru** (Faz 2): koli matematiği, sepet indirgeyici, "son siparişi kopyala", geçici müşteri UUID, iskonto tavanı, sipariş gövdesi. **Faz 13:** `kdvOrani(urun)` + sepet `kdvDahil` bayrağı (gövdede `false !== sepet.kdvDahil` — `undefined` KDV dahil sayılır, kuyruktaki eski siparişler kip değiştirmez). **Faz 14:** `kalemKdv(satir)` + `toplamlar()` KDV kipini bilir — satır neti = brüt / (1+o/100), iskontolar **NET matrahtan**, `kdv{…}` künyesi, `brutAraToplam` (→ §4.18). `node --test` altında koşar (→ §4.6, §4.17.4) | — |
-| **`src/renderer/modules/plasiyer-vitrin.js`** | **Satış vitrini** (Faz 2): daraltılabilir kategori kenar çubuğu, filtre barı, çift görünüm (Vitrin/Matris), SPOT rozeti, ürün detay penceresi, sepet. **Faz 13:** `sonrakiSayfa()` sayfalama + gerçek sayaç metinleri, tek `kodBarkod()` yardımcısı (kart/matris/detay), `Fiyat : ` öneki, `#gorunumAnahtar` **silindi** → `kipIpucu()` (→ §4.17.2/§4.17.3). `sekmeAc`'ı SARAR | — |
+| **`src/renderer/modules/plasiyer-vitrin.js`** | **Satış vitrini** (Faz 2): daraltılabilir kategori kenar çubuğu, filtre barı, çift görünüm (Vitrin/Matris), SPOT rozeti, ürün detay penceresi, sepet. **Faz 13:** `sonrakiSayfa()` sayfalama + gerçek sayaç metinleri, tek `kodBarkod()` yardımcısı (kart/matris/detay), `Fiyat : ` öneki, `#gorunumAnahtar` **silindi** → `kipIpucu()` (→ §4.17.2/§4.17.3). **Faz 22-A:** sepet iki parça (kayan `.pv-sepet__liste` + sabit `.pv-sepet__alt`), liste konumu korunur, `satiriGoster()` (→ §4.28). `sekmeAc`'ı SARAR | — |
 | **`src/renderer/modules/plasiyer-musteri.js`** | **Müşteri ve sipariş akışı** (Faz 2): seçim/arama, cari risk uyarısı, çevrimdışı müşteri, son siparişi kopyala, üç ödeme yöntemi + notlar. **Faz 13:** `KDV Tercihi` seçimi + `kdvTahmini`/`kdvOzetBlogu` (ekranda "tahmini" yazar), **müşteri bilgilerini düzenleme** (tek form iki kip: `musteri:kuyrukta-guncelle` / `musteri:guncelle`), `epostaGoster()` `.invalid` yer tutucuyu forma doldurmaz (→ §4.17.4/§4.17.5). **Faz 14:** perde özeti motorun `kdv` künyesinden (KDV dâhil bilgi satırı / KDV hariç düşüm + net matrah), `kdvDokumu()` satır satır; `kdvTahmini` **kaldırıldı** (→ §4.18) | — |
 | **`src/renderer/plasiyer-sync-motor.js`** | **DOM'suz eşitleme motoru** (Faz 3): outbox dağıtıcı, kimlik köprüsü, hata toleransı. Ana süreç de `require` eder (→ §4.7) | — |
 | **`src/renderer/harita-veri.js`** | **DOM'suz 81 il kütüğü + ziyaret notu mantığı** (Faz 3): plaka/ad/bölge/konum, durum geçişleri, filtreler, yoğunluk. **Gerçek sınır yolları YOK** — gerekçe dosya başlığında (→ §4.8) | — |
@@ -2026,7 +2026,7 @@ Kurumsal tema bloğundan SONRA gelen ayrı bir `<style>`; aynı ağırlıkta (`!
 ### 4.26.4 Saha terminali
 
 Kart: görsel 4:3 → ad (2 satır) → kod → koli + fiyat → **dibe oturan** [− kutu +] 44px +
-"Sepete Ekle" 44px. Sepet 304px ve yapışkan; satır −/+/kaldır 44px. Müşteri seçimi
+"Sepete Ekle" 44px. Sepet 304px; satır −/+/kaldır 44px (yapışkan sepet **Faz 22-A'da** sabit yerleşime döndü → §4.28). Müşteri seçimi
 `#musteriSecim` 44px / en az 18rem. Kategori listesi `.pv-kat` (aria-pressed; "Tüm
 Ürünleri Gör" de listenin üyesi). Künye **çip** (`.pv-cip`, bilgi ≠ eylem). Emoji yerine
 çizgi ikon (modüllerde `ikonHtml(ad)` yardımcısı — `window.ikon` yoksa boş).
@@ -2074,6 +2074,33 @@ Enter kısayolu (son adet kutusu) ise düğmeden bağımsız çağırıyordu.
 
 ---
 
+## 4.28 Faz 22-A — Saha satış ekranı: kategori ve sepet sabit, sepette yalnızca liste kayar
+
+Panel **2.12.0** · eklenti ve temalar değişmedi → `../BYOM-REGISTRY.md §5.57`.
+
+Ürünler kaydırılınca kategori sütunu kayıp gidiyordu; sepet tek kaydırma kutusuydu ve 50 kalemde
+"Siparişi Tamamla" listenin dibindeydi (gerçek Chromium ölçümü: kategori −7020 px, düğme 6995 px aşağıda).
+
+| Ne | Yer |
+|---|---|
+| Satış sekmesi `#anaGovde`'yi doldurur: `#sekme-satis.acik { display:flex; flex-direction:column; height:100% }`. Üst şerit + filtre barı yerinde, `.pv-yerlesim` satırı kalan yüksekliği alır (en az 18rem; sığmazsa `#anaGovde` yine kayar) | `index.html` › `arayuzSistemi` › 11) SAHA TERMİNALİ |
+| `#katKenar`, `.pv-urun-kab` (ürün sütunu) ve `.pv-sepet__liste` **kendi içlerinde** kayar (`overflow-y:auto`, `overscroll-behavior:contain`) | aynı |
+| Sepet iki parça: başlık · kayan `.pv-sepet__liste` · sabit `.pv-sepet__alt` (özet + Siparişi Tamamla + Sepeti Boşalt). Kısa sepet kompakt (`align-self:flex-start`), uzun sepet sütun boyuna kadar | `plasiyer-vitrin.js → sepetiCiz` |
+| Liste `scrollTop`'u çizimden önce okunur, sonra **yazılır** (`kaydirmayiKoru` kalıbı) | aynı |
+| Satır `data-satir-id` taşır; `sepeteEkle` → `satiriGoster` → `scrollIntoView({block:'nearest'})` (yoksa atlanır) | aynı |
+
+**Neden yapışkan sütun değil:** sayfanın tepesinde yapışkan sütun müşteri şeridinin altından başlar;
+boyu ekran boyuysa dibi (Siparişi Tamamla) ilk açılışta ekranın dışında kalır.
+
+### Bozmaman gereken sözler (Faz 22-A)
+- `#katKenar` / `#sepetKutu` işaretlemesine `max-h-*` / `overflow-y-auto` **geri eklenmez**; yükseklik ve kaydırma CSS'tedir (kaynak testi kilitler).
+- `.pv-urun-kab` ürün sütununun kaydırma kabıdır; vitrin kartları ondan dışarı taşınmaz.
+- `sepetiCiz()` argümansız kalır; kaydırma konumu **yazılır**, eklenmez.
+- Özet ve düğmeler `.pv-sepet__alt` içinde kalır; listeye karışırsa sabit alt kısım kaybolur.
+- jsdom yerleşim hesaplamaz: bu alanda düzen değişikliği gerçek Chromium'da ölçülür (§4.17.1 dersi).
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -2081,7 +2108,7 @@ Enter kısayolu (son adet kutusu) ise düğmeden bağımsız çağırıyordu.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.140 test**: panel 441 + kök 677 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.146 test**: panel 441 + kök 683 + hub 22).
 
 ```bash
 # Bu submodule'un kendi birim testleri (441 test) — Electron GEREKMEZ
@@ -2131,14 +2158,14 @@ node --test scripts/tests/saha-perde.dom.test.js      # 6  — Faz 13: perde ATA
 node --test scripts/tests/plasiyer-menu.dom.test.js   # 19 — menü hiyerarşisi, alt sekmeler, Saha Notlarım, dönem çipleri
 node --test scripts/tests/yonetici-pin.dom.test.js    # 17 — PIN değiştirme kartı + giriş kartı düzeni
 node --test scripts/tests/harita-kokpit.dom.test.js   # 18 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran, bayi profili
-node --test scripts/tests/saha-denetim.dom.test.js    # 31 — Faz 20: alt sınırda "−" kapalı · Faz 10-14: hızlı adet, Saha Siparişlerim (+ iptal/sil), üç üye alt sekmesi, katalog sayfalama, ürün kartı, KDV İSTEMİYORUM matematiği
+node --test scripts/tests/saha-denetim.dom.test.js    # 46 — Faz 22-A: sepette kayan liste + sabit alt, +/− konumu korur, eklenen satır görünür · Faz 20: alt sınırda "−" kapalı · Faz 10-14: hızlı adet, Saha Siparişlerim (+ iptal/sil), üç üye alt sekmesi, katalog sayfalama, ürün kartı, KDV İSTEMİYORUM matematiği
 node --test scripts/tests/saha-analitik.dom.test.js   # 11 — Faz 11: Performansım, kalem dökümü üç şekil, harita tarih + bayi kartı, çevrimdışı müşteri silme
 node --test scripts/tests/yonetici-arayuz.dom.test.js # 18 — Faz 11-13: sipariş sekmesi iki seviye, WhatsApp fişi, logo ÖLÇEĞİ (--logo-height, önizleme şeridi), üç görsel yuvası
 node --test scripts/tests/saha-harita.dom.test.js     # 21 — Faz 12-13: iki rol iki harita, renk/il formu, saha kısayolları, bayi profili kapısı
 node --test scripts/tests/revize-kaldir.dom.test.js   # 5  — Faz 14: revizede KALDIR/GERİ AL, remove:true gövde, durum değişmez, tümü kaldırılamaz
 node --test scripts/tests/revize-iskonto.dom.test.js  # 17 — Faz 15: siparişe özel iskonto (LİSTE fiyatından 1000→800), dokunma kararı, 10 iş günü kilidi, rozet
 node --test scripts/tests/kuyruk-onarim.dom.test.js   # 14 — Faz 16-A: onarım şeridi düğmeleri GERÇEKTEN tıklanır, künye yoksa dirilt yok, hedefte yalnızca sunucu bayileri
-node --test scripts/tests/arayuz-sistemi.dom.test.js  # 17 — Faz 20: üç kademe, meşgul CSS'i, gizli kazanır, Yenile bağlamaları, ÖLÜ DÜĞME KORUMASI, bildir('ok')
+node --test scripts/tests/arayuz-sistemi.dom.test.js  # 18 — Faz 22-A: satış ekranı sabit yerleşim (kaynak) · Faz 20: üç kademe, meşgul CSS'i, gizli kazanır, Yenile bağlamaları, ÖLÜ DÜĞME KORUMASI, bildir('ok')
 node --test scripts/tests/revize-urun-ekle.dom.test.js # 17 — Faz 19: ürün ekle, ARA KAYDET, iskonto kırılımı, KDV çift bölme, geçmiş penceresi
 node --test scripts/tests/revize-onizleme.test.js     # 12 — Faz 19-21: önizleme motoru (PHP_BIN verilirse sunucu motoruyla 500 vaka) + iki yerde kuralı
 node --test scripts/tests/odeme-yetki.dom.test.js     # 12 — Faz 19: bayi kartı ödeme yetkileri + bayiMinTutarKaydet regresyonu
@@ -2164,7 +2191,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.140 test)
+# Bitirirken: üç katmanın tamamı (1.146 test)
 node scripts/check-all.js
 ```
 
@@ -2245,7 +2272,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 204 php / 149 js / 1.140 test
+cd .. && node scripts/check-all.js     # 0 hata / 204 php / 149 js / 1.146 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

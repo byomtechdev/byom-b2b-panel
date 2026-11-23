@@ -779,7 +779,21 @@
     eksiDurumunuTazele(u.id);
 
     sepetiCiz();
+    satiriGoster(u.id);
     bildir(kacis(u.name) + ' sepete eklendi: ' + kacis(M().adetEtiketi(u, eklenen)) + '.', 'ok');
+  }
+
+  /**
+   * Eklenen ürünün sepet satırını görünür alana getirir (Faz 22-A). Yeni kalem
+   * listenin SONUNA eklenir (motor `push`); uzun sepette ekleme göz önünde
+   * olsun. `block: 'nearest'` — satır zaten görünüyorsa liste yerinden
+   * oynamaz. scrollIntoView yoksa (eski motor / jsdom) sessizce atlanır.
+   */
+  function satiriGoster(id) {
+    var kap = el('sepetKutu');
+    var satir = kap ? kap.querySelector('.pv-sepet__satir[data-satir-id="' + String(Number(id)) + '"]') : null;
+
+    if (satir && 'function' === typeof satir.scrollIntoView) satir.scrollIntoView({ block: 'nearest' });
   }
 
   function sepetiCiz() {
@@ -801,14 +815,30 @@
     }
 
     /*
+     * İKİ PARÇA (Faz 22-A): başlık · KAYAN .pv-sepet__liste · SABİT
+     * .pv-sepet__alt (özet + Siparişi Tamamla + Sepeti Boşalt). 50 kalemlik
+     * sepette onay düğmesine ulaşmak için listenin dibine inmek gerekmez.
+     *
+     * KAYDIRMA KONUMU KORUNUR: innerHTML listeyi baştan yazar ve tarayıcı
+     * konumu sıfırlar — 40. satırda "+"ya basmak listeyi en başa fırlatırdı.
+     * Konum ÖNCE okunur, çizimden SONRA geri YAZILIR (`+=` yok): bu fonksiyon
+     * her +/−, müşteri ve iskonto değişiminde yeniden çağrılır, tekrar
+     * çalışması zararsızdır. Liste kısaldıysa tarayıcı konumu kendisi kırpar.
+     * (renderer.js → kaydirmayiKoru ile aynı kalıp.)
+     */
+    var eskiListe = kap.querySelector('.pv-sepet__liste');
+    var konum = eskiListe ? eskiListe.scrollTop : 0;
+
+    /*
      * SEPET SATIRI (Faz 20) — saha terminali dokunmatik: −/+ ve kaldır 44px
      * kare hedeftir (eskiden 36px). Satır tutarı adet satırının sağında; ad tam
      * genişlikte iki satıra kadar sarar.
      */
     kap.innerHTML =
       '<div class="pv-sepet__baslik">Sepet <span class="metin-ikincil">' + t.satir + ' kalem</span></div>' +
+      '<div class="pv-sepet__liste">' +
       s.satirlar.map(function (r) {
-        return '<div class="pv-sepet__satir">' +
+        return '<div class="pv-sepet__satir" data-satir-id="' + kacis(r.id) + '">' +
           '<div class="font-bold leading-snug line-clamp-2" title="' + kacis(r.name) + '">' + kacis(r.name) + '</div>' +
           '<div class="metin-soluk">' + kacis(r.sku || '') + '</div>' +
           '<div class="pv-sepet__adet">' +
@@ -822,6 +852,8 @@
           '</div>' +
         '</div>';
       }).join('') +
+      '</div>' +
+      '<div class="pv-sepet__alt">' +
       '<div class="pv-sepet__ozet">' +
         '<div class="flex justify-between text-sm"><span>Ara toplam</span><span class="font-bold">' + kacis(paraYaz(t.araToplam)) + '</span></div>' +
         (t.indirim > 0
@@ -835,7 +867,11 @@
       '</div>' +
       /* Sepetin TEK birincil işlemi; boşaltma yıkıcıdır ve sessiz durur (onay ister). */
       '<button type="button" id="sepetTamamla" class="dg dg-birincil dg-b dg-tam mt-4">' + ikonHtml('onay') + ' Siparişi Tamamla</button>' +
-      '<button type="button" id="sepetBosalt" class="dg dg-sessiz dg-tam mt-2">Sepeti Boşalt</button>';
+      '<button type="button" id="sepetBosalt" class="dg dg-sessiz dg-tam mt-2">Sepeti Boşalt</button>' +
+      '</div>';
+
+    var yeniListe = kap.querySelector('.pv-sepet__liste');
+    if (yeniListe && konum) yeniListe.scrollTop = konum;
 
     var tamamla = el('sepetTamamla');
 

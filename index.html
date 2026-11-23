@@ -1937,10 +1937,34 @@
   html .pv-adet input.hizli-adet-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   html .pv-adet .dg, html .pv-sepet__adet .dg { font-size: 18px !important; }
 
-  /* Sepet: katalog kaydırılırken görünür kalır */
-  /* Genişlik px: kök yazı 13px olduğundan 20rem yalnızca 260px ediyordu ve 44px'lik
+  /* SABİT YERLEŞİM (Faz 22-A) — bu sekmede SAYFA değil SÜTUNLAR kayar.
+     Saha bildirimi: ürünler kaydırılınca kategori sütunu yukarıda kalıyordu;
+     sepet tek kaydırma kutusuydu ve 50 kalemde "Siparişi Tamamla" listenin
+     dibindeydi. Faz 20'nin `position: sticky` sepeti bunu çözmüyordu: yapışkan
+     sütun en üstte müşteri şeridinin ALTINDAN başlar, boyu ekran boyuysa dibi
+     (Siparişi Tamamla) ilk açılışta ekranın dışında kalır.
+     Şimdi: sekme #anaGovde'yi doldurur (height:100% — #anaGovde esnek satırın
+     gerdirilmiş öğesi olduğu için yüksekliği belirlidir), üst şerit ve filtre
+     barı yerinde durur, satır kalan yüksekliği alır; kategoriler, ürünler ve
+     sepet listesi KENDİ İÇLERİNDE kayar. Pencere çok alçaksa (satır en az
+     18rem) #anaGovde yine kayar — bozulma yerine eski davranış.
+     jsdom yerleşim hesaplamaz: kurallar kaynaktan kilitli
+     (arayuz-sistemi.dom.test.js), gerçek ölçüm Electron'da yapıldı (§5.57). */
+  html #sekme-satis.acik { display: flex; flex-direction: column; height: 100%; }
+  html #sekme-satis > .pv-yerlesim { flex: 1 1 auto; min-height: 18rem; align-items: stretch; }
+  html #katKenar { overflow-y: auto; overscroll-behavior: contain; }
+  html #vitrinKab { align-self: stretch; align-items: stretch; min-height: 0; }
+  /* İç boşluk: kart gölgesi ve odak halkası kaydırma kenarında kırpılmasın. */
+  html .pv-urun-kab { overflow-y: auto; min-height: 0; overscroll-behavior: contain; padding: 4px; }
+  /* Sepet: kısa sepet kompakt kart (flex-start), uzun sepet sütun boyuna kadar
+     uzar; başlık üstte, .pv-sepet__liste kayar, .pv-sepet__alt (özet + Siparişi
+     Tamamla + Sepeti Boşalt) altta SABİT.
+     Genişlik px: kök yazı 13px olduğundan 20rem yalnızca 260px ediyordu ve 44px'lik
      −/+/sil düğmeleri arasında "12 Adet (1 Koli)" iki satıra sarıyordu. */
-  html #sepetKutu { position: sticky; top: 0; width: 304px !important; }
+  html #sepetKutu { display: flex; flex-direction: column; align-self: flex-start; max-height: 100%; overflow: hidden; width: 304px !important; }
+  html .pv-sepet__baslik, html .pv-sepet__bos { flex: none; }
+  html .pv-sepet__liste { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+  html .pv-sepet__alt { flex: none; }
   html .pv-sepet__baslik { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-size: 15px; font-weight: 700; color: var(--baslik); }
   html .pv-sepet__satir { padding: 12px 0; border-top: 1px solid var(--cizgi); }
   html .pv-sepet__adet { margin-top: 8px; display: grid; grid-template-columns: var(--dg-b) minmax(0, 1fr) var(--dg-b) var(--dg-b); gap: 6px; align-items: center; }
@@ -3947,11 +3971,15 @@
           </div>
         </div>
 
-        <div class="flex gap-5 items-start min-h-0">
+        <!-- SABİT YERLEŞİM (Faz 22-A): bu sekmede SAYFA kaymaz. Satır kalan
+             yüksekliği alır; kategoriler, ürünler ve sepet KENDİ İÇLERİNDE kayar.
+             Yükseklik ve kaydırma kuralları <style id="arayuzSistemi"> › 11) SAHA
+             TERMİNALİ'nde — buraya max-h / overflow sınıfı geri eklenmez. -->
+        <div class="pv-yerlesim flex gap-5 items-start min-h-0">
 
           <!-- SOL: daraltılabilir kategori kenar çubuğu -->
           <aside id="katKenar"
-                 class="kat-kenar bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-4 max-h-[70vh] overflow-y-auto">
+                 class="kat-kenar bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-4">
             <button type="button" id="tumUrunler" class="pv-kat pv-kat--tumu" aria-pressed="true">
               <span class="pv-kat__ad">Tüm Ürünleri Gör</span>
             </button>
@@ -3960,14 +3988,15 @@
 
           <!-- SAĞ: vitrin + sepet -->
           <div id="vitrinKab" class="vitrin-kab flex-1 min-w-0 flex gap-5 items-start">
-            <div class="flex-1 min-w-0">
+            <div class="pv-urun-kab flex-1 min-w-0">
               <div id="urunVitrin" class="min-h-40"></div>
               <div id="vitrinDaha" class="mt-4 text-center"></div>
             </div>
 
-            <!-- SEPET -->
+            <!-- SEPET — iki parça (plasiyer-vitrin.js → sepetiCiz): kayan
+                 .pv-sepet__liste + sabit .pv-sepet__alt (özet, Siparişi Tamamla) -->
             <aside id="sepetKutu"
-                   class="w-80 shrink-0 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-4 max-h-[70vh] overflow-y-auto"></aside>
+                   class="w-80 shrink-0 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 p-4"></aside>
           </div>
         </div>
 
