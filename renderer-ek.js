@@ -747,6 +747,8 @@ async function iskontoSekmesiYukle(zorla) {
 
   // Genel minimum tutar matristen bagimsiz okunur; biri patlarsa digeri calisir.
   minTutarYukle();
+  // Fiş KDV görünümü de bağımsız (Faz 22-B): sekme her açıldığında sunucudan tazelenir.
+  fisKdvAyariYukle();
 
   d.iskontoYukleniyor = true;
   iskontoDurumYaz('bilgi', 'Ödeme matrisi getiriliyor…', 'Lütfen bekleyin.');
@@ -1097,6 +1099,154 @@ async function minTutarKaydet() {
   } finally {
     geriAl();
   }
+}
+
+/* ==========================================================================
+ *  FİŞ GÖRÜNÜMÜ — "KDV ORANLARI GÖSTER" (Faz 22-B)
+ *  --------------------------------------------------------------------------
+ *  Ürün sahibi: bazı müşteriler depo / sipariş fişinde KDV satırlarını görünce
+ *  işkilleniyor. Anahtar KAPALI iken fişlerde KDV sütunu, satırı ve açıklaması
+ *  basılmaz; tutarlar DEĞİŞMEZ.
+ *
+ *  Kaynak eklenti ayarı `receipt_show_vat` (/settings). Okuma ve motora kurma
+ *  renderer.js → fisAyariniHazirla / fisAyariniUygula'dadır (tek yer); bu
+ *  bölüm yalnızca anahtarı çizer ve kaydeder.
+ *
+ *  KAYDET → SUNUCUNUN DÖNDÜRDÜĞÜ değer esas alınır. İstek başarısızsa anahtar
+ *  ESKİ konumuna döner ve sebep söylenir: anahtarın "kapalı" görünüp fişlerin
+ *  KDV'li basılması, kullanıcıya yalan söylemek olurdu. Kayıt sürerken ikinci
+ *  tıklama yok sayılır (aria-busy + disabled).
+ * ========================================================================*/
+
+/** Anahtarın görünümü: konum, renk, AÇIK/KAPALI yazısı, meşgul durumu. */
+function fisKdvAnahtariCiz(acik, mesgul) {
+  const anahtar = $('#fisKdvAnahtar');
+  const yazi = $('#fisKdvDurumMetni');
+
+  if (anahtar) {
+    anahtar.setAttribute('aria-checked', acik ? 'true' : 'false');
+    anahtar.classList.toggle('bg-emerald-500', !!acik);
+    anahtar.classList.toggle('bg-slate-300', !acik);
+    anahtar.classList.toggle('dark:bg-slate-600', !acik);
+    anahtar.disabled = !!mesgul;
+    if (mesgul) anahtar.setAttribute('aria-busy', 'true'); else anahtar.removeAttribute('aria-busy');
+
+    const top = anahtar.querySelector('span');
+    if (top) top.classList.toggle('translate-x-9', !!acik);
+  }
+
+  if (yazi) {
+    yazi.textContent = acik ? 'AÇIK' : 'KAPALI';
+    yazi.classList.toggle('text-emerald-700', !!acik);
+    yazi.classList.toggle('text-slate-500', !acik);
+  }
+}
+
+/** Kartın durum satırı (minTutarDurumYaz ile aynı renk sözlüğü). */
+function fisKdvDurumYaz(tur, metin) {
+  const kutu = $('#fisKdvDurum');
+  if (!kutu) return;
+
+  const sinif = {
+    basari: 'text-emerald-700 dark:text-emerald-300',
+    hata: 'text-red-600 dark:text-red-400',
+    uyari: 'text-amber-700 dark:text-amber-300',
+    bilgi: 'text-slate-600 dark:text-slate-300'
+  };
+
+  kutu.className = 'w-full text-base font-bold ' + (sinif[tur] || sinif.bilgi);
+  kutu.textContent = metin || '';
+}
+
+/** Açıklama: kullanıcı neyin değiştiğini tek cümlede görsün. */
+function fisKdvAciklama(acik) {
+  return acik
+    ? 'Fişlerde KDV sütunları, KDV satırı ve açıklaması gösteriliyor.'
+    : 'Fişlerde KDV gösterilmiyor; tablolar genişletildi. Tutarlar değişmedi.';
+}
+
+/** Sekme açılınca: güncel değeri sunucudan ister ve anahtarı çizer. */
+async function fisKdvAyariYukle() {
+  const d = ekDurum();
+  if (!d) return;
+
+  const bilinen = 'boolean' === typeof d.fisKdvGoster ? d.fisKdvGoster : true;
+
+  if (!ekDemoMu() && !ekEklentiVarMi()) {
+    fisKdvAnahtariCiz(bilinen, true);
+    fisKdvDurumYaz('hata', EK_EKLENTI_YOK_MESAJI);
+    return;
+  }
+
+  fisKdvAnahtariCiz(bilinen, true);
+  fisKdvDurumYaz('bilgi', 'Ayar okunuyor…');
+
+  const acik = ('function' === typeof fisAyariniHazirla)
+    ? await fisAyariniHazirla({ zorla: true })
+    : bilinen;
+
+  fisKdvAnahtariCiz(acik, false);
+  fisKdvDurumYaz(ekDemoMu() ? 'uyari' : 'bilgi',
+    (ekDemoMu() ? 'Demo Modu — değişiklik yalnızca bu pencerede geçerli. ' : '') + fisKdvAciklama(acik));
+}
+
+/** Anahtar tıklandı: tersini sunucuya yazar, sunucunun cevabını uygular. */
+async function fisKdvAyariKaydet() {
+  const d = ekDurum();
+  const anahtar = $('#fisKdvAnahtar');
+
+  if (!d || !anahtar || anahtar.disabled) return;   // kayıt sürüyor: ikinci tık yok sayılır
+
+  const eski = 'false' !== anahtar.getAttribute('aria-checked');
+  const yeni = !eski;
+
+  if (ekDemoMu()) {
+    if ('function' === typeof fisAyariniUygula) fisAyariniUygula(yeni);
+    fisKdvAnahtariCiz(yeni, false);
+    fisKdvDurumYaz('uyari', 'Demo Modu — değişiklik yalnızca bu pencerede geçerli. ' + fisKdvAciklama(yeni));
+    return;
+  }
+
+  if (!ekEklentiVarMi()) {
+    fisKdvDurumYaz('hata', EK_EKLENTI_YOK_MESAJI);
+    return;
+  }
+
+  fisKdvAnahtariCiz(yeni, true);
+  fisKdvDurumYaz('bilgi', 'Kaydediliyor…');
+
+  let cevap = null;
+
+  try {
+    cevap = await b2b('settings', { metod: 'POST', sureAsimi: 30000, govde: { receipt_show_vat: yeni } });
+  } catch (e) {
+    cevap = { ok: false, hata: String((e && e.message) || e) };
+  }
+
+  if (!cevap || !cevap.ok) {
+    fisKdvAnahtariCiz(eski, false);
+    fisKdvDurumYaz('hata', 'Kaydedilemedi, ayar değişmedi: ' + ekHataMetni(cevap));
+    bildir('KDV görünümü kaydedilemedi:\n' + ekHataMetni(cevap), 'hata');
+    return;
+  }
+
+  /* Sunucunun kabul ettiği değer esas alınır (eski eklenti anahtarı tanımazsa
+     yazmaz; o hâlde ayarın değişmediğini SÖYLERİZ). */
+  const donen = cevap.veri && cevap.veri.settings ? cevap.veri.settings.receipt_show_vat : undefined;
+
+  if (undefined === donen) {
+    fisKdvAnahtariCiz(eski, false);
+    fisKdvDurumYaz('hata', 'Sitedeki eklenti bu ayarı tanımıyor — b2b-core 2.29.0 veya üstüne güncelleyin. Ayar değişmedi.');
+    return;
+  }
+
+  const acik = 'no' !== String(donen).toLowerCase();
+
+  if ('function' === typeof fisAyariniUygula) fisAyariniUygula(acik);
+
+  fisKdvAnahtariCiz(acik, false);
+  fisKdvDurumYaz('basari', 'Kaydedildi. ' + fisKdvAciklama(acik));
+  bildir(acik ? 'Fişlerde KDV yeniden gösteriliyor.' : 'Fişlerde KDV artık gösterilmiyor.', 'basari');
 }
 
 /* ==========================================================================
@@ -3547,6 +3697,12 @@ function ekOlaylariBagla() {
   const iskontoKaydetBtn = $('#iskontoKaydetBtn');
   if (iskontoKaydetBtn) {
     iskontoKaydetBtn.addEventListener('click', function () { iskontoKaydet(); });
+  }
+
+  /* Fiş görünümü — KDV ORANLARI GÖSTER (Faz 22-B): anahtar tıklanınca kaydeder. */
+  const fisKdvAnahtar = $('#fisKdvAnahtar');
+  if (fisKdvAnahtar) {
+    fisKdvAnahtar.addEventListener('click', function () { fisKdvAyariKaydet(); });
   }
 
   /* Meşgul durumuyla (Faz 20, renderer.js → yenileDugmesiBagla). Yardımcı yoksa

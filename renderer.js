@@ -3519,6 +3519,76 @@ function siparisFisiBaglami() {
   };
 }
 
+/* --------------------------------------------------------------------------
+ *  FİŞ AYARI — "KDV ORANLARI GÖSTER" (Faz 22-B)
+ *  --------------------------------------------------------------------------
+ *  Kaynak eklenti ayarıdır (`receipt_show_vat`, GET /settings). Öğrenilen değer
+ *  ORTAK fiş motorunun varsayılanına kurulur (SiparisFisi.ayarla): depo fişi,
+ *  sipariş fişi, WhatsApp metni ve fiş görseli onu kendiliğinden izler — fiş
+ *  açan bir çağrı yeri unutulamaz.
+ *
+ *  Tazelik: yönetici başka bir cihazdan değiştirmiş olabilir; bu yüzden
+ *  önbellek 60 sn'den eskiyse fiş açılırken bir kez daha sorulur (kısa süre
+ *  aşımıyla — ağ yoksa bilinen değerle devam edilir, fiş BEKLETİLMEZ).
+ *  Bilinmiyorsa AÇIK: sessizce bilgi gizlemek, gösterip gizlememekten kötüdür.
+ *
+ *  Yalnızca yönetici kabuğunda sunucuya sorulur; saha cihazı ayarı kendi
+ *  uçlarından öğrenir (plasiyer-musteri.js / plasiyer-siparislerim.js).
+ * ------------------------------------------------------------------------*/
+const FIS_AYAR_TAZELIK_MS = 60000;
+
+/** Değeri duruma ve ortak motora yazar; motorun güncel ayarını döndürür. */
+function fisAyariniUygula(acik) {
+  durum.fisKdvGoster = false !== acik;
+  durum.fisAyarZamani = Date.now();
+
+  if (window.SiparisFisi && 'function' === typeof window.SiparisFisi.ayarla) {
+    window.SiparisFisi.ayarla({ kdvGoster: durum.fisKdvGoster });
+  }
+
+  return durum.fisKdvGoster;
+}
+
+/**
+ * Fiş ayarını hazırlar (gerekirse sunucudan öğrenir). Aynı anda gelen
+ * çağrılar tek isteği paylaşır.
+ *
+ * @param {{zorla?: boolean}} [secenek]
+ * @returns {Promise<boolean>} KDV gösterilsin mi
+ */
+async function fisAyariniHazirla(secenek) {
+  const zorla = !!(secenek && secenek.zorla);
+  const bilinen = 'boolean' === typeof durum.fisKdvGoster ? durum.fisKdvGoster : true;
+  const taze = 'boolean' === typeof durum.fisKdvGoster &&
+    (Date.now() - (Number(durum.fisAyarZamani) || 0)) < FIS_AYAR_TAZELIK_MS;
+
+  if (taze && !zorla) return bilinen;
+
+  const saha = !!(durum.oturum && 'plasiyer' === durum.oturum.rol);
+
+  if (saha || (durum.ayarlar && durum.ayarlar.demoModu) || !durum.b2bVar) return bilinen;
+
+  if (fisAyariniHazirla.suruyor) return fisAyariniHazirla.suruyor;
+
+  fisAyariniHazirla.suruyor = (async function () {
+    try {
+      const cevap = await b2b('settings', { sureAsimi: 4000 });
+      const deger = cevap && cevap.ok && cevap.veri ? cevap.veri.receipt_show_vat : undefined;
+
+      /* Eski eklenti alanı göndermez → bilinen değer (varsayılan AÇIK) korunur. */
+      if (undefined === deger || null === deger) return bilinen;
+
+      return fisAyariniUygula('no' !== String(deger).toLowerCase() && false !== deger);
+    } catch (e) {
+      return bilinen;   // ağ yok: fiş bekletilmez
+    } finally {
+      fisAyariniHazirla.suruyor = null;
+    }
+  })();
+
+  return fisAyariniHazirla.suruyor;
+}
+
 /**
  * [📄 SİPARİŞ FİŞİ] (Faz 12) — kurumsal, müşteriye dönük fiş (depo fişi DEĞİL):
  * logo, künye, kalemler (koli×adet), iskontolar, net. Motor: src/renderer/siparis-fisi.js.
@@ -3541,6 +3611,9 @@ async function siparisFisiAc(id, kagit) {
   baglam.plasiyerAd = String(s.plasiyerAd || '');
   baglam.plasiyerId = Number(s.plasiyerId) || 0;
 
+  /* KDV görünümü (Faz 22-B): fiş çizilmeden önce güncel ayar motora kurulur. */
+  await fisAyariniHazirla();
+
   const fis = window.SiparisFisi.normalle(s, baglam);
   /* pencere(): belge + araç çubuğu (Yazdır · PDF · WhatsApp · Kapat). html()
      saf belgedir; araç çubuğu yalnızca fiş penceresinde anlamlıdır. */
@@ -3555,10 +3628,13 @@ async function siparisFisiAc(id, kagit) {
 }
 
 /** Kart düğmesi: varsayılan tarayıcıda WhatsApp Web'i açar (main.js setWindowOpenHandler → shell.openExternal). */
-function whatsAppFisiAc(id) {
+async function whatsAppFisiAc(id) {
   const s = (durum.siparisler || []).filter(function (x) { return String(x.id) === String(id); })[0];
 
   if (!s) return;
+
+  /* KDV görünümü (Faz 22-B): metin üretilmeden önce güncel ayar. */
+  await fisAyariniHazirla();
 
   /* Faz 12: fiş motoru yüklüyse zengin şablon (kalın başlıklar, koli/adet
      dökümü, bayi iskontosu, net); yoksa yerel sade şablon. */
@@ -7961,16 +8037,22 @@ const KDV_ORANI = 20;
  * Bir sipariş kaleminin fiyat künyesi.
  *
  * @param {object} k Normalleştirilmiş kalem (bkz. b2bSiparisNormalle).
+ * @param {number} [dagitimNet] Saha siparişinde ücret satırı iskontosunun bu
+ *        satıra düşen payından sonraki net satır tutarı (Faz 22-B,
+ *        fisIskontoDagitimi). Verilirse satır tutarı odur ve KDV aynı oranla
+ *        küçülür; verilmezse davranış birebir eskisidir.
  * @returns {{adet:number, birimListe:number, birimBayi:number,
  *            listeToplam:number, satirToplam:number, indirim:number, oran:number}}
  */
-function kalemFiyatKunyesi(k) {
+function kalemFiyatKunyesi(k, dagitimNet) {
   const adet = Number(k.adet) || 0;
 
   /* Satır toplamları KAYNAK; birim fiyatlar bunlardan türetilir. */
   const satirToplam = Number(k.araToplam);
 
-  const net = isFinite(satirToplam) ? satirToplam : Number(k.tutar || 0);
+  const hamNet = isFinite(satirToplam) ? satirToplam : Number(k.tutar || 0);
+  const dagitimli = isFinite(Number(dagitimNet)) && null !== dagitimNet && undefined !== dagitimNet;
+  const net = dagitimli ? Number(dagitimNet) : hamNet;
 
   /*
    * LİSTE TOPLAMI = BİRİM LİSTE FİYATI × GÜNCEL ADET.
@@ -8005,6 +8087,10 @@ function kalemFiyatKunyesi(k) {
 
   if (!isFinite(kdvTutar) || kdvTutar <= 0) {
     kdvTutar = kdvOrani > 0 ? (net - (net / (1 + kdvOrani / 100))) : 0;
+  } else if (dagitimli && hamNet > 0) {
+    /* Sunucu KDV'yi dağıtım ÖNCESİ (liste) tutardan ayrıştırmıştı; iskontolu
+       satıra aynı oranla ölçeklenir (doğrusal — sipariş fişiyle birebir). */
+    kdvTutar = Math.round(kdvTutar * (net / hamNet) * 100) / 100;
   }
 
   return {
@@ -8021,6 +8107,50 @@ function kalemFiyatKunyesi(k) {
 }
 
 /**
+ * SAHA MODELİ — ücret satırındaki bayi iskontosunun satırlara dağıtımı (Faz 22-B).
+ *
+ * Ürün sahibi: "Pazarlamacı panelinden yazılan siparişin depo fişinde
+ * iskontolu birim fiyat çizik (—) görünüyor; web siparişinde dolu." Saha
+ * siparişinde satır fiyatı LİSTE fiyatıdır, bayi iskontosu negatif ücret
+ * satırındadır (Faz 15); satırdan türetilen iskonto bu yüzden sıfırdı.
+ *
+ * Yalnızca satırda iskonto YOKKEN (satır farkı ≈ 0) ve ücret satırında bayi
+ * iskontosu VARKEN dağıtılır; satır farkı varsa (web, iskonto revizesi,
+ * Faz 21 "iki yerde") null — "toplanmaz" kuralı korunur. Dağıtımın kendisi
+ * ORTAK motordadır (SiparisFisi.iskontoDagit): sipariş fişi aynı fonksiyonu
+ * çağırır, iki fiş aynı satırda aynı sayıyı basar. Motor yoksa null (eski
+ * davranış). GÖSTERİMDİR: sipariş verisi değişmez.
+ *
+ * @param {object} s İç sipariş nesnesi (b2bSiparisNormalle).
+ * @returns {number[]|null} s.kalemler sırasıyla satır net tutarları.
+ */
+function fisIskontoDagitimi(s) {
+  const F = (typeof window !== 'undefined' && window && window.SiparisFisi) || null;
+
+  if (!F || 'function' !== typeof F.iskontoDagit) return null;
+
+  const kalemler = (s && s.kalemler) || [];
+  const ucret = Math.max(0, Number((s && s.bayiIskontoTutar) || 0));
+
+  if (!kalemler.length || ucret <= 0.005) return null;
+
+  let liste = 0;
+  let net = 0;
+
+  const listeler = kalemler.map(function (k) {
+    const f = kalemFiyatKunyesi(k);
+    liste += f.listeToplam;
+    net += f.satirToplam;
+    return f.listeToplam;
+  });
+
+  /* İskonto zaten satırda — dağıtım yok (iki kez düşmesin). */
+  if (liste - net > 0.005) return null;
+
+  return F.iskontoDagit(listeler, ucret);
+}
+
+/**
  * Siparişin finansal özeti — fişin alt bloğu bunu birebir basar.
  *
  * KDV iki kipte çalışır:
@@ -8033,15 +8163,24 @@ function kalemFiyatKunyesi(k) {
 function siparisFinansOzeti(s) {
   const kalemler = s.kalemler || [];
 
+  /* Saha modeli: ücret satırı iskontosu satırlara dağıtılır (Faz 22-B). Dağıtım
+     varsa satır, KDV ve "kupon" denetimi dağıtılmış tutarlardan yürür; özet
+     rakamları (liste, iskonto, ödeme, net) değişmez — fark yine sıfır kalır. */
+  const dagitim = fisIskontoDagitimi(s);
+
+  function kunye(k, i) {
+    return kalemFiyatKunyesi(k, dagitim ? dagitim[i] : undefined);
+  }
+
   let brutListe = 0;
   let netAra = 0;
   let satirToplamlari = 0;
 
-  kalemler.forEach(function (k) {
-    const f = kalemFiyatKunyesi(k);
+  kalemler.forEach(function (k, i) {
+    const f = kunye(k, i);
     brutListe += f.listeToplam;
     netAra += f.satirToplam;
-    satirToplamlari += Number(k.tutar || f.satirToplam);
+    satirToplamlari += dagitim ? f.satirToplam : Number(k.tutar || f.satirToplam);
   });
 
   /*
@@ -8088,7 +8227,7 @@ function siparisFinansOzeti(s) {
    *   3) Varsayılan oranla genel toplamdan geri ayrıştırma → en son çare
    */
   const kdvHam = Number(s.kdv || 0);
-  const kdvSatirlar = kalemler.reduce(function (t, k) { return t + kalemFiyatKunyesi(k).kdvTutar; }, 0);
+  const kdvSatirlar = kalemler.reduce(function (t, k, i) { return t + kunye(k, i).kdvTutar; }, 0);
   const kdvHaricMi = !!s.kdvHaric;
 
   let kdv;
@@ -8121,7 +8260,7 @@ function siparisFinansOzeti(s) {
   const kdvDahilMi = !kdvHaricMi && !(kdvHam > 0);
 
   /* Etiketteki oran: satır oranları tekse o, değilse ağırlıklı ortalama. */
-  const oranlar = kalemler.map(function (k) { return kalemFiyatKunyesi(k).kdvOrani; }).filter(function (o) { return o > 0; });
+  const oranlar = kalemler.map(function (k, i) { return kunye(k, i).kdvOrani; }).filter(function (o) { return o > 0; });
   const tekOran = oranlar.length && oranlar.every(function (o) { return Math.abs(o - oranlar[0]) < 0.01; });
 
   let kdvOrani;
@@ -8284,10 +8423,23 @@ function depoFisiHtml(s) {
      AYNI sabit kullanilir. Iki fis icin iki sayi tutmak, ayni siparisin iki
      belgede farkli basilmasi demektir (Faz 15'in dersi). Kisaltma GOSTERIM
      katmanidir: k.ad dokunulmaz, WhatsApp metni ve ozet tam adi okur. */
-  const kisaAdlar = F.kisaltListe(s.kalemler.map(function (k) { return k.ad; }), F.KISALT_A4);
+  /*
+   * KDV GÖRÜNÜMÜ (Faz 22-B) — İskonto Oranları › "KDV ORANLARI GÖSTER".
+   * Kaynak ORTAK motorun varsayılanıdır (SiparisFisi.ayarla; panel ayarı
+   * öğrenince kurar). Kapalıyken iki KDV sütunu, özet satırı ve dipnot
+   * basılmaz; boşalan 25 mm fiyat sütunlarına ve ürün adına dağıtılır. Eski
+   * motorda fonksiyon yoksa bugünkü gibi AÇIK.
+   */
+  const kdvGoster = 'function' === typeof F.kdvGosterilsin ? F.kdvGosterilsin() : true;
+  const genisSinir = (kdvGoster || !F.KISALT_A4_GENIS) ? F.KISALT_A4 : F.KISALT_A4_GENIS;
+  const kisaAdlar = F.kisaltListe(s.kalemler.map(function (k) { return k.ad; }), genisSinir);
+
+  /* Saha siparişi: ücret satırı iskontosu satırlara dağıtılır (Faz 22-B) —
+     iskontolu birim fiyat "—" değil gerçek değeriyle basılır. */
+  const dagitim = fisIskontoDagitimi(s);
 
   const satirHtml = function (k, sira) {
-    const f = kalemFiyatKunyesi(k);
+    const f = kalemFiyatKunyesi(k, dagitim ? dagitim[sira] : undefined);
     const indirimliMi = f.indirim > 0.005;
 
     return '' +
@@ -8309,8 +8461,10 @@ function depoFisiHtml(s) {
         /* İskonto yoksa iskontolu birim "—": aynı fiyatı iki kez yazmak bilgi
            değil gürültüdür (ürün sahibi: "olmazsa (-) şeklinde gözüksün"). */
         '<td class="s-birim">' + (indirimliMi ? kacis(paraSade(f.birimBayi)) : '&mdash;') + '</td>' +
-        '<td class="s-kdvo">' + (f.kdvOrani > 0 ? fisOranYazi(f.kdvOrani) : '&mdash;') + '</td>' +
-        '<td class="s-kdvt">' + (f.kdvTutar > 0.004 ? kacis(paraSade(f.kdvTutar)) : '&mdash;') + '</td>' +
+        (kdvGoster
+          ? '<td class="s-kdvo">' + (f.kdvOrani > 0 ? fisOranYazi(f.kdvOrani) : '&mdash;') + '</td>' +
+            '<td class="s-kdvt">' + (f.kdvTutar > 0.004 ? kacis(paraSade(f.kdvTutar)) : '&mdash;') + '</td>'
+          : '') +
         '<td class="s-toplam">' + kacis(paraSade(f.satirToplam)) + '</td>' +
       '</tr>';
   };
@@ -8372,8 +8526,8 @@ function depoFisiHtml(s) {
     net: ozet.genelToplam
   };
 
-  const ozetHtml = F.ozetBlogu(ozetGirdisi);
-  const dipnot = F.kdvDipnotu(ozetGirdisi.kdv);
+  const ozetHtml = F.ozetBlogu(ozetGirdisi, { kdvGoster: kdvGoster });
+  const dipnot = F.kdvDipnotu(ozetGirdisi.kdv, { kdvGoster: kdvGoster });
   /* İskonto revizesi dipnotu KDV dipnotundan ÖNCE basılır: "fiyat neden
      değişti" sorusu "vergi nasıl hesaplandı"dan önce sorulur. İki fiş AYNI
      çiziciyi kullanır (F.iskontoDipnotu); ayrışsalardı müşteri iki belgede iki
@@ -8446,12 +8600,14 @@ function depoFisiHtml(s) {
     '    <th class="s-adet">Adet</th>' +
     '    <th class="s-liste">Liste Birim Fiyatı</th>' +
     '    <th class="s-birim">İskontolu Birim Fiyatı</th>' +
-    '    <th class="s-kdvo">KDV Oranı</th>' +
-    '    <th class="s-kdvt">KDV Tutarı</th>' +
+    (kdvGoster
+      ? '    <th class="s-kdvo">KDV Oranı</th>' +
+        '    <th class="s-kdvt">KDV Tutarı</th>'
+      : '') +
     '    <th class="s-toplam">Satır Toplamı</th>' +
     '  </tr></thead>' +
     '  <tbody>' +
-      (cesit ? s.kalemler.map(satirHtml).join('') : '<tr><td class="bos-kalem" colspan="10">Kalem yok</td></tr>') +
+      (cesit ? s.kalemler.map(satirHtml).join('') : '<tr><td class="bos-kalem" colspan="' + (kdvGoster ? 10 : 8) + '">Kalem yok</td></tr>') +
     '  </tbody>' +
     '</table>';
 
@@ -8479,7 +8635,7 @@ function depoFisiHtml(s) {
       '<span>Sayfa <span class="sayfa-no"></span> / <span class="sayfa-toplam"></span></span>' +
     '</div>';
 
-  const belge = '<div class="belge" data-kagit="a4" data-icerik-mm="281">' +
+  const belge = '<div class="belge" data-kagit="a4" data-icerik-mm="281"' + (kdvGoster ? '' : ' data-kdv="gizli"') + '>' +
     '<div class="belge-bas">' + tamBaslik + '</div>' +
     '<div class="belge-devam" hidden>' + devamBasligi + '</div>' +
     tablo + kapanis + sayfaAlti +
@@ -8546,6 +8702,12 @@ arac.stil +
 '  .s-kdvo   { width:10mm; text-align:right; }' +
 '  .s-kdvt   { width:15mm; text-align:right; }' +
 '  .s-toplam { width:19mm; text-align:right; }' +
+/* KDV'SİZ GENİŞ YERLEŞİM (Faz 22-B): iki KDV sütunu (25 mm) kalkınca fiyat
+   sütunları 17 → 20 / 19 → 21 mm olur, kalan alan ürün adına geçer
+   (≈68 → ≈85 mm). Kural yalnızca o kipte basılır. */
+(kdvGoster ? '' :
+'  [data-kdv="gizli"] .s-liste, [data-kdv="gizli"] .s-birim { width:20mm; }' +
+'  [data-kdv="gizli"] .s-toplam { width:21mm; }') +
 
 '  .urun-gorsel { width:30px; height:30px; object-fit:cover; border:1px solid #ccc; background:#fafafa; display:block; margin:0 auto; }' +
 '  .tik-kutu { display:block; width:12px; height:12px; margin:0 auto; border:1px solid #444; background:#fff; }' +
@@ -8590,7 +8752,9 @@ arac.stil +
 '    thead { display:table-header-group; }' +
 '    tr, .kutu, .toplamlar, .alt-serit, .kapanis { page-break-inside:avoid; break-inside:avoid; }' +
 '  }' +
-'</style></head><body class="a4">' +
+/* `data-kdv` gövdede de durur (Faz 22-B): sayfalayıcı `.belge`yi yapraklarla
+   değiştirir; geniş yerleşim ölçüleri sayfalandıktan sonra da geçerli kalsın. */
+'</style></head><body class="a4"' + (kdvGoster ? '' : ' data-kdv="gizli"') + '>' +
 
 arac.govde +
 belge +
@@ -8620,6 +8784,9 @@ async function depoFisiAc(id) {
     bildir('Fiş motoru yüklenemedi (siparis-fisi.js); depo fişi açılamıyor.', 'hata');
     return;
   }
+
+  /* KDV görünümü (Faz 22-B): depo fişi de aynı ayarı izler. */
+  await fisAyariniHazirla();
 
   const cevap = await ipcRenderer.invoke('fis:onizleme', {
     html: depoFisiHtml(s),

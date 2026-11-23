@@ -247,6 +247,17 @@
         ? !!cevap.veri.odemeMatrisiAcik
         : null;   // null = eski eklenti, bilinmiyor
 
+      /*
+       * FİŞ GÖRÜNÜMÜ (eklenti 2.29.0, Faz 22-B): yönetici "KDV ORANLARI
+       * GÖSTER"i kapattıysa saha cihazının sipariş fişi ve WhatsApp metni de
+       * KDV basmaz. Ortak motorun varsayılanına kurulur; alan yoksa (eski
+       * eklenti) dokunulmaz → AÇIK kalır.
+       */
+      if (cevap.veri && 'boolean' === typeof cevap.veri.fisKdvGoster &&
+          window.SiparisFisi && 'function' === typeof window.SiparisFisi.ayarla) {
+        window.SiparisFisi.ayarla({ kdvGoster: cevap.veri.fisKdvGoster });
+      }
+
       durumM.musteriler = ((cevap.veri && cevap.veri.bayiler) || []).map(function (b) {
         return {
           id: Number(b.id) || 0,

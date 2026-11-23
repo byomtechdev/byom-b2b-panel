@@ -167,6 +167,65 @@
   var KISALT_TERMAL = 0;
 
   /**
+   * KDV'SİZ GENİŞ YERLEŞİMDE ad sütununa sığan karakter (Faz 22-B).
+   *
+   * "KDV ORANLARI GÖSTER" kapalıyken KDV Oranı (11 mm) ve KDV Tutarı (16 mm)
+   * sütunları kalkar: 27 mm boşalır. 8 mm'si fiyat sütunlarına verilir
+   * (birim 17 → 20, iskontolu birim 17 → 20, satır tutarı 19 → 21), kalan
+   * 19 mm ad sütununa geçer: 65 → 84 mm, dolgu düşünce ≈81 mm ≈ 57 karakter.
+   * Depo fişi de aynı sabiti kullanır (tek sabit, iki fiş — Faz 16-C kuralı).
+   */
+  var KISALT_A4_GENIS = 57;
+
+  /* ------------------------------------------------------------------ *
+   *  FİŞ AYARI — KDV GÖRÜNÜMÜ (Faz 22-B)
+   *  -------------------------------------------------------------------
+   *  Ürün sahibi: bazı müşteriler fişte KDV satırlarını görünce işkilleniyor;
+   *  İskonto Oranları sekmesinde "KDV ORANLARI GÖSTER" anahtarı var (eklenti
+   *  ayarı `receipt_show_vat`). Kapalıyken fişlerde KDV'ye dair hiçbir şey
+   *  basılmaz; para (NET, iskontolar) DEĞİŞMEZ — bu bir görünüm ayarıdır.
+   *
+   *  MERKEZÎ VARSAYILAN: panel ayarı öğrenince `ayarla({ kdvGoster })` çağırır;
+   *  seçeneksiz her çizim (html, pencere, WhatsApp metni, özet, dipnot) onu
+   *  izler. Böylece fiş açan bir çağrı yeri "unutulamaz" — WhatsApp görseli
+   *  de aynı HTML'den alındığı için o da susar. Çağrıdaki AÇIK bayrak
+   *  (`secenek.kdvGoster: true|false`) varsayılanı ezer.
+   *
+   *  GÜVENLİ TARAF AÇIK'TIR: yalnızca açıkça `false` gizler. Ayar hiç
+   *  öğrenilemezse (eski eklenti, ağ yok) fiş bugünkü gibi KDV'li basılır —
+   *  sessizce bilgi gizlemek, gösterip gizlememekten kötüdür.
+   * ------------------------------------------------------------------ */
+
+  var AYAR = { kdvGoster: true };
+
+  /**
+   * Fiş varsayılanlarını günceller. Tanımadığı anahtarı ve bozuk girdiyi yok
+   * sayar; `kdvGoster` için `false` dışındaki her değer AÇIK'tır.
+   *
+   * @param {{kdvGoster?: boolean}} yeni
+   * @returns {{kdvGoster: boolean}} güncel ayarın kopyası
+   */
+  function ayarla(yeni) {
+    if (yeni && 'object' === typeof yeni && Object.prototype.hasOwnProperty.call(yeni, 'kdvGoster')) {
+      AYAR.kdvGoster = false !== yeni.kdvGoster;
+    }
+
+    return ayarlar();
+  }
+
+  /** Güncel fiş ayarının kopyası (dışarıdan değiştirilemez). */
+  function ayarlar() {
+    return { kdvGoster: AYAR.kdvGoster };
+  }
+
+  /** Bu çizimde KDV basılsın mı? Çağrıdaki boolean bayrak kazanır, yoksa varsayılan. */
+  function kdvGosterilsin(secenek) {
+    if (secenek && 'object' === typeof secenek && 'boolean' === typeof secenek.kdvGoster) return secenek.kdvGoster;
+
+    return AYAR.kdvGoster;
+  }
+
+  /**
    * Bilgi taşımayan dolgu sözcükleri (Türkçe büyük harfle karşılaştırılır).
    *
    * Liste BİLİNÇLİ OLARAK KISA: "ne işe yaradığı belirsiz" sözcükleri buraya
@@ -640,6 +699,90 @@
    *  KDV ÖZETİ — SUNUCUNUN SATIRLARINDAN, YENİDEN HESAPLAMADAN
    * ------------------------------------------------------------------ */
 
+  /* ------------------------------------------------------------------ *
+   *  ÜCRET SATIRI İSKONTOSUNUN SATIRLARA DAĞITIMI (Faz 22-B)
+   *  -------------------------------------------------------------------
+   *  Ürün sahibi: "Pazarlamacı panelinden yazılan siparişin depo fişinde
+   *  iskontolu birim fiyat çizik (—) görünüyor; web siparişinde dolu."
+   *
+   *  İki akış iskontoyu iki ayrı yerde taşır (Faz 15): web siparişinde satır
+   *  fiyatı İSKONTOLUDUR, saha siparişinde satır fiyatı LİSTE fiyatıdır ve
+   *  bayi iskontosu negatif bir ücret satırıdır. Fişler iskontoyu satırda
+   *  göremediği için sütunu boş bırakıyordu.
+   *
+   *  ÇÖZÜM GÖSTERİMDEDİR — sipariş verisi değişmez: ücret satırındaki tutar
+   *  satırlara LİSTE TUTARI oranında dağıtılır. Kuruş artığı en büyük kalana
+   *  verilir (en büyük kalan yöntemi); satırların toplamı TAM OLARAK
+   *  liste − iskonto eder — web siparişinde de satır toplamları iskontolu
+   *  ara toplamı tam verir. Böylece iki akışın fişi aynı sütunları doldurur.
+   *
+   *  TEK YER: depo fişi (renderer.js → fisIskontoDagitimi) bu fonksiyonu
+   *  çağırır; iki fiş aynı siparişte aynı sayıyı basar (Faz 15 sözü).
+   * ------------------------------------------------------------------ */
+
+  /**
+   * @param {number[]} listeler  Her satırın liste (iskontosuz) tutarı.
+   * @param {number}   iskonto   Dağıtılacak tutar (pozitif).
+   * @returns {number[]|null}    Satır net tutarları (kuruş hassasiyetinde);
+   *                             dağıtılamıyorsa null (uydurma yok).
+   */
+  function iskontoDagit(listeler, iskonto) {
+    if (!Array.isArray(listeler) || !listeler.length) return null;
+
+    var L = [];
+    var T = 0;
+
+    for (var i = 0; i < listeler.length; i++) {
+      var x = Number(listeler[i]);
+
+      if (!isFinite(x) || x < 0) return null;
+
+      var kr = Math.round(x * 100);
+
+      L.push(kr);
+      T += kr;
+    }
+
+    var D = Math.round(sayi(iskonto) * 100);
+
+    /* İskonto yoksa ya da listeyi yutuyorsa dağıtım anlamsızdır. */
+    if (D <= 0 || T <= 0 || D >= T) return null;
+
+    var pay = [];
+    var artik = [];
+    var dagitilan = 0;
+
+    for (var j = 0; j < L.length; j++) {
+      /* Önce oran (küçük sayı), sonra çarpım: büyük tutarlarda kayan nokta taşmasın. */
+      var ham = L[j] / T * D;
+      var taban = Math.min(L[j], Math.max(0, Math.floor(ham)));
+
+      pay.push(taban);
+      dagitilan += taban;
+      artik.push({ i: j, a: ham - taban });
+    }
+
+    /* Kuruş artığı: önce kesri en büyük satır (eşitlikte ilk satır). */
+    var eksik = D - dagitilan;
+
+    artik.sort(function (p, q) { return (q.a - p.a) || (p.i - q.i); });
+
+    for (var m = 0; eksik > 0 && m < artik.length * 2; m++) {
+      var hedef = artik[m % artik.length].i;
+
+      if (pay[hedef] < L[hedef]) { pay[hedef] += 1; eksik -= 1; }
+    }
+
+    /* Kayan nokta tabanı aştıysa (yalnızca uç değerlerde) en küçük kesirden geri al. */
+    for (var r = artik.length - 1; eksik < 0 && r >= 0; r--) {
+      if (pay[artik[r].i] > 0) { pay[artik[r].i] -= 1; eksik += 1; }
+    }
+
+    if (0 !== eksik) return null;
+
+    return L.map(function (l, n) { return (l - pay[n]) / 100; });
+  }
+
   /**
    * Fişin KDV künyesi: toplam, tek oran (varsa) ve "karışık oran" bayrağı.
    *
@@ -924,6 +1067,7 @@
     var araKalem = 0;
     var listeKalem = 0;
     var kdvKalem = 0;
+    var satirListeleri = [];
 
     /* KDV hariç kipinde satır tutarı ZATEN nettir; kalem çözücüsü yedek
        türetmeyi buna göre yapmalı (içinden ayrıştır ≠ üstüne ekle). */
@@ -933,6 +1077,7 @@
       var n = kalemNormalle(h, kdvIstenmedi);
 
       kalemler.push(n.kalem);
+      satirListeleri.push(n.liste);
       toplamAdet += n.kalem.adet;
       toplamKoli += n.kalem.koli;
       araKalem += n.kalem.tutar;
@@ -975,12 +1120,53 @@
     if (net < 0) net = 0;
 
     /*
+     * SAHA MODELİ — ÜCRET SATIRI İSKONTOSU SATIRLARA DAĞITILIR (Faz 22-B).
+     *
+     * Yalnızca iskonto SATIRDA YOKKEN (satır farkı ≈ 0) ve ücret satırında
+     * bayi iskontosu VARKEN. Satır farkı varsa (web siparişi, iskonto
+     * revizesi, Faz 21 "iki yerde") dokunulmaz — "toplanmaz" kuralı korunur.
+     * Özet rakamları (araToplam, bayiTutar, odeme, net) yukarıda ZATEN
+     * hesaplandı ve DEĞİŞMEZ; yalnızca satırların gösterimi web siparişiyle
+     * aynı anlama gelir: birim = iskontolu birim, tutar = iskontolu satır.
+     *
+     * Satır KDV'si aynı oranla küçülür: sunucu KDV'yi liste tutarından
+     * ayrıştırmıştı (saha satırı liste fiyatlı), oysa web siparişinde KDV
+     * iskontolu satır tutarının içindedir. Ölçekleme doğrusaldır (dâhil:
+     * t·o/(100+o), hariç: t·o/100), oran sunucunun kalır. Ödeme iskontosu
+     * satırlara DAĞITILMAZ — web siparişinde de satırda değildir.
+     */
+    var dagitildi = false;
+
+    if (satirIskonto < 0.005 && sayi(o.bayiTutar) > 0.005 && araKalem > 0) {
+      var netler = iskontoDagit(satirListeleri, o.bayiTutar);
+
+      if (netler) {
+        dagitildi = true;
+        kdvKalem = 0;
+
+        kalemler.forEach(function (kl, i) {
+          var liste = satirListeleri[i];
+          var carpan = liste > 0 ? netler[i] / liste : 1;
+
+          kl.tutar = kurus(netler[i]);
+          if (kl.adet > 0) kl.birim = kurus(netler[i] / kl.adet);
+          kl.kdvTutar = kurus(kl.kdvTutar * carpan);
+          kdvKalem += kl.kdvTutar;
+        });
+      }
+    }
+
+    /*
      * KDV TOPLAMI — sunucunun kök alanı önce, yoksa satırların toplamı.
      * NET'ten İKİNCİ KEZ DÜŞÜLMEZ: fiyatlar KDV dahil girilir, "KDV istemiyorum"
      * seçildiğinde satır tutarları sunucuda ZATEN netleştirilmiştir. Burada
      * tekrar çıkarmak müşteriye iki kez indirim yazmak olurdu.
+     *
+     * Dağıtım yapıldıysa ölçeklenmiş satırların toplamı esastır: sunucunun
+     * `vat_total`ı da liste tabanlı satır KDV'lerinin toplamıdır (prepare_order
+     * → vat_lines_total); aynı toplamı ölçeklenmiş satırlardan kurmak tutarlıdır.
      */
-    var kdvToplam = kurus(o.kdvToplam) || kurus(kdvKalem);
+    var kdvToplam = dagitildi ? kurus(kdvKalem) : (kurus(o.kdvToplam) || kurus(kdvKalem));
 
     /* "Düşülen KDV" yalnızca KDV hariç siparişte anlamlıdır. Sunucu damgası
        (`_b2b_vat_removed`) yoksa satır KDV'lerinin toplamı aynı tutardır —
@@ -1310,7 +1496,16 @@
         (sayi(e.tutar) < 0 ? '&minus;' : '') + kacis(para(Math.abs(sayi(e.tutar)))));
     });
 
-    if (kdv.istenmedi) {
+    /*
+     * KDV GÖRÜNÜMÜ KAPALI (Faz 22-B): KDV satırı hiç basılmaz — "UYGULANMADI"
+     * ve "—" dâhil. Çıkarma listesi yine kapanır, çünkü KDV ya fiyatların
+     * İÇİNDEdir ya da hiç uygulanmamıştır. TEK İSTİSNA: KDV toplama EKLENMİŞSE
+     * ("üstüne") ödenecek tutarın bir kalemidir; satırı silmek NET'i
+     * açıklanamaz kılardı.
+     */
+    if (!kdvGosterilsin(s) && !kdv.ustune) {
+      /* KDV satırı yok */
+    } else if (kdv.istenmedi) {
       govde += satir('kdv-yok', kacis(OZET_ETIKET.kdv), 'UYGULANMADI');
     } else if (kdv.bilinmiyor || !(sayi(kdv.tutar) > 0.005 || sayi(kdv.oran) > 0)) {
       govde += satir('kdv bos', kacis(OZET_ETIKET.kdv), YOK);
@@ -1337,6 +1532,9 @@
 
     var s = (secenek && 'object' === typeof secenek) ? secenek : {};
     var birim = s.paraBirimi === undefined ? PARA_BIRIMI : s.paraBirimi;
+
+    /* KDV görünümü kapalı (Faz 22-B): açıklama da yok — "üstüne" istisnası hariç. */
+    if (!kdvGosterilsin(s) && !kdv.ustune) return '';
 
     if (kdv.istenmedi) {
       var dusulen = kurus(kdv.dusulen) || kurus(kdv.tutar);
@@ -1390,7 +1588,7 @@
    *  toplamın altında küçük puntoda dipnottur.
    * ------------------------------------------------------------------ */
 
-  function stil(termal) {
+  function stil(termal, kdvGizli) {
     var ortak = [
       '* { box-sizing: border-box; }',
       'html, body { margin:0; padding:0; }',
@@ -1403,13 +1601,16 @@
       'dt { color:#555; white-space:nowrap; }',
       'dd { margin:0; font-weight:600; overflow-wrap:anywhere; }',
       '.kalemler th { text-align:left; font-size:8.5px; letter-spacing:.3px; color:#222; font-weight:700; border-top:1px solid #222; border-bottom:1px solid #222; padding:1.6mm 1.2mm; }',
-      '.kalemler th.sayi { text-align:right; }',
+      /* Rakam başlıkları SARAR (Faz 22-B): "İskontolu Birim Fiyat" 17 mm'de tek
+         satıra sığmaz; `.sayi`nın nowrap'i yalnızca hücre rakamları içindir. */
+      '.kalemler th.sayi { text-align:right; white-space:normal; }',
       '.kalemler td { padding:1.5mm 1.2mm; border-bottom:1px solid #d9d9d9; }',
       /* Ürün adı TAM yazılır: kaç satıra sararsa sarar, kırpma YOK (Faz 14-B).
-         Satır yüksekliği sayfalamada ÖLÇÜLÜR, tahmin edilmez. */
-      '.s-ad { overflow-wrap:anywhere; font-weight:600; }',
-      '.s-sku { color:#444; white-space:nowrap; font-family:Consolas, "Courier New", monospace; font-size:.92em; }',
-      '.s-liste { color:#444; }',
+         Satır yüksekliği sayfalamada ÖLÇÜLÜR, tahmin edilmez. Hücre biçimleri
+         `td` ile sınırlı: başlık hücresi de sütun sınıfını taşır (ölçü için). */
+      'td.s-ad { overflow-wrap:anywhere; font-weight:600; }',
+      'td.s-sku { color:#444; white-space:nowrap; font-family:Consolas, "Courier New", monospace; font-size:.92em; }',
+      'td.s-liste { color:#444; }',
       '.toplamlar td { padding:1.1mm 1.5mm; border-bottom:1px solid #e3e3e3; }',
       /* Etiket SOLA, tutar SAĞA (14-C): iki sabit sütun, karışık hiza yok. */
       '.toplamlar .etiket { text-align:left; color:#222; }',
@@ -1478,6 +1679,19 @@
       '.alt { margin-top:6mm; }'
     ];
 
+    /*
+     * KDV'SİZ GENİŞ YERLEŞİM (Faz 22-B): iki KDV sütunu (27 mm) kalkınca
+     * fiyat sütunları rahatlar, kalan alan ad sütununa geçer (65 → 84 mm;
+     * ad sütununun ölçüsü yok, table-layout:fixed kalanı ona verir).
+     * Seçici `[data-kdv="gizli"]` ile özgüldür; kural yalnızca o kipte basılır.
+     */
+    if (kdvGizli && !termal) {
+      a4 = a4.concat([
+        '[data-kdv="gizli"] .kalemler .s-liste, [data-kdv="gizli"] .kalemler .s-birim { width:20mm; }',
+        '[data-kdv="gizli"] .kalemler .s-tutar { width:21mm; }'
+      ]);
+    }
+
     var termalStil = [
       '@page { size: 80mm auto; margin: 3mm; }',
       'body { font-family:"Segoe UI", Arial, sans-serif; font-size:11px; color:#000; background:#fff; }',
@@ -1492,10 +1706,25 @@
       'dl { gap:.5mm 2mm; }',
       '.kalemler th { font-size:9px; padding:1mm .5mm; }',
       '.kalemler td { padding:1mm .5mm; font-size:10.5px; }',
-      '.s-sku { font-size:9px; }',
-      /* Termal kâğıtta rakamlar eş genişlikli ve bir tık büyük: 80 mm'de kolon
-         hizası ancak böyle okunur; oransal yazıda virgüller kayar. */
-      '.sayi { font-family:"Courier New", Consolas, monospace; font-size:12px; }',
+      /* İKİ SATIRLI KALEM (Faz 22-B): ad satırı tam genişlik, rakam satırı dört
+         sabit sütun (16 + 18 + 20 + 20 = 74 mm). Ad satırının alt çizgisi yok:
+         ad ile rakamları tek blok okunur. Kod ve koli×adet SARABİLİR; tutarlar
+         sarmaz (rakam bölünmez). */
+      /* Ölçüler <colgroup>'tadır: ilk başlık satırı birleşik "Ürün" hücresi olduğu
+         için sabit düzen genişliği satırdan alamaz (Electron ölçümü: dört eşit
+         sütuna bölünüyordu). 16 + 17 + 19 + 22 = 74 mm. */
+      '.kalemler { table-layout:fixed; }',
+      '.kalemler col.s-sku { width:16mm; }',
+      '.kalemler col.s-adet { width:17mm; }',
+      '.kalemler col.s-birim { width:19mm; }',
+      '.kalemler col.s-tutar { width:22mm; }',
+      '.kalemler tr.s-ad-satir td { border-bottom:0; padding-bottom:0; }',
+      'td.s-sku { font-size:9px; white-space:normal; overflow-wrap:anywhere; }',
+      'td.s-adet { white-space:normal; }',
+      /* Termal kâğıtta rakamlar eş genişlikli: 80 mm'de kolon hizası ancak böyle
+         okunur; oransal yazıda virgüller kayar. 10 px: "150.169,68 TL" 22 mm'ye,
+         "1.098,15 TL" 19 mm'ye sığar (Electron'da ölçüldü). */
+      '.sayi { font-family:"Courier New", Consolas, monospace; font-size:10px; }',
       '.toplamlar { width:100%; margin-top:2mm; border-top:1px dashed #000; }',
       '.toplamlar .net td { font-size:14px; }',
       '.not { margin-top:2mm; }',
@@ -1525,11 +1754,26 @@
    * sütun durur, değeri "—"): Ürün Adı · Kod / Barkod · Koli / Adet · Birim
    * Fiyat · İskontolu Birim Fiyat · KDV Oranı · KDV Tutarı · Satır Tutarı.
    */
-  var A4_BASLIK = '<tr><th>Ürün Adı</th><th>Kod / Barkod</th><th class="sayi">Koli / Adet</th>' +
-    '<th class="sayi">Birim Fiyat</th><th class="sayi">İskontolu Birim Fiyat</th>' +
-    '<th class="sayi">KDV Oranı</th><th class="sayi">KDV Tutarı</th><th class="sayi">Satır Tutarı</th></tr>';
+  /*
+   * Başlık hücreleri sütun SINIFINI taşır (Faz 22-B düzeltmesi): tablo
+   * `table-layout:fixed`tır ve bu düzende sütun genişliklerini İLK SATIR —
+   * yani başlık — belirler. Başlıkta sınıf yokken `.kalemler .s-sku { width }`
+   * kuralları hiç uygulanmıyor, sekiz sütun eşit (≈23 mm) bölünüyordu: ürün
+   * adı 65 mm yerine 23 mm'ye sıkışıyor, "İskontolu Birim Fiyat" başlığı
+   * taşıyordu (Electron ölçümüyle bulundu; jsdom yerleşim hesaplamaz).
+   */
+  var A4_BASLIK = '<tr><th class="s-ad">Ürün Adı</th><th class="s-sku">Kod / Barkod</th><th class="s-adet sayi">Koli / Adet</th>' +
+    '<th class="s-liste sayi">Birim Fiyat</th><th class="s-birim sayi">İskontolu Birim Fiyat</th>' +
+    '<th class="s-kdv sayi">KDV Oranı</th><th class="s-kdvtutar sayi">KDV Tutarı</th><th class="s-tutar sayi">Satır Tutarı</th></tr>';
 
   var A4_SUTUN = 8;
+
+  /** KDV görünümü kapalıyken (Faz 22-B) iki KDV sütunu yoktur: altı sütun. */
+  var A4_BASLIK_KDVSIZ = '<tr><th class="s-ad">Ürün Adı</th><th class="s-sku">Kod / Barkod</th><th class="s-adet sayi">Koli / Adet</th>' +
+    '<th class="s-liste sayi">Birim Fiyat</th><th class="s-birim sayi">İskontolu Birim Fiyat</th>' +
+    '<th class="s-tutar sayi">Satır Tutarı</th></tr>';
+
+  var A4_SUTUN_KDVSIZ = 6;
 
   /**
    * Tam belge. Üçüncü parametre (araç çubuğu + sayfalayıcı) yalnızca pencere()
@@ -1557,6 +1801,8 @@
     var logo = metin(firma.logo);
     var logoVar = LOGO_SEMASI.test(logo);
     var oz = kdvOzeti(fis);
+    /* KDV görünümü (Faz 22-B): kapalıyken sütun, alt satır, özet satırı ve dipnot yok. */
+    var kdvGoster = kdvGosterilsin(s);
 
     function para(n) {
       return paraYaz(n, birim);
@@ -1628,7 +1874,7 @@
      */
     var kisaAdlar = termal
       ? kalemler.map(function (k) { return k.ad; })
-      : kisaltListe(kalemler.map(function (k) { return k.ad; }), KISALT_A4);
+      : kisaltListe(kalemler.map(function (k) { return k.ad; }), kdvGoster ? KISALT_A4 : KISALT_A4_GENIS);
 
     function a4Satir(k, sira) {
       var iskontolu = k.listeBirim > k.birim + 0.004;
@@ -1639,8 +1885,10 @@
         '<td class="s-adet sayi">' + kacis(koliAdetYazi(k)) + '</td>' +
         '<td class="s-liste sayi">' + kacis(para(k.listeBirim)) + '</td>' +
         '<td class="s-birim sayi">' + (iskontolu ? kacis(para(k.birim)) : YOK) + '</td>' +
-        '<td class="s-kdv sayi">' + kacis(kdvliMi(k) ? oranYazi(k.kdvOrani) : YOK) + '</td>' +
-        '<td class="s-kdvtutar sayi">' + kacis(kdvliMi(k) ? para(k.kdvTutar) : YOK) + '</td>' +
+        (kdvGoster
+          ? '<td class="s-kdv sayi">' + kacis(kdvliMi(k) ? oranYazi(k.kdvOrani) : YOK) + '</td>' +
+            '<td class="s-kdvtutar sayi">' + kacis(kdvliMi(k) ? para(k.kdvTutar) : YOK) + '</td>'
+          : '') +
         '<td class="s-tutar sayi">' + kacis(para(k.tutar)) + '</td>' +
         '</tr>';
     }
@@ -1650,14 +1898,19 @@
      * düşürür. Aynı bilgi kalemin ALTINDA ikinci satır olur ("KDV %20 ·
      * 34,20 TL"). İki ayrı çizici yazmak yerine iki bayrak — düzen değişir,
      * veri ve kaynak değişmez.
+     *
+     * İKİ SATIRLI KALEM (Faz 22-B düzeltmesi): beş sütun 74 mm'ye SIĞMIYORDU —
+     * Electron ölçümü: ürün adı sütunu 7 mm'ye (satır başına 3-4 harf) iniyor,
+     * tablo kâğıttan taşıyordu. Artık ad kendi satırında TAM genişliktedir,
+     * altında dört sabit sütun: Kod / Barkod · Koli × Adet · Birim · Tutar.
      */
-    var termalSutun = 5;
+    var termalSutun = 4;
 
     function termalSatir(k) {
-      var altVar = oz.dolu && kdvliMi(k);
+      var altVar = kdvGoster && oz.dolu && kdvliMi(k);
 
-      var satir = '<tr' + (altVar ? ' class="s-kdvli"' : '') + '>' +
-        '<td class="s-ad">' + kacis(k.ad || YOK) + '</td>' +
+      var satir = '<tr class="s-ad-satir"><td class="s-ad" colspan="' + termalSutun + '">' + kacis(k.ad || YOK) + '</td></tr>' +
+        '<tr class="s-rakam' + (altVar ? ' s-kdvli' : '') + '">' +
         '<td class="s-sku">' + kacis(k.sku || YOK) + '</td>' +
         '<td class="s-adet sayi">' + kacis(koliAdetYazi(k)) + '</td>' +
         '<td class="s-birim sayi">' + kacis(para(k.birim)) + '</td>' +
@@ -1674,24 +1927,29 @@
 
     var govde = kalemler.length
       ? kalemler.map(termal ? termalSatir : a4Satir).join('')
-      : '<tr><td class="bos-kalem" colspan="' + (termal ? termalSutun : A4_SUTUN) + '">Kalem yok</td></tr>';
+      : '<tr><td class="bos-kalem" colspan="' + (termal ? termalSutun : (kdvGoster ? A4_SUTUN : A4_SUTUN_KDVSIZ)) + '">Kalem yok</td></tr>';
 
     var baslikSatiri = termal
-      ? '<tr><th>Ürün</th><th>Kod / Barkod</th><th class="sayi">Koli × Adet</th><th class="sayi">Birim</th><th class="sayi">Tutar</th></tr>'
-      : A4_BASLIK;
+      ? '<tr><th class="s-ad" colspan="' + termalSutun + '">Ürün</th></tr>' +
+        '<tr><th class="s-sku">Kod / Barkod</th><th class="s-adet sayi">Koli × Adet</th><th class="s-birim sayi">Birim</th><th class="s-tutar sayi">Tutar</th></tr>'
+      : (kdvGoster ? A4_BASLIK : A4_BASLIK_KDVSIZ);
 
-    var tablo = '<table class="kalemler"><thead>' + baslikSatiri + '</thead><tbody>' + govde + '</tbody></table>';
+    var sutunlar = termal
+      ? '<colgroup><col class="s-sku"><col class="s-adet"><col class="s-birim"><col class="s-tutar"></colgroup>'
+      : '';
+
+    var tablo = '<table class="kalemler">' + sutunlar + '<thead>' + baslikSatiri + '</thead><tbody>' + govde + '</tbody></table>';
 
     /* --- Kapanış: özet, dipnot, not, alt yazı (BÖLÜNMEZ) --- */
     var ozet = fisOzeti(fis);
-    var dipnot = kdvDipnotu(ozet.kdv, { paraBirimi: birim });
+    var dipnot = kdvDipnotu(ozet.kdv, { paraBirimi: birim, kdvGoster: kdvGoster });
 
     /* İskonto revizesi dipnotu KDV dipnotundan ÖNCE: fiyatın neden değiştiği,
        verginin nasıl hesaplandığından önce gelen sorudur. */
     var iskDipnot = iskontoDipnotu(fis);
 
     var kapanis = '<div class="kapanis">' +
-      ozetBlogu(ozet, { paraBirimi: birim }) +
+      ozetBlogu(ozet, { paraBirimi: birim, kdvGoster: kdvGoster }) +
       (iskDipnot ? '<div class="dipnot">' + kacis(iskDipnot) + '</div>' : '') +
       (dipnot ? '<div class="dipnot">' + kacis(dipnot) + '</div>' : '') +
       (fis.not ? '<section class="not"><h3>Sipariş Notu</h3>' + kacis(fis.not) + '</section>' : '') +
@@ -1704,7 +1962,8 @@
         '<span>Sayfa <span class="sayfa-no"></span> / <span class="sayfa-toplam"></span></span>' +
       '</div>';
 
-    var belge = '<div class="belge" data-kagit="' + (termal ? 'termal' : 'a4') + '" data-icerik-mm="273">' +
+    var belge = '<div class="belge" data-kagit="' + (termal ? 'termal' : 'a4') + '" data-icerik-mm="273"' +
+      (kdvGoster ? '' : ' data-kdv="gizli"') + '>' +
       '<div class="belge-bas">' + tamBaslik + kunye + '</div>' +
       (termal ? '' : '<div class="belge-devam" hidden>' + devamBasligi + '</div>') +
       tablo + kapanis + sayfaAlti +
@@ -1716,8 +1975,11 @@
       '<html lang="tr"><head><meta charset="UTF-8">' +
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<title>Sipariş Fişi #' + kacis(fis.numara) + '</title>' +
-      '<style>\n' + stil(termal) + (a.stil ? '\n' + a.stil : '') + '\n</style></head>' +
-      '<body class="' + (termal ? 'termal' : 'a4') + '">' + a.govde + belge + a.betik + '</body></html>';
+      '<style>\n' + stil(termal, !kdvGoster) + (a.stil ? '\n' + a.stil : '') + '\n</style></head>' +
+      /* `data-kdv` gövdede de durur: sayfalayıcı `.belge`yi yapraklarla değiştirir,
+         gövde kalır — geniş yerleşim ölçüleri sayfalandıktan sonra da geçerli. */
+      '<body class="' + (termal ? 'termal' : 'a4') + '"' + (kdvGoster ? '' : ' data-kdv="gizli"') + '>' +
+      a.govde + belge + a.betik + '</body></html>';
   }
 
   /**
@@ -1969,7 +2231,11 @@
      */
     var waOz = kdvOzeti(fis);
 
-    if (fis.kdvIstenmedi) {
+    /* KDV GÖRÜNÜMÜ KAPALIYSA (Faz 22-B) satır hiç yazılmaz; KDV toplama
+       EKLENMİŞSE ("üstüne") ödenecek tutarın kalemidir ve kalır. */
+    if (!kdvGosterilsin(s) && !oz0.kdv.ustune) {
+      /* KDV satırı yok */
+    } else if (fis.kdvIstenmedi) {
       var waDusulen = kurus(fis.kdvDusulen) || waOz.toplam;
 
       son.push('*KDV UYGULANMADI*' + (waDusulen > 0.005 ? ' (düşülen: ' + para(waDusulen) + ')' : ''));
@@ -2075,8 +2341,14 @@
     /* Faz 16-C — akilli ad kisaltma (depo fisi de ayni ciziciyi cagirir) */
     kisaltAd: kisaltAd,
     kisaltListe: kisaltListe,
+    /* Faz 22-B — KDV görünümü (merkezî varsayılan) + saha iskonto dağıtımı */
+    ayarla: ayarla,
+    ayarlar: ayarlar,
+    kdvGosterilsin: kdvGosterilsin,
+    iskontoDagit: iskontoDagit,
     /* sabitler */
     KISALT_A4: KISALT_A4,
+    KISALT_A4_GENIS: KISALT_A4_GENIS,
     KISALT_TERMAL: KISALT_TERMAL,
     PARA_BIRIMI: PARA_BIRIMI,
     WA_EN_COK_KALEM: WA_EN_COK_KALEM,

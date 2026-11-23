@@ -16,7 +16,7 @@
 ## 0. Bu depo nedir
 
 `byomtechdev/byom-b2b-panel` — BYOM ekosisteminin kök deposuna **git submodule**
-olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.12.0** (Faz 22-A).
+olarak bağlı masaüstü yönetim paneli. Sürüm: `package.json` → **2.13.0** (Faz 22-B).
 
 - Toptancı/hırdavatçı için WooCommerce B2B yönetimi: sipariş takibi, ürün &
   stok ızgarası, Excel içe/dışa aktarma, bayi onayları, depo fişi, **BYOM 2.0
@@ -2101,6 +2101,28 @@ boyu ekran boyuysa dibi (Siparişi Tamamla) ilk açılışta ekranın dışında
 
 ---
 
+## 4.29 Faz 22-B — Fişlerde KDV görünümü, saha iskontolu fiyatı, fiş tablosu ölçüleri
+
+Panel **2.13.0** · eklenti **2.29.0** → `../BYOM-REGISTRY.md §5.58`.
+
+| Ne | Yer |
+|---|---|
+| İskonto Oranları › `#fisKdvKart` / `#fisKdvAnahtar` (`role="switch"`) — eklenti ayarı `receipt_show_vat`, `/settings` | `index.html`, `renderer-ek.js → fisKdvAyariYukle / fisKdvAyariKaydet` |
+| `fisAyariniHazirla` (60 sn tazelik, paylaşılan istek, saha/demo/eklentisiz sormaz) + `fisAyariniUygula`; üç fiş açıcısı ÖNCE hazırlar | `renderer.js` |
+| **Merkezî varsayılan** `SiparisFisi.ayarla({kdvGoster})` / `ayarlar()` / `kdvGosterilsin()` — seçeneksiz her çizim izler; boolean bayrak ezer; yalnızca açık `false` gizler | `src/renderer/siparis-fisi.js` |
+| Saha: `fisKdvGoster` dealers + siparişlerim yanıtından motora | `plasiyer-musteri.js`, `plasiyer-siparislerim.js` |
+| Saha iskontolu fiyatı: `SiparisFisi.iskontoDagit` (ücret satırı → satırlar, en büyük kalan, toplam tam) · depo fişi `fisIskontoDagitimi` → `kalemFiyatKunyesi(k, dagitimNet)` | aynı motor, `renderer.js` |
+| A4 başlık hücreleri sütun sınıfı taşır (eşit sütun hatası) · `data-kdv` gövdede (sayfalamadan sonra ölçüler) · termal iki satırlı kalem + `<colgroup>` | `siparis-fisi.js`, `renderer.js → depoFisiHtml` |
+
+### Bozmaman gereken sözler (Faz 22-B)
+- KDV kapalıyken NET / iskontolar DEĞİŞMEZ; yalnızca görünüm. "Üstüne" eklenmiş KDV satırı kapalıda da kalır.
+- Fiş açan yeni bir yol eklenirse ya motorun varsayılanına güvenir ya da `kdvGoster` geçirir; KDV'yi kendisi basmaz.
+- Dağıtım yalnızca satır farkı ≈ 0 iken; satır farkı varsa ücret satırı DAĞITILMAZ (iki kez düşmesin). Ödeme iskontosu satırlara dağıtılmaz.
+- `table-layout:fixed` tabloda ölçü başlık satırından okunur — başlık hücresi sütun sınıfını taşır; termalde ölçü `<colgroup>`'tadır.
+- Fiş tablosu değişikliği Electron'da ölçülür (jsdom yerleşim hesaplamaz) — betik kalıbı: scratchpad `fis-olcum/` (kalıcı değil).
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -2108,7 +2130,7 @@ boyu ekran boyuysa dibi (Siparişi Tamamla) ilk açılışta ekranın dışında
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.146 test**: panel 441 + kök 683 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.184 test**: panel 441 + kök 721 + hub 22).
 
 ```bash
 # Bu submodule'un kendi birim testleri (441 test) — Electron GEREKMEZ
@@ -2158,6 +2180,8 @@ node --test scripts/tests/saha-perde.dom.test.js      # 6  — Faz 13: perde ATA
 node --test scripts/tests/plasiyer-menu.dom.test.js   # 19 — menü hiyerarşisi, alt sekmeler, Saha Notlarım, dönem çipleri
 node --test scripts/tests/yonetici-pin.dom.test.js    # 17 — PIN değiştirme kartı + giriş kartı düzeni
 node --test scripts/tests/harita-kokpit.dom.test.js   # 18 — 81 il çizimi, KUTU ÇAKIŞMASI, bölünmüş ekran, bayi profili
+node --test scripts/tests/fis-kdv-gorunum.test.js     # 18 — Faz 22-B: fişlerde KDV aç/kapa (A4/termal/özet/dipnot/WhatsApp, merkezî ayar, depo fişi gerçek kaynaktan, yerleşim yapısı)
+node --test scripts/tests/fis-kdv-ayar.dom.test.js    # 12 — Faz 22-B: İskonto Oranları anahtarı GERÇEKTEN tıklanır (hata → geri döner, eski eklenti, çift tık, demo), fisAyariniHazirla
 node --test scripts/tests/saha-denetim.dom.test.js    # 46 — Faz 22-A: sepette kayan liste + sabit alt, +/− konumu korur, eklenen satır görünür · Faz 20: alt sınırda "−" kapalı · Faz 10-14: hızlı adet, Saha Siparişlerim (+ iptal/sil), üç üye alt sekmesi, katalog sayfalama, ürün kartı, KDV İSTEMİYORUM matematiği
 node --test scripts/tests/saha-analitik.dom.test.js   # 11 — Faz 11: Performansım, kalem dökümü üç şekil, harita tarih + bayi kartı, çevrimdışı müşteri silme
 node --test scripts/tests/yonetici-arayuz.dom.test.js # 18 — Faz 11-13: sipariş sekmesi iki seviye, WhatsApp fişi, logo ÖLÇEĞİ (--logo-height, önizleme şeridi), üç görsel yuvası
@@ -2191,7 +2215,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.146 test)
+# Bitirirken: üç katmanın tamamı (1.184 test)
 node scripts/check-all.js
 ```
 
@@ -2272,7 +2296,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 204 php / 149 js / 1.146 test
+cd .. && node scripts/check-all.js     # 0 hata / 204 php / 151 js / 1.184 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

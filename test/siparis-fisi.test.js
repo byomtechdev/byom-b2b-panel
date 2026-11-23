@@ -181,8 +181,15 @@ test('normalle (c) ham: number/date_created/dealer/billing/items/fee_lines eşle
   assert.equal(f.durumEtiketi, 'İşleniyor');
   assert.deepEqual(f.musteri, { unvan: 'Acme Hırdavat', yetkili: 'Ali Veli', telefon: '+90 532 415 22 78', il: 'İzmir', vergiNo: '1234567890' });
   assert.deepEqual(f.plasiyer, { id: 7, ad: 'Ahmet' });
-  assert.deepEqual(f.kalemler[0], { ad: 'Silikon 280 ml', sku: 'SLK-280', adet: 48, koli: 2, koliIci: 24, listeBirim: 42.75, birim: 42.75, tutar: 2052, kdvOrani: 0, kdvTutar: 0 });
-  assert.deepEqual(f.kalemler[1], { ad: 'Çivi', sku: 'CV-1', adet: 40, koli: 0, koliIci: 1, listeBirim: 2.5, birim: 2.5, tutar: 100, kdvOrani: 0, kdvTutar: 0 });
+  /*
+   * Faz 22-B (BYOM-REGISTRY §5.58, bilinçli söz değişikliği): saha siparişinde
+   * ücret satırındaki bayi iskontosu (215,20) satırlara LİSTE TUTARI oranında
+   * dağıtılır — "İskontolu Birim Fiyat" sütunu artık "—" değil. Liste birim
+   * fiyatı aynen kalır; özet rakamları (aşağıda) DEĞİŞMEDİ.
+   *   Silikon 2052 − 205,20 = 1846,80 → birim 38,48 · Çivi 100 − 10 = 90 → 2,25
+   */
+  assert.deepEqual(f.kalemler[0], { ad: 'Silikon 280 ml', sku: 'SLK-280', adet: 48, koli: 2, koliIci: 24, listeBirim: 42.75, birim: 38.48, tutar: 1846.8, kdvOrani: 0, kdvTutar: 0 });
+  assert.deepEqual(f.kalemler[1], { ad: 'Çivi', sku: 'CV-1', adet: 40, koli: 0, koliIci: 1, listeBirim: 2.5, birim: 2.25, tutar: 90, kdvOrani: 0, kdvTutar: 0 });
   assert.equal(f.araToplam, 2152);
   assert.equal(f.bayiIskontoOrani, 10);
   assert.equal(f.bayiIskontoTutar, 215.2, 'ücret satırından');
@@ -349,7 +356,7 @@ test('html toplam bloğu, künye, kalem tablosu ve alt yazı basılır', () => {
   assert.ok(h.includes('2 çeşit · 88 adet · 2 koli'));
 
   /* kalem tablosu: SABİT sekiz sütun (Faz 14) — KDV künyesi yoksa "—" */
-  assert.ok(h.includes('<th>Ürün Adı</th><th>Kod / Barkod</th><th class="sayi">Koli / Adet</th><th class="sayi">Birim Fiyat</th><th class="sayi">İskontolu Birim Fiyat</th><th class="sayi">KDV Oranı</th><th class="sayi">KDV Tutarı</th><th class="sayi">Satır Tutarı</th>'), 'sekiz sütun SABİT — KDV künyesi olmasa da');
+  assert.ok(h.includes('<th class="s-ad">Ürün Adı</th><th class="s-sku">Kod / Barkod</th><th class="s-adet sayi">Koli / Adet</th><th class="s-liste sayi">Birim Fiyat</th><th class="s-birim sayi">İskontolu Birim Fiyat</th><th class="s-kdv sayi">KDV Oranı</th><th class="s-kdvtutar sayi">KDV Tutarı</th><th class="s-tutar sayi">Satır Tutarı</th>'), 'sekiz sütun SABİT — KDV künyesi olmasa da');
   assert.ok(!h.includes('<th>SKU</th>'), 'başlık müşterinin okuduğu dile çevrildi');
   assert.ok(h.includes('<td class="s-adet sayi">2 koli × 24 = 48</td><td class="s-liste sayi">42,75 TL</td><td class="s-birim sayi">—</td><td class="s-kdv sayi">—</td><td class="s-kdvtutar sayi">—</td><td class="s-tutar sayi">2.052,00 TL</td>'), 'iskonto ve KDV bilinmiyorsa hücre "—"');
   assert.ok(h.includes('İskontolu Ara Toplam</td><td class="deger sayi">1.936,80 TL'), 'köprü satırı HER fişte: liste − bayi');
@@ -817,8 +824,8 @@ test('KDV: ÜÇ KAYNAK da aynı künyeyi verir (kalemde oran+tutar, kökte topla
 
     const h = F.html(f);
 
-    assert.ok(h.includes('<th class="sayi">KDV Oranı</th>'), ad + ': KDV oranı sütunu');
-    assert.ok(h.includes('<th class="sayi">KDV Tutarı</th>'), ad + ': KDV tutarı sütunu');
+    assert.ok(h.includes('<th class="s-kdv sayi">KDV Oranı</th>'), ad + ': KDV oranı sütunu');
+    assert.ok(h.includes('<th class="s-kdvtutar sayi">KDV Tutarı</th>'), ad + ': KDV tutarı sütunu');
     assert.ok(h.includes('<td class="s-kdv sayi">%20</td>'), ad + ': satırda oran');
     assert.ok(h.includes('<td class="s-kdvtutar sayi">342,00 TL</td>'), ad + ': satırda tutar');
     /* Faz 14-B: KDV satırı YALIN; açıklaması dipnotta (renkli kutu değil). */
@@ -845,10 +852,12 @@ test('sütun sırası ürün sahibinin istediği gibi (Faz 14) — Ürün Adı �
 
   const h = F.html(F.normalle(kaynak, BAGLAM));
 
+  /* Faz 22-B: başlık hücreleri sütun sınıfını taşır — sabit tablo düzeninde
+     ölçüyü başlık satırı belirler (sınıfsız başlıkta sütunlar eşit bölünüyordu). */
   assert.ok(h.includes(
-    '<th>Ürün Adı</th><th>Kod / Barkod</th><th class="sayi">Koli / Adet</th>' +
-    '<th class="sayi">Birim Fiyat</th><th class="sayi">İskontolu Birim Fiyat</th>' +
-    '<th class="sayi">KDV Oranı</th><th class="sayi">KDV Tutarı</th><th class="sayi">Satır Tutarı</th>'
+    '<th class="s-ad">Ürün Adı</th><th class="s-sku">Kod / Barkod</th><th class="s-adet sayi">Koli / Adet</th>' +
+    '<th class="s-liste sayi">Birim Fiyat</th><th class="s-birim sayi">İskontolu Birim Fiyat</th>' +
+    '<th class="s-kdv sayi">KDV Oranı</th><th class="s-kdvtutar sayi">KDV Tutarı</th><th class="s-tutar sayi">Satır Tutarı</th>'
   ));
 
   assert.ok(h.includes(
@@ -941,17 +950,17 @@ test('KDV termal: 80 mm tek sütundur — KDV kalemin ALTINDA ikinci satır, yan
   const termal = F.html(f, { kagit: 'termal' });
   const a4 = F.html(f, { kagit: 'a4' });
 
-  assert.ok(termal.includes('<tr class="s-kdv-satir"><td class="s-kdv-bilgi" colspan="5">KDV %20 · 342,00 TL</td></tr>'));
+  assert.ok(termal.includes('<tr class="s-kdv-satir"><td class="s-kdv-bilgi" colspan="4">KDV %20 · 342,00 TL</td></tr>'));
   assert.ok(termal.includes('KDV %20 · 16,67 TL'));
-  assert.ok(!termal.includes('<th class="sayi">KDV Tutarı</th>'), 'termalde KDV SÜTUNU yok');
+  assert.ok(!termal.includes('<th class="s-kdvtutar sayi">KDV Tutarı</th>'), 'termalde KDV SÜTUNU yok');
   assert.ok(!termal.includes('<td class="s-kdv sayi">'), 'termalde oran sütunu yok');
   assert.ok(termal.includes('KDV (%20)</td><td class="deger sayi">358,67 TL'), 'toplam KDV termalde de var');
 
-  assert.ok(a4.includes('<th class="sayi">KDV Tutarı</th>'), 'A4 sütunlu');
+  assert.ok(a4.includes('<th class="s-kdvtutar sayi">KDV Tutarı</th>'), 'A4 sütunlu');
   assert.ok(!a4.includes('s-kdv-satir'), 'A4 te ikinci satır yok');
 
   /* Kalem tek blok okunsun diye üstteki satırın alt çizgisi kalkar. */
-  assert.ok(termal.includes('<tr class="s-kdvli">'));
+  assert.ok(termal.includes('<tr class="s-rakam s-kdvli">'), 'Faz 22-B: rakam satırı (ad kendi satırında) KDV satırıyla tek blok');
   assert.ok(termal.includes('.kalemler tr.s-kdvli td { border-bottom:0; }'));
 });
 
@@ -1007,7 +1016,7 @@ test('KDV künyesi HİÇ yokken: fiş çökmez; A4 sütunu ve özet satırı DUR
   const a4 = F.html(f, { kagit: 'a4' });
   const a4Govde = a4.slice(a4.indexOf('<body'));
 
-  assert.ok(a4Govde.includes('<th class="sayi">KDV Oranı</th>'), 'A4: sütun SABİT');
+  assert.ok(a4Govde.includes('<th class="s-kdv sayi">KDV Oranı</th>'), 'A4: sütun SABİT');
   assert.ok(a4Govde.includes('<td class="s-kdv sayi">—</td><td class="s-kdvtutar sayi">—</td>'), 'A4: hücre "—"');
   assert.ok(!a4Govde.includes('%0'), 'A4: %0 uydurulmaz');
   assert.ok(a4Govde.includes('<tr class="kdv bos"><td class="etiket">KDV</td><td class="deger sayi">—</td></tr>'), 'A4: özet satırı "—"');

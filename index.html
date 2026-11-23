@@ -3026,6 +3026,39 @@
           <div id="minTutarDurum" class="w-full text-base font-bold"></div>
         </div>
 
+        <!-- ============================================================
+             FİŞ GÖRÜNÜMÜ — KDV ORANLARI GÖSTER (Faz 22-B)
+             Kapalıyken depo fişi, sipariş fişi (A4 / termal) ve WhatsApp
+             fişinde KDV sütunları, KDV satırı ve açıklaması basılmaz; tablo
+             genişlikleri yeniden dağıtılır. TUTARLAR DEĞİŞMEZ. Kaynak:
+             eklenti ayarı `receipt_show_vat` (/settings); saha cihazları
+             /plasiyer/dealers yanıtından öğrenir. Mantık: renderer-ek.js →
+             fisKdvAyariYukle / fisKdvAyariKaydet.
+             ============================================================ -->
+        <div id="fisKdvKart" class="mt-6 rounded-2xl border-2 border-slate-200 dark:border-slate-700
+                    bg-white dark:bg-slate-800 p-6 flex flex-wrap items-center gap-5">
+          <div class="min-w-0 flex-1">
+            <div id="fisKdvBaslik" class="text-xl font-black">
+              <svg class="ik" aria-hidden="true"><use href="#ik-yazici"></use></svg>
+              KDV ORANLARI GÖSTER
+            </div>
+            <div class="text-base font-semibold text-slate-600 dark:text-slate-300 mt-1">
+              Depo fişi, sipariş fişi ve WhatsApp fişinde KDV sütunları, KDV satırı ve KDV açıklaması.
+              <b>KAPALI</b> iken fişlerde KDV görünmez, tablolar genişler. <b>Tutarlar değişmez</b> —
+              yalnızca görünüm. Pazarlamacı cihazları ayarı müşteri listesi ya da siparişleri yenilenince alır.
+            </div>
+          </div>
+
+          <button type="button" role="switch" id="fisKdvAnahtar" aria-checked="true" aria-labelledby="fisKdvBaslik"
+                  title="Fişlerde KDV satırlarını göster / gizle"
+                  class="relative w-20 h-11 rounded-full shrink-0 transition-colors focus:outline-none focus:ring-4 focus:ring-emerald-500/30 bg-emerald-500">
+            <span class="absolute top-1 left-1 w-9 h-9 rounded-full bg-white shadow-lg transition-transform duration-200 translate-x-9"></span>
+          </button>
+          <span id="fisKdvDurumMetni" class="text-xl font-black w-24 shrink-0" aria-hidden="true">AÇIK</span>
+
+          <div id="fisKdvDurum" class="w-full text-base font-bold"></div>
+        </div>
+
         <div class="mt-6 flex flex-wrap items-center gap-4">
           <button type="button" id="iskontoKaydetBtn"
                   class="dg dg-birincil dg-b"><svg class="ik" aria-hidden="true"><use href="#ik-kaydet"></use></svg> Ödeme Matrisini Kaydet</button>

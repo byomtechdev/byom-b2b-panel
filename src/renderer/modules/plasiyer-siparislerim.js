@@ -672,6 +672,13 @@
 
     var liste = (cevap.veri && (cevap.veri.siparisler || cevap.veri.orders)) || [];
 
+    /* FİŞ GÖRÜNÜMÜ (eklenti 2.29.0, Faz 22-B): bu listeden açılan fişler ve
+       WhatsApp metni yöneticinin "KDV ORANLARI GÖSTER" ayarını izler. Alan
+       yoksa (eski eklenti) varsayılana dokunulmaz → AÇIK. */
+    if (cevap.veri && 'boolean' === typeof cevap.veri.fisKdvGoster && F() && 'function' === typeof F().ayarla) {
+      F().ayarla({ kdvGoster: cevap.veri.fisKdvGoster });
+    }
+
     durumS.siparisler = (Array.isArray(liste) ? liste : []).map(normalle);
     ciz();
   }
