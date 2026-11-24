@@ -2172,6 +2172,20 @@ Panel **2.13.0** → `../BYOM-REGISTRY.md §5.61`.
 
 ---
 
+## 4.33 Faz 22-F — Tazelik (sessiz otomatik tazeleme)
+
+Panel **2.13.0** → `../BYOM-REGISTRY.md §5.62`.
+
+- **`renderer.js → sekmeyiTazeTut(ad)`**: `bayatMi(ad)` (eşikler `TAZELIK_MS`) → sessiz tur. Çağrılır: `sekmeAc` (dolu listede) + pencere `focus`/`visibilitychange`. Hiç yüklenmemiş liste (damga 0) taze sayılır — testlerde elle doldurulan liste ağ turu üretmez.
+- Damgalar: siparişte `durum.sonKontrol` (mevcut), üründe `durum.urunlerSonYukleme` (+ `urunlerSonArama`). Yeni bir sekmeye tazelik eklerken başarılı yüklemede damga yaz, `sonYuklemeAni`'na ekle.
+- **`urunleriYukle(arama, { sessiz: true })`**: yükleniyor ekranı yok; hata/eksik yanıtta eldeki liste ve `urunlerTamYuklendi` KORUNUR; `urunYukleniyor` iken başlamaz (kullanıcı turunun biletini çalıp "getiriliyor" ekranını sahipsiz bırakırdı).
+- **`urunSessizTazelenebilirMi()`** — kullanıcı düzenlerken liste altından değişmez: açık pencere, `#sekme-urunler` içinde odaklı alan, sürükleme (`durum.suruklenenUrun`, `body.izg-surukleniyor`), toplu seçim. Yeni bir düzenleme yüzeyi eklerken buraya ekle.
+- **`urunEkle`** sunucu yanıtını (`urunNormalle`) listenin başına koyar; liste alt kümeyse tam yükleme. Benzer işlemlerde (çoğaltma vb.) aynı kalıp: yanıt liste öğesi biçimindeyse yerel ekle.
+- **Saha şerit döngüsü dersi:** "veri yoksa çek, sonra kendini yeniden çiz" kalıbı istek BAŞARISIZ olursa sonsuz döngüdür. Otomatik isteğin kararı son İSTEK anına bakmalı (`plasiyer-musteri.js → listeIstenmeli`, `sonDeneme`); kullanıcı eylemi (Yenile) aralığa takılmaz.
+- jsdom'da `document.hidden` varsayılan **true**; odak testinde `defineProperty` ile false yap. Döngü testinde IPC taklidi `setTimeout(0)` ile dönmeli (mikro görev döngüsü zamanlayıcıları aç bırakıp testi asar).
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -2179,7 +2193,7 @@ Panel **2.13.0** → `../BYOM-REGISTRY.md §5.61`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.235 test**: panel 455 + kök 758 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.248 test**: panel 455 + kök 771 + hub 22).
 
 ```bash
 # Bu submodule'un kendi birim testleri (455 test) — Electron GEREKMEZ
@@ -2264,7 +2278,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.235 test)
+# Bitirirken: üç katmanın tamamı (1.248 test)
 node scripts/check-all.js
 ```
 
@@ -2345,7 +2359,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 205 php / 158 js / 1.235 test
+cd .. && node scripts/check-all.js     # 0 hata / 205 php / 159 js / 1.248 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

@@ -1795,6 +1795,19 @@ function izgKategoriAgaciCiz() {
     });
   });
 
+  /*
+   * BELLEK BOŞKEN SİTENİN SAYISI (Faz 22-F). Ürün listesi henüz gelmediyse
+   * ya da yükleme düştüyse bellekte sayılacak ürün yoktur; eskiden bütün
+   * kategoriler "0" görünüyordu ("tam yüklenmemiş" şikâyeti). O durumda
+   * WooCommerce'in kendi sayısı (`count`, yalnızca yayındakiler) gösterilir;
+   * "Tüm Ürünler" yükleme sürerken "…" yazar.
+   */
+  const bellekBos = !urunler.length && !(d && d.urunlerTamYuklendi);
+
+  if (bellekBos) {
+    g.kategoriler.forEach(function (k) { sayim[k.id] = Number(k.adet) || 0; });
+  }
+
   function dugmeHtml(etiket, id, adet, derinlik, ekSinif) {
     const aktifMi = g.kategoriSuzgec === id;
 
@@ -1842,7 +1855,8 @@ function izgKategoriAgaciCiz() {
     });
   }
 
-  parcalar.push(dugmeHtml('Tüm Ürünler', 0, urunler.length, 0, 'kat-tumu'));
+  parcalar.push(dugmeHtml('Tüm Ürünler', 0,
+    (bellekBos && d && d.urunYukleniyor) ? '…' : urunler.length, 0, 'kat-tumu'));
   daliCiz(0, 0);
 
   if (kategorisiz > 0) parcalar.push(dugmeHtml('Kategorisiz', -1, kategorisiz, 0));

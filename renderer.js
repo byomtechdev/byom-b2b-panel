@@ -693,6 +693,10 @@ const durum = {
   basvuruUcuYok: false,
   otoYenileZaman: null,
 
+  /* Ürün listesinin son BAŞARILI yükleme anı (ms) — tazelik denetimi
+     (Faz 22-F, bkz. sekmeyiTazeTut). Siparişlerde `sonKontrol` kullanılır. */
+  urunlerSonYukleme: 0,
+
   /* Logo önbellek damgası: marka görseli her değiştiğinde artar ve
      http(s) logo adresine ?b2bv= olarak eklenir (bkz. logoAdresi).
      Sitedeki logo AYNI dosya adıyla değiştirildiğinde tarayıcının
@@ -2947,9 +2951,15 @@ function sekmeAc(ad) {
     if (!durum.masterKilitAcik) masterKilidiSor();
   }
 
-  // Sekmeye ilk girişte veriyi getir
-  if (ad === 'siparisler' && durum.siparisler.length === 0) siparisleriYukle();
-  if (ad === 'urunler' && durum.urunler.length === 0) urunleriYukle();
+  // Sekmeye ilk girişte veriyi getir; sonraki girişlerde bayatsa SESSİZCE tazele (Faz 22-F)
+  if (ad === 'siparisler') {
+    if (durum.siparisler.length === 0) siparisleriYukle();
+    else sekmeyiTazeTut('siparisler');
+  }
+  if (ad === 'urunler') {
+    if (durum.urunler.length === 0) urunleriYukle();
+    else sekmeyiTazeTut('urunler');
+  }
   if (ad === 'uyeler' && durum.uyeler.length === 0) uyeleriYukle();
   if (ad === 'iskonto' && !durum.iskontoYuklendi && typeof iskontoSekmesiYukle === 'function') {
     iskontoSekmesiYukle();
@@ -5696,6 +5706,114 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
          (ek.shipmentNote ? '\nSevkiyat: ' + ek.shipmentNote : ''), 'basari');
 }
 
+/* --------------------------------------------------------------------------
+ *  TAZELİK — "Yenile'ye basmak zorunda kalmayalım" (Faz 22-F)
+ *  --------------------------------------------------------------------------
+ *  Ürün sahibi: "Sistemde birçok yerde geride kalma var; Yenile'ye basınca
+ *  düzeliyor ama bunu sistem otomatik ve hızlı yapsın — yeni siparişler
+ *  sayfasında ve özellikle Ürün & Stok'ta."
+ *
+ *  Kök sebep: sekmeler veriyi yalnızca LİSTE BOŞKEN çekiyordu (sekmeAc);
+ *  bir kez dolan liste, Yenile'ye basılana kadar bayat kalıyordu.
+ *
+ *  Artık sekmeye her dönüşte ve pencere öne geldiğinde (odak / görünürlük)
+ *  veri yaşı ölçülür; eşiği geçtiyse SESSİZ tur atılır: yükleniyor ekranı
+ *  yok, liste ve kaydırma yerinde, hata olursa eldeki liste korunur.
+ *  Kullanıcı o an bir şey düzenliyorsa (açık pencere, odaklı alan, sürükleme,
+ *  seçim) tur ATLANIR — altından liste değişmesin; bir sonraki fırsatta gelir.
+ *
+ *  Zararsız tekrar: tur kendi biletini alır, süren bir yükleme varken
+ *  başlamaz; iki kez tetiklenmesi tek tur üretir.
+ * ------------------------------------------------------------------------*/
+const TAZELIK_MS = { siparisler: 15000, urunler: 90000 };
+
+/** Verinin son başarılı yükleme anı (ms). 0 = hiç yüklenmedi → "taze" sayılır
+    (ilk yükleme sekmeAc'ın boş liste kuralıyla yapılır; elle doldurulmuş
+    liste — demo / test — gereksiz ağ turu üretmesin). */
+function sonYuklemeAni(ad) {
+  if ('siparisler' === ad) return durum.sonKontrol ? new Date(durum.sonKontrol).getTime() : 0;
+  if ('urunler' === ad) return Number(durum.urunlerSonYukleme) || 0;
+
+  return 0;
+}
+
+function bayatMi(ad) {
+  const t = sonYuklemeAni(ad);
+
+  if (!t || !TAZELIK_MS[ad]) return false;
+
+  return (Date.now() - t) >= TAZELIK_MS[ad];
+}
+
+/** Yönetici pencerelerinden biri açık mı? (Sipariş turunu bölmemek için.) */
+function siparisPenceresiAcikMi() {
+  return ['#modalKatman', '#kargoModalKatman', '#bayiModalKatman'].some(function (secici) {
+    const katman = $(secici);
+    return katman && !katman.classList.contains('hidden');
+  });
+}
+
+/**
+ * Ürün listesi şu an sessizce değiştirilebilir mi?
+ * Düzenleme penceresi, satır içi düzenleme (odaklı alan), sürükleme, toplu
+ * seçim ya da süren bir yükleme varken HAYIR.
+ */
+function urunSessizTazelenebilirMi() {
+  if (durum.urunYukleniyor) return false;
+  if (durum.suruklenenUrun) return false;
+  if (document.body && document.body.classList.contains('izg-surukleniyor')) return false;
+
+  const acik = ['#urunModalKatman', '#urunDuzenleKatman', '#modalKatman', '#metinModalKatman'].some(function (secici) {
+    const katman = $(secici);
+    return katman && !katman.classList.contains('hidden');
+  });
+
+  if (acik) return false;
+
+  const odak = document.activeElement;
+  const bolum = $('#sekme-urunler');
+
+  if (odak && bolum && bolum.contains(odak) && /^(INPUT|TEXTAREA|SELECT)$/.test(odak.tagName)) return false;
+
+  const g = (typeof izg === 'function') ? izg() : null;
+
+  if (g && g.secili && Object.keys(g.secili).length) return false;
+
+  return true;
+}
+
+/**
+ * Sekmenin verisi bayatsa sessiz tur atar. Atıldıysa true döner.
+ * @param {string} ad 'siparisler' | 'urunler'
+ */
+function sekmeyiTazeTut(ad) {
+  if (durum.ayarlar && durum.ayarlar.demoModu) return false;
+  if (!bayatMi(ad)) return false;
+
+  if ('siparisler' === ad) {
+    if (siparisPenceresiAcikMi()) return false;
+    siparisleriYukle(true);
+    return true;
+  }
+
+  if ('urunler' === ad) {
+    if (!urunSessizTazelenebilirMi()) return false;
+    urunleriYukle(undefined, { sessiz: true });
+    return true;
+  }
+
+  return false;
+}
+
+/** Pencere öne gelince açık sekmeyi tazele (başka uygulamadan dönüş). */
+function aktifSekmeyiTazeTut() {
+  if (document.hidden) return;
+  sekmeyiTazeTut(durum.aktifSekme);
+}
+
+window.addEventListener('focus', aktifSekmeyiTazeTut);
+document.addEventListener('visibilitychange', aktifSekmeyiTazeTut);
+
 /** Otomatik yenileme zamanlayıcısını kurar / durdurur. */
 function otoYenileyiAyarla() {
   if (durum.otoYenileZaman) {
@@ -5717,12 +5835,7 @@ function otoYenileyiAyarla() {
 
     /* Açık pencere varken karıştırma. Yönetici modalları saha kabuğunda
        belgede DEĞİLDİR (Faz 9) — yoksa "kapalı" sayılır. */
-    const acikPencere = ['#modalKatman', '#kargoModalKatman', '#bayiModalKatman'].some(function (secici) {
-      const katman = $(secici);
-      return katman && !katman.classList.contains('hidden');
-    });
-
-    if (acikPencere) return;
+    if (siparisPenceresiAcikMi()) return;
     siparisleriYukle(true);
   }, saniye * 1000);
 }
@@ -5745,9 +5858,20 @@ function urunKabi() {
   return $('#urunListesi');
 }
 
-async function urunleriYukle(aramaMetni) {
+async function urunleriYukle(aramaMetni, secenek) {
+  /*
+   * SESSİZ KİP (Faz 22-F — sekmeyiTazeTut): yükleniyor ekranı ve ilerleme
+   * yazısı YOK, liste ekranda kalır; hata olursa eldeki liste KORUNUR
+   * (eskiden hata listeyi boşaltıyor, kategori sayıları 0'a düşüyordu).
+   * Süren bir yükleme varken sessiz tur başlamaz: onun biletini çalıp
+   * "getiriliyor" ekranını sahipsiz bırakırdı.
+   */
+  const sessiz = !!(secenek && secenek.sessiz);
+
+  if (sessiz && durum.urunYukleniyor) return;
+
   const kap = urunKabi();
-  kap.innerHTML = yukleniyorHtml('Ürünler getiriliyor…');
+  if (!sessiz) kap.innerHTML = yukleniyorHtml('Ürünler getiriliyor…');
   const arama = (aramaMetni === undefined || aramaMetni === null) ? $('#urunArama').value : aramaMetni;
   const temizArama = String(arama || '').trim();
 
@@ -5755,8 +5879,12 @@ async function urunleriYukle(aramaMetni) {
      yazarken üst üste binen isteklerin listeyi karıştırmasını önler). */
   const bilet = ++durum.urunYuklemeBileti;
 
+  /* Sessiz tur listeyi henüz değiştirmedi: "tam yüklendi" bilgisi (sıralama
+     güvenliği) yeni liste gelene kadar eski listeye aittir. */
+  const oncekiTam = durum.urunlerTamYuklendi;
+
   durum.urunYukleniyor = true;
-  durum.urunlerTamYuklendi = false;
+  if (!sessiz) durum.urunlerTamYuklendi = false;
 
   /* ---------- DEMO ---------- */
   if (durum.ayarlar.demoModu) {
@@ -5779,6 +5907,7 @@ async function urunleriYukle(aramaMetni) {
     durum.urunlerToplam = durum.urunler.length;
     durum.urunlerTamYuklendi = true;
     durum.urunYukleniyor = false;
+    durum.urunlerSonYukleme = Date.now();
 
     urunleriCiz(temizArama);
     return;
@@ -5819,7 +5948,7 @@ async function urunleriYukle(aramaMetni) {
   const cevap = await tumSayfalariGetir(alan, 'products', sorgu, {
     sureAsimi: 30000,
     ilerleme: function (alinan, toplam) {
-      if (bilet !== durum.urunYuklemeBileti) return;
+      if (sessiz || bilet !== durum.urunYuklemeBileti) return;
 
       kap.innerHTML = yukleniyorHtml(
         toplam > alinan
@@ -5833,6 +5962,17 @@ async function urunleriYukle(aramaMetni) {
   if (bilet !== durum.urunYuklemeBileti) return;
 
   durum.urunYukleniyor = false;
+
+  /* Sessiz tur başarısız ya da EKSİK döndüyse eldeki (tam) liste korunur:
+     yarım liste sıralamayı kapatır ve kategori sayılarını bozardı. */
+  if (sessiz && (!cevap.ok || cevap.eksik)) {
+    if (!cevap.ok) {
+      durum.canliBaglantiTamam = false;
+      ustCubuguTazele();
+    }
+    durum.urunlerTamYuklendi = oncekiTam;
+    return;
+  }
 
   if (!cevap.ok) {
     durum.canliBaglantiTamam = false;
@@ -5852,8 +5992,13 @@ async function urunleriYukle(aramaMetni) {
 
   /* Liste ancak eksiksiz geldiyse sıralama için güvenlidir. */
   durum.urunlerTamYuklendi = !cevap.eksik && durum.urunler.length >= durum.urunlerToplam;
+  durum.urunlerSonYukleme = Date.now();
+  durum.urunlerSonArama = temizArama;   // yerel ekleme yalnızca aramasız listede (urunEkle)
 
-  urunleriCiz('');  // Canlı modda arama sunucuda yapıldı, tekrar süzmeye gerek yok
+  /* Sessiz turda kaydırma konumu korunur (kullanıcı 400. üründeyken liste
+     altından tazelendi diye tepeye fırlamasın). */
+  if (sessiz && 'function' === typeof kaydirmayiKoru) kaydirmayiKoru(function () { urunleriCiz(''); });
+  else urunleriCiz('');  // Canlı modda arama sunucuda yapıldı, tekrar süzmeye gerek yok
 
   if (cevap.eksik) {
     bildir('Ürünlerin tamamı getirilemedi.\n' +
@@ -6672,7 +6817,38 @@ async function urunEkle() {
 
   urunModaliKapat();
   $('#urunArama').value = '';
-  await urunleriYukle('');   // Siteden tazele, gerçek veriyi göster
+
+  /*
+   * EKLENENİ LİSTEYE KOY, MAĞAZAYI BAŞTAN ÇEKME (Faz 22-F).
+   *
+   * Ürün sahibi: "Ürün ekliyoruz, sistem ürünleri baştan yüklüyor;
+   * kategorilere basınca hepsi 0 görünüyor, tam yüklenmemiş oluyor."
+   * Eskiden her eklemede 900+ ürün sayfa sayfa yeniden çekiliyordu; o sürede
+   * liste "getiriliyor" ekranındaydı ve bir sayfa düşerse liste BOŞALIYOR,
+   * kategori sayıları 0'a iniyordu. Sunucu oluşturulan ürünü liste öğesiyle
+   * AYNI biçimde döndürür (b2b-core prepare_product / WooCommerce ürün
+   * nesnesi): o kayıt listenin başına konur. Yanıt beklenen biçimde değilse
+   * (eski eklenti / kimliksiz yanıt) eski yol: tam yükleme.
+   */
+  const yeniHam = cevap.veri && (cevap.veri.product && cevap.veri.product.id ? cevap.veri.product : cevap.veri);
+
+  const yeniUrun = (yeniHam && yeniHam.id) ? urunNormalle(yeniHam) : null;
+
+  /* Yerel ekleme yalnızca ekrandaki liste TÜM mağazaysa: aramasız, durum
+     süzgeci yeni ürünü kapsıyor ve eksiksiz. Değilse liste zaten bir alt
+     küme — tam yükleme doğru sonucu verir. */
+  const yerelEklenebilir = !!yeniUrun && !durum.ayarlar.demoModu && !durum.urunYukleniyor &&
+    Array.isArray(durum.urunler) && durum.urunler.length > 0 && durum.urunlerTamYuklendi &&
+    !durum.urunlerSonArama && (!durum.urunDurumSuzgec || durum.urunDurumSuzgec === yeniUrun.durum);
+
+  if (yerelEklenebilir) {
+
+    durum.urunler = [yeniUrun].concat(durum.urunler.filter(function (u) { return String(u.id) !== String(yeniUrun.id); }));
+    durum.urunlerToplam = Math.max(Number(durum.urunlerToplam) || 0, durum.urunler.length);
+    urunleriCiz('');
+  } else {
+    await urunleriYukle('');   // Siteden tazele, gerçek veriyi göster
+  }
 
   bildir('Ürün eklendi:\n' + ad + '\nFiyat: ' + para(fiyat) + '  ·  Stok: ' + stok + ' adet' +
          (indirimliYazi ? '\nİndirimli fiyat: ' + para(indirimli) : '') +

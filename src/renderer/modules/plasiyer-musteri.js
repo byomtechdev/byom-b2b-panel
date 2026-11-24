@@ -68,6 +68,32 @@
   var nesil = 0;
   var ucustaki = null;
 
+  /*
+   * LİSTE TAZELİĞİ VE YENİDEN DENEME ARALIĞI (Faz 22-F)
+   *
+   * Eskiden liste bir kez çekildi mi Yenile'ye basılana kadar bayat
+   * kalıyordu. Artık son istekten 60 sn sonra şerit/portföy açılışında
+   * SESSİZCE tazelenir (eldeki liste ekranda kalır).
+   *
+   * 🔴 DÖNGÜ DERSİ: şerit "liste yoksa çek, sonra kendini yeniden çiz"
+   * diyordu; istek BAŞARISIZ olunca (çevrimdışı, süresi dolmuş jeton) liste
+   * yine "yok"tu ve şerit kendini sonsuza dek çağırıyordu — ana sürece ve
+   * sunucuya durmadan istek. Karar artık son İSTEĞİN BAŞLADIĞI ana bakar:
+   * başarısız denemeden sonra 15 sn beklenir. Yenile ve sekme açılışı
+   * (kullanıcı eylemi) bu aralığa takılmaz.
+   */
+  var LISTE_TAZELIK_MS = 60000;
+  var YENIDEN_DENEME_MS = 15000;
+  var sonDeneme = 0;
+
+  /** Otomatik (kullanıcı eylemi olmayan) liste isteği şimdi atılmalı mı? */
+  function listeIstenmeli() {
+    if (!plasiyerMi()) return false;
+    if (!sonDeneme) return true;
+
+    return (Date.now() - sonDeneme) >= (durumM.yuklendi ? LISTE_TAZELIK_MS : YENIDEN_DENEME_MS);
+  }
+
   /* Profil değişiminde çıkan kişinin seçili müşterisi bellekte saklanır;
      aynı kişi geri girince (aynı uygulama oturumunda) seçimi geri gelir —
      sepet de plasiyer-vitrin.js'te aynı anahtarla saklanır. */
@@ -270,6 +296,8 @@
     var kayit = { nesil: nesil, soz: null };
     var birak = function () { if (ucustaki === kayit) ucustaki = null; };
 
+    sonDeneme = Date.now();
+
     kayit.soz = plasiyerMusterileriniCek(nesil).then(
       function (s) { birak(); return s; },
       function (e) { birak(); throw e; }
@@ -412,10 +440,14 @@
   }
 
   /** Liste hiç çekilmemişse çeker (şerit ve portföy ilk açılışta çağırır). */
+  /**
+   * Liste hiç çekilmemişse çeker; çekilmişse ve BAYATSA (Faz 22-F) sessizce
+   * tazeler. Çağıran eldekini önceden çizmiş olur; tazesi gelince yeniden çizer.
+   */
   async function listeyiHazirla() {
     await yerelleriYukle();
 
-    if (!durumM.yuklendi) {
+    if (!durumM.yuklendi || listeIstenmeli()) {
       try { await musterileriGetir(); } catch (e) { /* çevrimdışı: yereller kalır */ }
     }
   }
@@ -515,7 +547,10 @@
     baglaSerit();
 
     /* Liste henüz çekilmemişse arka planda çek ve şeridi tazele. */
-    if (!durumM.yuklendi && plasiyerMi()) {
+    /* Liste yoksa ya da bayatsa arka planda çek ve şeridi tazele. Karar son
+       İSTEK anına bakar (listeIstenmeli): başarısız istekten sonra şerit
+       kendini yeniden çağırınca döngüye girmez (Faz 22-F döngü dersi). */
+    if (listeIstenmeli()) {
       listeyiHazirla().then(seridiCiz).catch(function () { /* çevrimdışı: yereller yeter */ });
     }
   }
@@ -2421,6 +2456,7 @@
 
     nesil++;
     ucustaki = null;
+    sonDeneme = 0;   // yeni kişinin listesi hemen istenebilsin
 
     if (d.onceki && durumM.secili) seciliHafiza[d.onceki] = durumM.secili;
 
