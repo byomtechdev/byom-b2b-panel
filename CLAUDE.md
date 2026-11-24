@@ -2186,6 +2186,17 @@ Panel **2.13.0** → `../BYOM-REGISTRY.md §5.62`.
 
 ---
 
+## 4.34 Faz 22-G — "Sipariş Hazır" iki onay + Hazırı Geri Al
+
+Panel **2.13.0** → `../BYOM-REGISTRY.md §5.63`.
+
+- **`hazirOnayiAl(s, bildirimGidecek)`** (renderer.js) — iki ardışık onay; hem kart adım düğmesi (`siparisDurumDegistir`, `tanim.kod === 'order-ready'`) hem revize kutusu (`revizeyiOnayla`) kullanır. Siparişi "hazır"a alan YENİ bir yol eklersen bunu çağır.
+- **`onayla(baslik, mesaj, tamamMetni, tehlikeliMi)`** imzası BİLEREK aynı; 5. argüman `arguments[4]` ile okunur (`{ bekleme, odakVazgec }`) — testler fonksiyonu imza metniyle keser, imzayı değiştirme. Kilit her açılışta sıfırlanır.
+- Ardışık onaylarda ikinci pencere kilitsizse çift tıklamanın ikinci tıkı onu geçer — testte ikinci tık, ikinci pencere AÇILDIKTAN sonra atılmalı (aynı anda atılırsa kapanmış ilk pencereye düşer ve test yanlış sebeple geçer).
+- **`hazirDurumunuGeriAl(id, buton)`** — `data-eylem="hazir-geri-al"`, yalnızca `durumNormalle(s.durum) === 'order-ready'` iken basılır. Gövde `{ status: 'processing', note, notify: false }` — sevkiyat alanlarını GÖNDERME (boş dize sunucuda temizler).
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -2193,7 +2204,7 @@ Panel **2.13.0** → `../BYOM-REGISTRY.md §5.62`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.248 test**: panel 455 + kök 771 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.261 test**: panel 455 + kök 784 + hub 22).
 
 ```bash
 # Bu submodule'un kendi birim testleri (455 test) — Electron GEREKMEZ
@@ -2278,7 +2289,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.248 test)
+# Bitirirken: üç katmanın tamamı (1.261 test)
 node scripts/check-all.js
 ```
 
@@ -2359,7 +2370,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 205 php / 159 js / 1.248 test
+cd .. && node scripts/check-all.js     # 0 hata / 205 php / 160 js / 1.261 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

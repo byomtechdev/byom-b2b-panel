@@ -183,11 +183,21 @@ function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
    */
   if ('function' === typeof onayla.acik) onayla.acik(false);
 
+  /*
+   * İSTEĞE BAĞLI 5. ARGÜMAN (Faz 22-G) — { bekleme: ms, odakVazgec: bool }.
+   * İmza bilerek değişmedi (testler fonksiyonu imza metniyle keser).
+   * Ardışık iki onayda (Sipariş Hazır) çift tıklama ya da basılı Enter,
+   * ilk pencerenin EVET'inden hemen sonra açılan ikinciyi de onaylıyordu:
+   * `bekleme` süresince EVET kapalıdır, `odakVazgec` odağı VAZGEÇ'e verir.
+   */
+  const secenek = arguments[4] || {};
+
   return new Promise(function (cozumle) {
     const katman = $('#modalKatman');
     const tamamBtn = $('#modalTamam');
     const vazgecBtn = $('#modalVazgec');
     let bitti = false;
+    let beklemeSaat = null;
 
     $('#modalBaslik').textContent = baslik;
     $('#modalMesaj').textContent = mesaj;
@@ -195,12 +205,24 @@ function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
     /* Faz 20 düğme sistemi: onay = yeşil dolu, geri alınamaz işlem = kırmızı dolu. */
     tamamBtn.className = 'dg dg-b flex-1 ' + (tehlikeliMi ? 'dg-tehlike-dolu' : 'dg-onay');
 
+    /* Her açılışta sıfırlanır: kilitliyken kapatılan önceki onay (VAZGEÇ /
+       Esc) bir sonrakine kilit bırakmaz. #modalTamam'ı yalnızca bu fonksiyon kullanır. */
+    tamamBtn.disabled = false;
+
+    if (Number(secenek.bekleme) > 0) {
+      tamamBtn.disabled = true;
+      beklemeSaat = setTimeout(function () {
+        if (!bitti) tamamBtn.disabled = false;
+      }, Number(secenek.bekleme));
+    }
+
     katman.classList.remove('hidden');
-    tamamBtn.focus();
+    (secenek.odakVazgec ? vazgecBtn : tamamBtn).focus();
 
     function kapat(sonuc) {
       if (bitti) return;
       bitti = true;
+      if (beklemeSaat) clearTimeout(beklemeSaat);
       if (onayla.acik === kapat) onayla.acik = null;
       katman.classList.add('hidden');
       tamamBtn.removeEventListener('click', evet);
@@ -209,7 +231,7 @@ function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
       document.removeEventListener('keydown', tusla);
       cozumle(sonuc);
     }
-    function evet() { kapat(true); }
+    function evet() { if (!tamamBtn.disabled) kapat(true); }
     function hayir() { kapat(false); }
     function disariTikla(o) { if (o.target === katman) kapat(false); }
     function tusla(o) { if (o.key === 'Escape') kapat(false); }
@@ -220,6 +242,49 @@ function onayla(baslik, mesaj, tamamMetni, tehlikeliMi) {
     document.addEventListener('keydown', tusla);
     onayla.acik = kapat;
   });
+}
+
+/**
+ * "SİPARİŞ HAZIR" İÇİN İKİ ARDIŞIK ONAY (Faz 22-G).
+ *
+ * Ürün sahibi: "Ürünü revize ettikten sonra siparişi hazır butonuna
+ * getiriyoruz; el çarpıyor, sipariş sisteme hazır olarak gidiyor. Ekrana çok
+ * net ve belirgin 2 adet arka arkaya 'Onaylıyor musun' uyarısı gelsin."
+ *
+ * İkinci pencere KIRMIZI, EVET'i kısa süre kilitli ve odak VAZGEÇ'te: ilk
+ * pencereye yapılan çift tıklama / basılı Enter ikinciyi geçemez.
+ *
+ * @param {object}  s               Sipariş (numara, firma/musteri, tutar).
+ * @param {boolean} bildirimGidecek Müşteriye e-posta gidecek mi (metin için).
+ * @returns {Promise<boolean>} İkisi de onaylandıysa true.
+ */
+async function hazirOnayiAl(s, bildirimGidecek) {
+  const kunye = '#' + (s && s.numara ? s.numara : '') + ' · ' + ((s && (s.firma || s.musteri)) || '') +
+    (s && isFinite(Number(s.tutar)) && Number(s.tutar) > 0 ? '\nTutar: ' + para(Number(s.tutar)) : '');
+
+  const ilk = await onayla(
+    'SİPARİŞ HAZIR — 1. ONAY (1/2)',
+    kunye + '\n\n' +
+    'Bu sipariş "SİPARİŞ HAZIR" durumuna alınıp siteye gönderilecek.' +
+    (bildirimGidecek ? '\nMüşteriye bilgilendirme e-postası GİDECEK.' : '') +
+    '\n\nRevize bittiyse ve sipariş gerçekten hazırsa devam edin.',
+    'EVET, DEVAM ET',
+    false,
+    { bekleme: 500 }
+  );
+
+  if (!ilk) return false;
+
+  return onayla(
+    'SON ONAY (2/2) — SİPARİŞ HAZIR YAPILSIN MI?',
+    kunye + '\n\n' +
+    'Yanlışlıkla tıkladıysanız VAZGEÇ\'e basın.\n' +
+    'Onaylarsanız durum HEMEN değişir. Gerekirse kartta "Hazırı Geri Al" ile\n' +
+    'siparişi "Hazırlanıyor"a döndürüp yeniden düzenleyebilirsiniz.',
+    'EVET, HAZIR YAP',
+    true,
+    { bekleme: 900, odakVazgec: true }
+  );
 }
 
 /**
@@ -3857,6 +3922,16 @@ function siparisleriCiz() {
                 DURUM_DUGMELERI.map(function (t) { return durumDugmesiHtml(s, t); }).join('') +
               '</div>'
             : '') +
+
+          /* HAZIRI GERİ AL (Faz 22-G): adım şeridinde "Hazırlanıyor"a dönüş
+             düğmesi yoktu — yanlışlıkla hazır yapılan sipariş geri alınamıyordu.
+             Yalnızca hazır siparişte görünür; geri alınınca sipariş
+             "Hazırlanıyor"a döner ve "Hazırla & Revize Et" ile düzenlenebilir. */
+          (yoneticiEylemleri && 'order-ready' === durumNormalle(s.durum)
+            ? '<button data-eylem="hazir-geri-al" data-id="' + s.id + '" type="button" ' +
+                      'title="Hazır durumunu geri al: sipariş &quot;Hazırlanıyor&quot;a döner; düzenleyip yeniden hazır yapabilirsiniz." ' +
+                      'class="dg dg-ikincil dg-k">' + ikon('yenile') + ' Hazırı Geri Al</button>'
+            : '') +
         '</div>' +
 
         '<div class="siparis-eylemler__grup">' +
@@ -4834,6 +4909,12 @@ async function revizeyiOnayla(buton, secenek) {
       if (!eminMi) return;
     }
 
+    /* "Sipariş Hazır" kutusu işaretliyse İKİ ARDIŞIK ONAY (Faz 22-G): revize
+       kaydı ile durum değişimi aynı istekte gider; vazgeçilirse HİÇBİR şey
+       gönderilmez (pencere açık kalır, kutu kaldırılıp yalnızca revize
+       kaydedilebilir). */
+    if (hazirYap && !(await hazirOnayiAl(s, bildirilsinMi))) return;
+
     const hedefDurum = hazirYap ? (durum.b2bVar ? 'order-ready' : 'processing') : '';
     const geriAl = butonuMesgulEt(buton, ara ? 'KAYDEDİLİYOR…' : 'GÖNDERİLİYOR…');
 
@@ -5604,6 +5685,11 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
 
   if (!ek) return;
 
+  /* "Sipariş Hazır" İKİ ARDIŞIK ONAY ister (Faz 22-G — el çarpması). Düğmenin
+     kimliğine bakılır: eklentisiz yedek yolda hedef 'processing' olsa da
+     kullanıcı "Sipariş Hazır"a basmıştır. */
+  if ('order-ready' === tanim.kod && !(await hazirOnayiAl(s, !!ek.notify))) return;
+
   const geriAl = butonuMesgulEt(buton, 'GÖNDERİLİYOR…');
 
   /* ---------- DEMO ---------- */
@@ -5704,6 +5790,95 @@ async function siparisDurumDegistir(id, hedefKod, buton) {
          (ek.notify ? '\nMüşteriye bilgilendirme e-postası gönderildi.' : '\n(E-posta gönderilmedi.)') +
          (ek.tracking ? '\nTakip No: ' + ek.tracking : '') +
          (ek.shipmentNote ? '\nSevkiyat: ' + ek.shipmentNote : ''), 'basari');
+}
+
+/**
+ * "SİPARİŞ HAZIR" DURUMUNU GERİ ALIR (Faz 22-G).
+ *
+ * Ürün sahibi: "Siparişi hazır duruma tıkladıktan sonra hazır durumunu geri
+ * al, düzenleme yap imkânı sunulsun — yanlışlıkla tıklamalar için."
+ *
+ * Sipariş "Sipariş Alındı / Hazırlanıyor"a (processing) döner. Güvenli yön
+ * olduğu için TEK onay yeter. Müşteriye e-posta GÖNDERİLMEZ (notify:false);
+ * sevkiyat alanları (ambar / takip) GÖNDERİLMEZ, yani sunucuda korunur —
+ * yeniden hazır yapılırken panel eski değerlerle açılır. Hazır↔hazırlanıyor
+ * geçişinin eklentide parasal ya da stok yan etkisi yoktur (yalnızca webhook
+ * ve önbellek, bkz. class-b2b-order-statuses.php). Eklentisiz yedek yolda
+ * "hazır" durumu yoktur (düğme de basılmaz).
+ *
+ * İkinci basış zararsız: sipariş zaten hazır değilse hiçbir şey gönderilmez.
+ */
+async function hazirDurumunuGeriAl(id, buton) {
+  const s = durum.siparisler.filter(function (x) { return String(x.id) === String(id); })[0];
+
+  if (!s || 'order-ready' !== durumNormalle(s.durum)) return false;
+
+  const eminMi = await onayla(
+    'Hazır Durumunu Geri Al',
+    '#' + s.numara + ' · ' + (s.firma || s.musteri || '') + '\n\n' +
+    'Sipariş "Sipariş Hazır"dan "Sipariş Alındı / Hazırlanıyor" durumuna dönecek.\n' +
+    'Müşteriye e-posta GÖNDERİLMEZ; ambar / takip bilgisi korunur.\n\n' +
+    'Ardından "Hazırla & Revize Et" ile düzenleyip yeniden hazır yapabilirsiniz.',
+    'EVET, GERİ AL',
+    false
+  );
+
+  if (!eminMi) return false;
+
+  /* Onay penceresi açıkken liste tazelenmiş olabilir: güncel kayıtla devam. */
+  const guncelS = durum.siparisler.filter(function (x) { return String(x.id) === String(id); })[0] || s;
+
+  if ('order-ready' !== durumNormalle(guncelS.durum)) return false;
+
+  const hedef = 'processing';
+  const not = '"Sipariş Hazır" durumu masaüstünden geri alındı.';
+  const geriAl = butonuMesgulEt(buton, 'GERİ ALINIYOR…');
+
+  if (durum.ayarlar.demoModu) {
+    await bekle(250);
+    guncelS.durum = hedef;
+    guncelS.durumEtiketi = '';
+    const kaynak = (typeof DEMO_SIPARISLER !== 'undefined' ? DEMO_SIPARISLER : [])
+      .filter(function (x) { return String(x.id) === String(id); })[0];
+    if (kaynak) kaynak.durum = hedef;
+    geriAl();
+    siparisleriCiz();
+    bildir('#' + guncelS.numara + ' → ' + durumBilgisi(hedef).etiket + '\n(Demo Modu — sitenizde değişiklik yapılmadı)', 'basari');
+    return true;
+  }
+
+  const cevap = durum.b2bVar
+    ? await b2b('orders/' + id + '/status', { metod: 'POST', govde: { status: hedef, note: not, notify: false } })
+    : await woo('orders/' + id, { metod: 'PUT', govde: { status: hedef } });
+
+  geriAl();
+
+  if (!cevap || !cevap.ok) {
+    bildir('Hazır durumu geri alınamadı:\n' + ((cevap && cevap.hata) || 'Bilinmeyen hata'), 'hata');
+    return false;
+  }
+
+  if (durum.b2bVar && cevap.veri && cevap.veri.order) {
+    const sira = durum.siparisler.indexOf(guncelS);
+    if (sira !== -1) durum.siparisler[sira] = b2bSiparisNormalle(cevap.veri.order);
+  } else {
+    guncelS.durum = hedef;
+    guncelS.durumEtiketi = '';
+  }
+
+  /* "Sipariş Hazır" süzgeci açıksa sipariş artık ona ait değil. */
+  if (durum.siparisSuzgec && durumNormalle(durum.siparisSuzgec) !== hedef) {
+    durum.siparisler = durum.siparisler.filter(function (x) { return String(x.id) !== String(id); });
+    durum.siparislerToplam = Math.max(0, Number(durum.siparislerToplam || 0) - 1);
+    siparisSekmeleriCiz();
+  }
+
+  siparisleriCiz();
+
+  bildir('#' + guncelS.numara + ' → ' + durumBilgisi(hedef).etiket +
+         '\nHazır durumu geri alındı. "Hazırla & Revize Et" ile düzenleyebilirsiniz.\n(E-posta gönderilmedi.)', 'basari');
+
+  return true;
 }
 
 /* --------------------------------------------------------------------------
@@ -9840,6 +10015,9 @@ function olaylariBagla() {
 
     const durumBtn = o.target.closest('[data-eylem="durum"]');
     if (durumBtn) { siparisDurumDegistir(durumBtn.dataset.id, durumBtn.dataset.hedef, durumBtn); return; }
+
+    const hazirGeriBtn = o.target.closest('[data-eylem="hazir-geri-al"]');
+    if (hazirGeriBtn) { hazirDurumunuGeriAl(hazirGeriBtn.dataset.id, hazirGeriBtn); return; }
 
     const detayBtn = o.target.closest('[data-eylem="siparis-detay"]');
     if (detayBtn) { siparisDetayiDegistir(detayBtn.dataset.id); return; }
