@@ -96,6 +96,7 @@ lisans anahtarı ve Woo anahtarları arayüz katmanında dolaşmaz.
 | **`src/renderer/modules/iskonto-denetimi.js`** | **Ayarlar › Geçmiş Sipariş İskonto Denetimi** (Faz 19): `GET maintenance/fee-audit` kuru denetim (sayfa sayfa), seçilenleri onaylı `POST`; formül YOK. **Faz 21:** `cift_bayi` sonucu — varsayılan seçili, özete ve farka girer (→ §4.25.4, §4.27) | — |
 | **`src/renderer/siparis-fisi.js`** | **Kurumsal sipariş fişi motoru** (Faz 12, DOM'suz, çift modlu): `normalle` (yönetici / plasiyer / ham `prepare_order`), `html` (A4 / 80 mm termal, inline CSS), `whatsappMetni` (kalın başlıklar, koli×adet, iskontolar, net, ≤ 1800 kr), `waTelefon`, `waAdresi`, `paraYaz`. **Faz 13:** KDV sütunları + `KDV UYGULANMADI` bloğu; **KDV yeniden HESAPLANMAZ**, sunucudan geleni basar (→ §4.17.4). **Faz 14:** sabit 8 sütun + kalem `listeBirim`; **`ozetBlogu`** (altı sabit satır — depo fişi de bunu çağırır), **`sayfalaraBol`** (sabit sayfa ölçüsü), **`aracCubugu` + `pencere`** (Yazdır · PDF · WhatsApp · Kapat; `html()` saf kalır) (→ §4.18). İki kabuk aynı fişi basar (→ §4.16.4) | `node --test` altında koşar |
 | **`src/renderer/modules/plasiyer-performansim.js`** | **Performansım** (Faz 11): saha 4. sekmesi — TEK IPC `plasiyer:performans` ile gün/7 gün/30 gün sipariş + net ciro kartları, bayi katkı çubukları (`scaleX`), il dağılımı; yönetici uçlarına gidilmez; `sekmeAc`'ı SARAR (→ §4.15) | — |
+| **`src/renderer/modules/menu-daralt.js`** | **Sol menü daraltma** (Faz 22-D): üst çubuk `#menuDaraltAnahtar` + Ctrl+B, menü 84 px ikon şeridi; durum `nav#anaMenu[data-dar]` (sınıf değil — sekmeAc ezer), daraltınca düğmelere aria-label/title, tercih `ayarlar.json → menuDar` (→ §4.31) | — |
 | **`src/renderer/modules/plasiyer-otosync.js`** | **Otomatik eşitleme tetikleyicisi** (Faz 4): `online` olayı + 60 sn hafif yoklama + `visibilitychange`. Kuyruk boşsa **ağa çıkmaz**, hata sessizdir (→ §4.7) | — |
 | `lisans/lisans.html` + `lisans/lisans.js` | Lisans/aktivasyon penceresi — ana pencereden bağımsız | — |
 | `vendor/tailwind.js` | Yerel Tailwind kopyası (internetsiz sunum). Bulunamazsa CDN, o da olmazsa yedek CSS | — |
@@ -155,6 +156,7 @@ modules/harita-kokpit.js    ← sekmeAc'ı SARAR         (4247)
 modules/plasiyer-ziyaret.js ← PlasiyerMusteri.seridiCiz'i SARAR → musteri'den SONRA (4248)
 ─── Plasiyer Faz 4 ────────────────────────────────────────────
 modules/plasiyer-otosync.js ← EN SON: sync-motor + durum.oturum hazır olmalı  (4252)
+modules/menu-daralt.js     ← Faz 22-D: bağımsız, hiçbir şeyi sarmaz (iskonto-denetimi'nden sonra, en sonda)
 ```
 
 **`src/renderer/` alt dizin anlamı — karıştırma:**
@@ -2145,6 +2147,18 @@ Panel **2.13.0** · eklenti **2.29.0** · tema v1 **2.14.0** · v2 **2.0.4** →
 
 ---
 
+## 4.31 Faz 22-D — Sol menü daraltma
+
+Panel **2.13.0** → `../BYOM-REGISTRY.md §5.60`. Modül: `src/renderer/modules/menu-daralt.js` (`window.MenuDaralt`).
+
+- Üst çubuk `#menuDaraltAnahtar` / **Ctrl+B** → `nav#anaMenu[data-dar="1"]` (84 px ikon şeridi).
+- **Durum menüde, düğmede DEĞİL:** `sekmeAc()` düğme `className`'ini atamayla ezer (§4.11.1); düğmeye sınıf koymak ilk tıklamada silinirdi.
+- Daraltınca düğmelere etiket metni `aria-label` + `title` (gizli etiket erişilebilir addan düşer); genişletince geri (özgün title `data-title-ozgun`'da).
+- Tercih `ayarlar.json → menuDar` (`ayar:yaz`); açılışta ve `byom:hazir`'da uygulanır; kayıt hatası menüyü bozmaz.
+- Genişlik animasyonsuz (GPU kuralı). Yeni menü düğmesi eklerken etiketi `.align-middle` span'ında tut — daraltma onu gizler ve aria-label'a taşır.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -2152,7 +2166,7 @@ Panel **2.13.0** · eklenti **2.29.0** · tema v1 **2.14.0** · v2 **2.0.4** →
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.208 test**: panel 445 + kök 741 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.216 test**: panel 445 + kök 749 + hub 22).
 
 ```bash
 # Bu submodule'un kendi birim testleri (445 test) — Electron GEREKMEZ
@@ -2237,7 +2251,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.208 test)
+# Bitirirken: üç katmanın tamamı (1.216 test)
 node scripts/check-all.js
 ```
 
@@ -2318,7 +2332,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 205 php / 154 js / 1.208 test
+cd .. && node scripts/check-all.js     # 0 hata / 205 php / 156 js / 1.216 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

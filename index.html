@@ -1720,6 +1720,20 @@
   html .dg.dg-kare.dg-b { width: var(--dg-b) !important; }
   html .dg.dg-kare.dg-k { width: var(--dg-k) !important; }
   html .dg.dg-tam { width: 100% !important; }
+
+  /* ---- SOL MENÜ DARALTMA (Faz 22-D) — 288 px → 84 px ikon şeridi ----
+     Durum menüdedir (`nav#anaMenu[data-dar="1"]`): sekmeAc() düğmelerin
+     className'ini ezdiği için düğme sınıfına bağlanamaz. Etiketler gizlenir,
+     ikon ve rozetler kalır; genişlik ANİMASYONSUZ değişir (yeniden yerleşim
+     yalnızca tıklama anında, her karede değil). Erişilebilir ad: menu-daralt.js
+     daraltınca aria-label + title yazar. */
+  html nav#anaMenu[data-dar="1"] { width: 84px !important; padding-left: 10px !important; padding-right: 10px !important; }
+  html nav#anaMenu[data-dar="1"] .menu-btn, html nav#anaMenu[data-dar="1"] #cikisYapDugme {
+    justify-content: center !important; text-align: center !important; padding-left: 0 !important; padding-right: 0 !important;
+  }
+  html nav#anaMenu[data-dar="1"] .menu-btn > .align-middle, html nav#anaMenu[data-dar="1"] #cikisYapDugme > .align-middle,
+  html nav#anaMenu[data-dar="1"] #ayarKilitSimgesi { display: none !important; }
+  html nav#anaMenu[data-dar="1"] .menu-btn .ik, html nav#anaMenu[data-dar="1"] #cikisYapDugme .ik { margin: 0 !important; }
   /* Yıkıcı işlem sıranın SONUNA itilir: olumlu eylemlerden ayrışsın */
   html .dg.dg-ml-oto { margin-left: auto !important; }
 
@@ -2407,6 +2421,12 @@
                  border-b-2 border-slate-200 dark:border-slate-700 shadow-sm z-20">
 
     <div class="flex items-center gap-3 min-w-0">
+      <!-- SOL MENÜ DARALTMA (Faz 22-D): menüyü 84 px'lik ikon şeridine indirir /
+           geri açar (Ctrl+B). Mantık: src/renderer/modules/menu-daralt.js;
+           durum menüde `data-dar="1"` (sınıf değil — sekmeAc className'i ezer). -->
+      <button type="button" id="menuDaraltAnahtar" class="dg dg-sessiz dg-kare shrink-0"
+              aria-controls="anaMenu" aria-expanded="true" aria-label="Menüyü daralt"
+              title="Menüyü daralt (Ctrl+B)"><svg class="ik" aria-hidden="true"><use href="#ik-panel"></use></svg></button>
       <div id="firmaVarsayilanSimge" class="w-14 h-14 rounded-2xl bg-marka-700 text-white grid place-items-center text-3xl shadow-lg shrink-0"><svg class="ik" aria-hidden="true"><use href="#ik-paket"></use></svg></div>
       <div id="firmaLogoKutu" class="hidden shrink-0">
         <img id="firmaLogo" alt="Firma logosu" class="max-h-10 w-auto object-contain" />
@@ -2474,7 +2494,7 @@
          Yönetici kabuğu 8 sekme · Saha kabuğu 3 sekme
          [Katalog & Satış] [Kendi Siparişlerim] [Müşterilerim].
          ================================================================== -->
-    <nav class="w-72 shrink-0 bg-white dark:bg-slate-800 border-r-2 border-slate-200 dark:border-slate-700
+    <nav id="anaMenu" aria-label="Ana menü" class="w-72 shrink-0 bg-white dark:bg-slate-800 border-r-2 border-slate-200 dark:border-slate-700
                 p-4 flex flex-col gap-3 overflow-y-auto">
 
       <!-- FAZ 10: bu düğme ve gövdesi (#sekme-siparisler) artık YALNIZCA
@@ -5432,5 +5452,7 @@
 <script src="src/renderer/modules/yonetici-pin.js"></script>
 <!-- Faz 19: Geçmiş Sipariş İskonto Denetimi kartı (Ayarlar) — renderer.js yardımcılarını çağrı anında okur. -->
 <script src="src/renderer/modules/iskonto-denetimi.js"></script>
+<!-- Faz 22-D: sol menü daraltma — bağımsız, hiçbir şeyi sarmaz; tercih ayarlar.json → menuDar -->
+<script src="src/renderer/modules/menu-daralt.js"></script>
 </body>
 </html>
