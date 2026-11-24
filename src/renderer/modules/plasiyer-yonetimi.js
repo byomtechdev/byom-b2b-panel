@@ -36,6 +36,8 @@
     /* CİRO DÖNEMİ (Faz 13): 'ay' | 'yil' | 'tumu'. Varsayılan AY, çünkü
        "bu ay ne yaptık" sahada sorulan ilk sorudur. */
     donem: 'ay',
+    /* Silme ucu (Faz 22-H, eklenti 2.29.0): yalnızca eklenti bildirirse true. */
+    silmeDestegi: false,
     /* Dönem toplamları — eski eklenti göndermez, o yüzden 0 DEĞİL null:
        0 yazmak "bu ay hiç satış yok" gibi YANLIŞ bir şey söylerdi. */
     genelCiroAy: null, genelCiroYil: null, donemAy: '', donemAyAd: '' };
@@ -243,6 +245,8 @@
     kayit.genelCiro    = Number(cevap.veri.genelCiro) || 0;
     kayit.genelSiparis = Number(cevap.veri.genelSiparis) || 0;
     kayit.paraBirimi   = String(cevap.veri.paraBirimi || '');
+    /* Faz 22-H: eski eklenti alanı göndermez → Sil düğmesi basılmaz. */
+    kayit.silmeDestegi = true === cevap.veri.silmeDestegi;
 
     /* DÖNEM TOPLAMLARI (Faz 13). Alan yoksa null kalır → çipler devre dışı. */
     kayit.genelCiroAy  = sayiYaDaNull(cevap.veri.genelCiroAy);
@@ -564,6 +568,7 @@
               '<button type="button" class="dg dg-ikincil dg-k plasiyer-duzenle" data-id="' + Number(p.id) + '">Düzenle</button>' +
               '<button type="button" class="dg dg-ikincil dg-k plasiyer-bayiler" data-id="' + Number(p.id) + '">Bayiler</button>' +
               cihazDugmesi(p) +
+              silDugmesi(p) +
             '</div>' +
           '</td>' +
         '</tr>';
@@ -1052,6 +1057,178 @@
   }
 
   /* ------------------------------------------------------------------ *
+   *  PAZARLAMACI SİLME (Faz 22-H)
+   *  ---------------------------------------------------------------
+   *  Ürün sahibi: "Yanlışlıkla deneme profili açtım, silemiyorum." +
+   *  "Silerken iki kez sorsun, emin misiniz diye."
+   *
+   *  KARAR SUNUCUDADIR (B2B_Plasiyer::sil): geçmişi olmayan profil KALICI
+   *  silinir; siparişi ya da ziyaret notu olan ARŞİVE alınır (giriş kapanır,
+   *  listelerden kalkar, ciro geçmişi kaybolmaz). Panel önce KURU istekle ne
+   *  olacağını öğrenir, bunu İKİ ARDIŞIK onayda gösterir (Faz 22-G kalıbı:
+   *  ikincisi kırmızı, EVET bekletilir, odak VAZGEÇ'te), ikisi de onaylanırsa
+   *  `uygula: true` gönderir. Düğme yalnızca eklenti `silmeDestegi`
+   *  bildirirse basılır — eski eklentide uç yoktur, vaat edilmez.
+   * ------------------------------------------------------------------ */
+
+  /** Sürmekte olan silme (plasiyer kimliği; 0 = yok) — ikinci akış açılmaz. */
+  var silmeSuruyor = 0;
+
+  function silDugmesi(p) {
+    if (!kayit.silmeDestegi) return '';
+
+    return '<button type="button" class="dg dg-tehlike dg-k plasiyer-sil" data-id="' + Number(p.id) + '" ' +
+           'title="Profili siler; siparişi ya da ziyaret notu varsa arşive alır">Sil</button>';
+  }
+
+  /**
+   * Sunucunun KENDİ cümlesi. Genel HTTP metni ("Hosting firmanıza danışın")
+   * yarım kalan silmede yanlış yöne gönderir; sunucu ne dediyse o gösterilir.
+   */
+  function sunucuMesaji(cevap, yedek) {
+    if (cevap && cevap.veri && 'string' === typeof cevap.veri.message && cevap.veri.message.trim()) {
+      return cevap.veri.message.trim();
+    }
+
+    return (cevap && cevap.hata) || yedek;
+  }
+
+  /** İlk onayın gövdesi — sunucunun kuru özetinden. */
+  function silmeOzetMetni(ozet, ad, id) {
+    var kalici = 'kalici' === ozet.yontem;
+    var bayi = Number(ozet.bayi) || 0;
+    var il = Number(ozet.il) || 0;
+    var satirlar = [ad, ''];
+
+    if (kalici) {
+      satirlar.push('Bu pazarlamacının hiç siparişi ve ziyaret notu yok; profili KALICI olarak silinecek.');
+    } else {
+      if (null === ozet.siparis || undefined === ozet.siparis) {
+        satirlar.push('WooCommerce kapalı olduğu için sipariş geçmişi denetlenemedi. ' +
+                      'Güvenli tarafta kalmak için profil SİLİNMEZ, ARŞİVE alınır.');
+      } else {
+        var gecmis = [];
+
+        if (ozet.siparis) gecmis.push('sipariş geçmişi');
+        if (Number(ozet.not) > 0) gecmis.push(Number(ozet.not) + ' ziyaret notu');
+
+        satirlar.push('Bu pazarlamacının ' + (gecmis.length ? gecmis.join(' ve ') : 'geçmişi') + ' var. ' +
+                      'Geçmiş kaybolmasın diye profil SİLİNMEZ, ARŞİVE alınır.');
+      }
+
+      satirlar.push('• Giriş yapamaz; listelerde ve haritada görünmez.');
+      satirlar.push('• Siparişleri, cirosu ve notları olduğu gibi kalır.');
+    }
+
+    if (bayi > 0) satirlar.push('• ' + bayi + ' bayinin ataması kaldırılacak; bu bayiler pazarlamacısız kalır.');
+    if (il > 0) satirlar.push('• ' + il + ' sorumlu il boşalacak.');
+    satirlar.push('• Girişi ve açık oturumları hemen kapanır.');
+
+    if (tahsisliId() === id) {
+      satirlar.push('', 'DİKKAT: Bu bilgisayar bu pazarlamacıya tahsisli. Sonrasında saha girişi açılamaz; ' +
+                        'tahsisi Yönetici Master PIN ile kaldırmanız gerekir.');
+    }
+
+    if (kalici) satirlar.push('', 'Bu işlem geri alınamaz.');
+
+    return satirlar.join('\n');
+  }
+
+  /**
+   * Sil düğmesi: kuru istek → iki ardışık onay → uygula.
+   *
+   * Uygulamada 404 `b2b_plasiyer_yok` = başka bir pencere/cihaz zaten sildi;
+   * hata değildir. Uygulama denendiyse sonuç ne olursa olsun liste tazelenir:
+   * sunucu girişi İLK adımda kapatır, yarım kalan turda bile PIN durumu
+   * değişmiştir (tekrar denemek zararsızdır).
+   */
+  async function plasiyeriSil(plasiyerId) {
+    var id = Number(plasiyerId) || 0;
+
+    if (!id || silmeSuruyor) return;
+
+    var p = kayit.plasiyerler.find(function (x) { return Number(x.id) === id; });
+    var ad = String((p && p.ad) || '').trim() || ('#' + id);
+    var dugme = document.querySelector('#plasiyerTablo .plasiyer-sil[data-id="' + id + '"]');
+    var tazele = false;
+
+    silmeSuruyor = id;
+
+    if (dugme) {
+      dugme.disabled = true;
+      dugme.setAttribute('aria-busy', 'true');
+    }
+
+    try {
+      var kuru = await b2b('/admin/plasiyer/sil', { metod: 'POST', govde: { plasiyer_id: id } });
+
+      if (!kuru || !kuru.ok || !kuru.veri || !kuru.veri.ok) {
+        bildir(sunucuMesaji(kuru, 'Pazarlamacı silinemedi.'), 'hata');
+        return;
+      }
+
+      var ozet = kuru.veri;
+      var kalici = 'kalici' === ozet.yontem;
+
+      if (ozet.zaten) {
+        bildir(ad + ' zaten arşivde.', 'bilgi');
+        tazele = true;
+        return;
+      }
+
+      var ilk = await onayla(
+        (kalici ? 'PAZARLAMACIYI SİL' : 'PAZARLAMACIYI ARŞİVE AL') + ' — 1. ONAY (1/2)',
+        silmeOzetMetni(ozet, ad, id),
+        'EVET, DEVAM ET',
+        false,
+        { bekleme: 500 }
+      );
+
+      if (!ilk) return;
+
+      var son = await onayla(
+        'SON ONAY (2/2) — ' + (kalici ? 'KALICI OLARAK SİLİNSİN Mİ?' : 'ARŞİVE ALINSIN MI?'),
+        ad + '\n\n' +
+        'Yanlışlıkla tıkladıysanız VAZGEÇ\'e basın.\n' +
+        (kalici
+          ? 'Onaylarsanız profil HEMEN ve KALICI olarak silinir; geri alınamaz.'
+          : 'Onaylarsanız profil hemen arşive alınır ve girişi kapanır. Siparişleri ve cirosu korunur.'),
+        kalici ? 'EVET, KALICI SİL' : 'EVET, ARŞİVE AL',
+        true,
+        { bekleme: 900, odakVazgec: true }
+      );
+
+      if (!son) return;
+
+      var cevap = await b2b('/admin/plasiyer/sil', { metod: 'POST', govde: { plasiyer_id: id, uygula: true } });
+
+      tazele = true;
+
+      if (cevap && cevap.ok && cevap.veri && cevap.veri.ok) {
+        if ('kalici' === cevap.veri.yontem) bildir(ad + ' kalıcı olarak silindi.', 'basari');
+        else bildir(ad + ' arşive alındı. Siparişleri ve cirosu korunuyor.', 'basari');
+        return;
+      }
+
+      if (cevap && 'b2b_plasiyer_yok' === cevap.kod) {
+        bildir(ad + ' zaten silinmiş; liste tazelendi.', 'bilgi');
+        return;
+      }
+
+      bildir(sunucuMesaji(cevap, 'Pazarlamacı silinemedi.'), 'hata');
+    } finally {
+      silmeSuruyor = 0;
+
+      if (dugme) {
+        dugme.disabled = false;
+        dugme.removeAttribute('aria-busy');
+      }
+
+      if (tazele) listeyiGetir();
+    }
+  }
+
+  /* ------------------------------------------------------------------ *
    *  OLAY BAĞLAMA
    * ------------------------------------------------------------------ */
 
@@ -1117,6 +1294,13 @@
           return;
         }
 
+        var silDugme = olay.target.closest('.plasiyer-sil');
+
+        if (silDugme) {
+          plasiyeriSil(Number(silDugme.dataset.id));
+          return;
+        }
+
         var cihazDugme = olay.target.closest('.plasiyer-cihaz');
         if (cihazDugme) cihaziTahsisEt(Number(cihazDugme.dataset.id));
       });
@@ -1178,6 +1362,7 @@
     formuAc: formuAc,
     formuKapat: formuKapat,
     cihaziTahsisEt: cihaziTahsisEt,
+    plasiyeriSil: plasiyeriSil,
     tahsisliId: tahsisliId,
     altSekmeAc: altSekmeAc,
     donemSec: donemSec,

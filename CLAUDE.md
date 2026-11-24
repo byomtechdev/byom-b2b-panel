@@ -2195,6 +2195,16 @@ Panel **2.13.0** → `../BYOM-REGISTRY.md §5.63`.
 - Ardışık onaylarda ikinci pencere kilitsizse çift tıklamanın ikinci tıkı onu geçer — testte ikinci tık, ikinci pencere AÇILDIKTAN sonra atılmalı (aynı anda atılırsa kapanmış ilk pencereye düşer ve test yanlış sebeple geçer).
 - **`hazirDurumunuGeriAl(id, buton)`** — `data-eylem="hazir-geri-al"`, yalnızca `durumNormalle(s.durum) === 'order-ready'` iken basılır. Gövde `{ status: 'processing', note, notify: false }` — sevkiyat alanlarını GÖNDERME (boş dize sunucuda temizler).
 
+## 4.35 Faz 22-H — Pazarlamacı silme (kalıcı / arşiv, iki onay)
+
+Panel **2.13.0** · eklenti **2.29.0** → `../BYOM-REGISTRY.md §5.64`.
+
+- **Karar sunucuda** (`B2B_Plasiyer::sil`): geçmişsiz profil KALICI silinir, sipariş/notu olan (ya da WooCommerce kapalıyken bilinemeyen) ARŞİVE alınır. Panel karar VERMEZ; kuru isteğin `yontem` alanını gösterir.
+- **`plasiyeriSil(id)`** (`src/renderer/modules/plasiyer-yonetimi.js`): `POST /admin/plasiyer/sil` `{ plasiyer_id }` (KURU) → iki ardışık `onayla` (2. pencere `{ bekleme: 900, odakVazgec: true }`, Faz 22-G kalıbı) → `{ plasiyer_id, uygula: true }`. Tek uçuş (`silmeSuruyor`). Uygulamada 404 `b2b_plasiyer_yok` = zaten silinmiş (hata değil). Uygulama denendiyse liste HER durumda tazelenir (sunucu girişi ilk adımda kapatır).
+- **Sil düğmesi yalnızca `kayit.silmeDestegi`** (eklentinin `/admin/plasiyerler` yanıtı) varken basılır — eski eklentide uç yok, düğme vaat etmez.
+- Hata metni `sunucuMesaji(cevap)`: önce `cevap.veri.message` (sunucunun kendi cümlesi), yoksa `cevap.hata`. `httpHatasiTurkce` 500'ü "hosting firmanıza danışın" diye sarar — yarım kalan silmede yanlış yöne gönderir.
+- Test: `../scripts/tests/plasiyer-sil.dom.test.js` (10) — gerçek `index.html` + gerçek modül; `onayla` taklidi 5. argümanı da kaydeder.
+
 ---
 
 ## 5. Hızlı test komutları
@@ -2204,7 +2214,7 @@ Panel **2.13.0** → `../BYOM-REGISTRY.md §5.63`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.261 test**: panel 455 + kök 784 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.273 test**: panel 455 + kök 796 + hub 22).
 
 ```bash
 # Bu submodule'un kendi birim testleri (455 test) — Electron GEREKMEZ
@@ -2289,7 +2299,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.261 test)
+# Bitirirken: üç katmanın tamamı (1.273 test)
 node scripts/check-all.js
 ```
 
@@ -2370,7 +2380,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 205 php / 160 js / 1.261 test
+cd .. && node scripts/check-all.js     # 0 hata / 206 php / 162 js / 1.273 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.
