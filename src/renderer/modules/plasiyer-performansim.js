@@ -188,6 +188,13 @@
 
     if (!durumP.veri) {
       if (ozet) ozet.textContent = durumP.yukleniyor ? 'Yükleniyor…' : '';
+
+      /* Veri yokken ESKİ kartlar ekranda kalmaz (Faz 22-E): profil değişince
+         X'in cirosu, Y'nin verisi gelene kadar Y'nin ekranında duruyordu. */
+      ['performansimKartlar', 'performansimBayiler', 'performansimIller'].forEach(function (id) {
+        var kap = el(id);
+        if (kap) kap.innerHTML = '';
+      });
       return;
     }
 
@@ -214,12 +221,16 @@
     ciz();
 
     var cevap;
+    var benimNesil = nesil;
 
     try {
       cevap = await ipcRenderer.invoke('plasiyer:performans', {});
     } catch (e) {
       cevap = { ok: false, hata: (e && e.message) || 'Ağ hatası.' };
     }
+
+    /* Oturum bu arada değiştiyse eski kişinin karnesi YAZILMAZ (Faz 22-E). */
+    if (benimNesil !== nesil) return;
 
     durumP.yukleniyor = false;
 
@@ -236,6 +247,24 @@
   function sekmeyiAc() {
     yenile();
   }
+
+  /* OTURUM DEĞİŞİMİ (Faz 22-E): çıkan kişinin karnesi atılır; sekme açıksa
+     yeni kişininki sessizce çekilir. */
+  var nesil = 0;
+
+  function oturumDegisti() {
+    nesil++;
+
+    durumP.veri = null;
+    durumP.yukleniyor = false;
+    durumP.hata = '';
+
+    try { ciz(); } catch (e) { /* kap yoksa sessiz */ }
+
+    if ('performansim' === (window.durum && window.durum.aktifSekme) && plasiyerMi()) yenile();
+  }
+
+  window.addEventListener('byom:oturum-degisti', oturumDegisti);
 
   function kur() {
     if (bagli) return;

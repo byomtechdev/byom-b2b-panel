@@ -2159,6 +2159,19 @@ Panel **2.13.0** → `../BYOM-REGISTRY.md §5.60`. Modül: `src/renderer/modules
 
 ---
 
+## 4.32 Faz 22-E — Profil değişimi ve kuyruk sahipliği
+
+Panel **2.13.0** → `../BYOM-REGISTRY.md §5.61`.
+
+- **`byom:oturum-degisti`** (window): `renderer-plasiyer.js → kimlikDegistiyseYay` kimlik (rol+id) DEĞİŞİNCE yayar — `oturumKur`'da `byom:oturum`'dan ÖNCE, `cikisYap`'ta `yeni=''` ile. `detail = { onceki, yeni, oturum }` (anahtar `'plasiyer:7'`).
+- **Kişiye ait bellek tutan her yeni modül bu olayı dinlemek ZORUNDA:** veriyi at, ekranı temizle, açık sekmeyse tazele. Uçuştaki istek için `nesil` kalıbı: istekten önce `var benimNesil = nesil;`, döndüğünde `if (benimNesil !== nesil) return;` — yazma yok.
+- ⚠️ Olay anında plasiyer kabuğu **sökülü** olabilir (giriş: kapı kabuğu → `kisitlamayiUygula` sonra takar). `el()` null döner; çizim sessizce atlanır. Kabuk takıldıktan sonra sekme açılışı yeniden çizer — bu yüzden "veri yokken eski çizimi temizle" kuralı (`ciz()` veri null iken kapları boşaltmalı, performans dersi).
+- Sepet (`plasiyer-vitrin.js → sepetHafiza`) ve seçili müşteri (`plasiyer-musteri.js → seciliHafiza`) kişi anahtarıyla bellekte saklanır; aynı kişi geri girince döner. Diske yazılmaz (önceden de yazılmıyordu).
+- `notlarimiCiz()` çizdiği notları **okundu sayar** — yalnızca not listesi gerçekten ekrandayken çağır (yoksa zil sayacı sıfırlanır; testte yakalandı).
+- **Kuyruk sahipliği (main.js):** `kuyrukSahibi(oturum)` + `sahibininMi(kayit, id)` SAF yardımcılar (testte metinden çıkarılır — global okuma ekleme). Damga yalnızca ana süreç oturumundan; sahip yoksa gövdedeki `plasiyerId`, o da yoksa kayıt herkesindir. `sync:esitle` başkasının kayıtlarını `birlestir` ile sırası korunarak geri yazar — temizleyiciler `filter` olduğu için nesne başvuruları korunur; temizleyiciyi kopya döndürecek biçimde değiştirme.
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -2166,10 +2179,10 @@ Panel **2.13.0** → `../BYOM-REGISTRY.md §5.60`. Modül: `src/renderer/modules
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.216 test**: panel 445 + kök 749 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.235 test**: panel 455 + kök 758 + hub 22).
 
 ```bash
-# Bu submodule'un kendi birim testleri (445 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (455 test) — Electron GEREKMEZ
 node --test test/arayuz-dugme.test.js       # 12 — Faz 20: meşgul durumu (aria-busy, ikinci basış, en az süre), etiket() başlık düzeni
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
@@ -2251,7 +2264,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.216 test)
+# Bitirirken: üç katmanın tamamı (1.235 test)
 node scripts/check-all.js
 ```
 
@@ -2332,7 +2345,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 205 php / 156 js / 1.216 test
+cd .. && node scripts/check-all.js     # 0 hata / 205 php / 158 js / 1.235 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

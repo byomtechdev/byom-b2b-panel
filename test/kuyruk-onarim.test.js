@@ -85,7 +85,11 @@ function fonksiyonuCikar(ad) {
 function handler(kanal, baglam) {
   const tam = Object.assign({
     kuyrukSatiriBul: fonksiyonuCikar('kuyrukSatiriBul'),
-    geciciMusteriKimligi: fonksiyonuCikar('geciciMusteriKimligi')
+    geciciMusteriKimligi: fonksiyonuCikar('geciciMusteriKimligi'),
+    /* Faz 22-E: kuyruk sahipliği yardımcıları (saf) + "oturum yok" varsayılanı */
+    kuyrukSahibi: fonksiyonuCikar('kuyrukSahibi'),
+    sahibininMi: fonksiyonuCikar('sahibininMi'),
+    plasiyerOturumu: null
   }, baglam);
 
   const adlar = Object.keys(tam);

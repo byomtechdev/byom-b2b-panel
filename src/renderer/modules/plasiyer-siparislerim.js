@@ -655,12 +655,16 @@
     ciz();
 
     var cevap;
+    var benimNesil = nesil;
 
     try {
       cevap = await ipcRenderer.invoke('plasiyer:get-orders', { adet: 100 });
     } catch (e) {
       cevap = { ok: false, hata: (e && e.message) || 'Ağ hatası.' };
     }
+
+    /* Oturum bu arada değiştiyse eski kişinin listesi YAZILMAZ (Faz 22-E). */
+    if (benimNesil !== nesil) return;
 
     durumS.yukleniyor = false;
 
@@ -691,6 +695,29 @@
 
     return yenile();
   }
+
+  /*
+   * OTURUM DEĞİŞİMİ (Faz 22-E): çıkan kişinin sipariş listesi atılır, ekran
+   * hemen temizlenir; sekme açıksa yeni kişinin listesi sessizce çekilir.
+   */
+  var nesil = 0;
+
+  function oturumDegisti() {
+    nesil++;
+
+    durumS.siparisler = [];
+    durumS.yukleniyor = false;
+    durumS.hata = '';
+    durumS.acik = {};
+
+    try { ciz(); } catch (e) { /* liste kabı yoksa sessiz */ }
+
+    if ('siparislerim' === (window.durum && window.durum.aktifSekme) && plasiyerMi()) {
+      Promise.resolve(sekmeyiAc()).catch(function () { /* sessiz */ });
+    }
+  }
+
+  window.addEventListener('byom:oturum-degisti', oturumDegisti);
 
   /* ------------------------------------------------------------------ *
    *  KURULUM

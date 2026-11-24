@@ -253,12 +253,47 @@
    *  BİLDİRİM ZİLİ — patron yanıtları
    * ------------------------------------------------------------------ */
 
+  /*
+   * OTURUM DEĞİŞİMİ (Faz 22-E): çıkan kişinin notları ve zil sayacı Y'nin
+   * üst çubuğunda kalmasın. Notlar atılır, zil yeniden kurulur; yeni kişinin
+   * notları sessizce çekilir. Uçuştaki eski istek sonucunu yazmaz.
+   */
+  var nesil = 0;
+
+  function oturumDegisti() {
+    nesil++;
+
+    durumZ.notlar = [];
+    durumZ.okunan = {};
+    durumZ.acikMusteri = null;
+
+    try { ziliTazele(); } catch (e) { /* üst çubuk yoksa sessiz */ }
+    try { notlarimiCiz(); } catch (e) { /* kap yoksa sessiz */ }
+
+    if (!plasiyerMi()) return;
+
+    /* notlarimiCiz() çizdiği notları OKUNDU sayar: yalnızca not listesi
+       gerçekten ekrandaysa çizilir; değilse yalnızca zil sayacı tazelenir. */
+    var aktif = window.durum && window.durum.aktifSekme;
+
+    if ('musterilerim' === aktif || 'notlarim' === aktif) {
+      notlariGetir().then(notlarimiCiz).catch(function () { /* sessiz */ });
+    } else {
+      notlariGetir().catch(function () { /* sessiz */ });
+    }
+  }
+
   async function notlariGetir() {
     if (!plasiyerMi()) return;
+
+    var benimNesil = nesil;
 
     var cevap = await b2b('/plasiyer/notlarim', {
       sorgu: { plasiyerId: Number(oturum().id) || 0, gun: 30 }
     });
+
+    /* Oturum bu arada değiştiyse eski kişinin notları YAZILMAZ. */
+    if (benimNesil !== nesil) return;
 
     if (!cevap || !cevap.ok || !cevap.veri || !cevap.veri.ok) return;
 
@@ -451,6 +486,8 @@
   function kur() {
     if (bagli) return;
     bagli = true;
+
+    window.addEventListener('byom:oturum-degisti', oturumDegisti);
 
     /* "Saha Notlarım" artık Müşterilerim sekmesinin alt bölümü (Faz 9):
        sekmeAc'ı SARAR (renderer.js'e dokunmadan). Eski 'notlarim' adı da

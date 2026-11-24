@@ -1737,6 +1737,45 @@ function plasiyerIstek(yol, govde) {
   return apiIstek({ alan: 'b2b', yol: yol, metod: 'POST', govde: govde, sureAsimi: 45000 });
 }
 
+/* --------------------------------------------------------------------------
+ *  KUYRUK SAHİPLİĞİ (Faz 22-E)
+ *  --------------------------------------------------------------------------
+ *  Ürün sahibi: "X profilinde sipariş alıp Y profiline girince X'in
+ *  müşterileri görünüyor. Bu karışıklık yanlış sipariş aldırır."
+ *
+ *  Kuyruk cihaz geneldir (ayarlar.json) ama içindeki her kayıt bir
+ *  pazarlamacının işidir. Eşitleme eskiden BÜTÜN kayıtları o an oturumu açık
+ *  olanın kimliği ve jetonuyla gönderiyordu (kaydın kimliğini eziyordu): X'in
+ *  çevrimdışı yazdığı sipariş, Y oturum açınca Y'nin siparişi olarak gider,
+ *  ciro Y'ye yazılırdı.
+ *
+ *  Artık kuyruğa yazılan her kayıt ana süreçteki OTURUMDAN damgalanır
+ *  (`sahipPlasiyerId` — arayüzün söylediğine bakılmaz). Eşitleme yalnızca o
+ *  anki pazarlamacının kayıtlarını gönderir; diğerleri sahibi oturum açana
+ *  kadar kuyrukta DOKUNULMADAN bekler. Damgasız (eski) kayıt eski davranışla
+ *  sürer — geriye dönük uyum: kimin olduğu bilinmeyen kayıt kaybolmaz.
+ * ------------------------------------------------------------------------*/
+
+/** Oturumdaki pazarlamacının kimliği (yoksa 0). Saf: oturum argümanla gelir (test edilebilir). */
+function kuyrukSahibi(oturum) {
+  return (oturum && Number(oturum.id) > 0) ? Number(oturum.id) : 0;
+}
+
+/**
+ * Kayıt bu pazarlamacının mı? Sahiplik damgası (`sahipPlasiyerId`) yoksa
+ * sipariş gövdesindeki `plasiyerId` alanına bakılır (Faz 22-E öncesi kuyruğa
+ * giren siparişler bu alanı zaten taşır). İkisi de yoksa kayıt herkesindir —
+ * kimin olduğu bilinmeyen kayıt eski davranışla gider, asla mahsur kalmaz.
+ */
+function sahibininMi(kayit, plasiyerId) {
+  if (!kayit || 'object' !== typeof kayit) return true;
+
+  const ic = (kayit.kayit && 'object' === typeof kayit.kayit) ? kayit.kayit : {};
+  const sahip = Number(kayit.sahipPlasiyerId) || Number(ic.plasiyerId) || 0;
+
+  return !(sahip > 0) || sahip === Number(plasiyerId);
+}
+
 /**
  * Kuyruğu boşaltır.
  *
@@ -1754,9 +1793,18 @@ ipcMain.handle('sync:esitle', async function () {
 
   const ayarlar = ayarlariOku();
 
-  const musteriler = Array.isArray(ayarlar.plasiyerYerelMusteriler) ? ayarlar.plasiyerYerelMusteriler : [];
-  const siparisler = Array.isArray(ayarlar.plasiyerSiparisKuyrugu) ? ayarlar.plasiyerSiparisKuyrugu : [];
-  const notlar = Array.isArray(ayarlar.plasiyerZiyaretKuyrugu) ? ayarlar.plasiyerZiyaretKuyrugu : [];
+  const tumMusteriler = Array.isArray(ayarlar.plasiyerYerelMusteriler) ? ayarlar.plasiyerYerelMusteriler : [];
+  const tumSiparisler = Array.isArray(ayarlar.plasiyerSiparisKuyrugu) ? ayarlar.plasiyerSiparisKuyrugu : [];
+  const tumNotlar = Array.isArray(ayarlar.plasiyerZiyaretKuyrugu) ? ayarlar.plasiyerZiyaretKuyrugu : [];
+
+  const plasiyerId = plasiyerOturumu.id;
+  const jeton = plasiyerOturumu.token;
+
+  /* Yalnızca bu pazarlamacının (ve damgasız eski) kayıtları gönderilir (Faz 22-E). */
+  const benim = function (k) { return sahibininMi(k, plasiyerId); };
+  const musteriler = tumMusteriler.filter(benim);
+  const siparisler = tumSiparisler.filter(benim);
+  const notlar = tumNotlar.filter(benim);
 
   /* Yapacak iş yoksa ağa hiç çıkılmaz. */
   if (!musteriler.length && !siparisler.length && !notlar.length) {
@@ -1764,9 +1812,6 @@ ipcMain.handle('sync:esitle', async function () {
   }
 
   esitlemeSuruyor = true;
-
-  const plasiyerId = plasiyerOturumu.id;
-  const jeton = plasiyerOturumu.token;
 
   try {
     const ozet = await syncMotor.esitle(
@@ -1810,13 +1855,18 @@ ipcMain.handle('sync:esitle', async function () {
      * ölüyor ve sunucudaki kullanıcı sonradan silinirse siparişi hangi
      * müşteriye bağlayacağımızı söyleyecek hiçbir veri kalmıyordu.
      */
+    /* Başka pazarlamacının kayıtları DOKUNULMADAN, sıraları korunarak yazılır. */
+    const kalanMusteri = syncMotor.esitlenenMusterileriTemizle(musteriler, { siparisler: siparisler, notlar: notlar });
+    const kalanSiparis = syncMotor.gonderilenleriTemizle(siparisler);
+    const kalanNot = syncMotor.gonderilenleriTemizle(notlar);
+    const birlestir = function (tum, kalan) {
+      return tum.filter(function (k) { return !benim(k) || kalan.indexOf(k) !== -1; });
+    };
+
     ayarlariYaz({
-      plasiyerYerelMusteriler: syncMotor.esitlenenMusterileriTemizle(musteriler, {
-        siparisler: siparisler,
-        notlar: notlar
-      }),
-      plasiyerSiparisKuyrugu: syncMotor.gonderilenleriTemizle(siparisler),
-      plasiyerZiyaretKuyrugu: syncMotor.gonderilenleriTemizle(notlar)
+      plasiyerYerelMusteriler: birlestir(tumMusteriler, kalanMusteri),
+      plasiyerSiparisKuyrugu: birlestir(tumSiparisler, kalanSiparis),
+      plasiyerZiyaretKuyrugu: birlestir(tumNotlar, kalanNot)
     });
 
     sonEsitleme = Object.assign({ zaman: new Date().toISOString() }, ozet);
@@ -1829,7 +1879,26 @@ ipcMain.handle('sync:esitle', async function () {
 
 /** Kuyruk künyesi — arayüzdeki "bekleyen" göstergesi. */
 ipcMain.handle('sync:durum', function () {
-  const a = ayarlariOku();
+  const ham = ayarlariOku();
+
+  /*
+   * Oturum açıkken YALNIZCA o pazarlamacının kayıtları sayılır (Faz 22-E):
+   * Y'nin "bekleyen" rozeti X'in kuyruğunu göstermesin, oto-eşitleme de Y
+   * için gönderilemeyecek kayıtlar yüzünden boşuna tetiklenmesin. Başkasının
+   * kayıtları `baskasinin`'da sayılır (silinmez, sahibini bekler). Oturum
+   * yokken (yönetici) eski davranış: hepsi.
+   */
+  const sahip = kuyrukSahibi(plasiyerOturumu);
+  const benim = function (liste) {
+    return Array.isArray(liste) ? liste.filter(function (k) { return !sahip || sahibininMi(k, sahip); }) : [];
+  };
+  const a = {
+    plasiyerYerelMusteriler: benim(ham.plasiyerYerelMusteriler),
+    plasiyerSiparisKuyrugu: benim(ham.plasiyerSiparisKuyrugu),
+    plasiyerZiyaretKuyrugu: benim(ham.plasiyerZiyaretKuyrugu)
+  };
+  const toplamHam = ['plasiyerYerelMusteriler', 'plasiyerSiparisKuyrugu', 'plasiyerZiyaretKuyrugu']
+    .reduce(function (t, k) { return t + (Array.isArray(ham[k]) ? ham[k].length : 0); }, 0);
 
   const say = function (liste) {
     return Array.isArray(liste) ? liste.length : 0;
@@ -1861,6 +1930,7 @@ ipcMain.handle('sync:durum', function () {
     not: say(a.plasiyerZiyaretKuyrugu),
     hatali: hatali(a.plasiyerSiparisKuyrugu) + hatali(a.plasiyerZiyaretKuyrugu) + hatali(a.plasiyerYerelMusteriler),
     onarim: onarimli(a.plasiyerSiparisKuyrugu) + onarimli(a.plasiyerZiyaretKuyrugu) + onarimli(a.plasiyerYerelMusteriler),
+    baskasinin: toplamHam - say(a.plasiyerYerelMusteriler) - say(a.plasiyerSiparisKuyrugu) - say(a.plasiyerZiyaretKuyrugu),
     son: sonEsitleme
   };
 });
@@ -1887,7 +1957,13 @@ ipcMain.handle('siparis:kuyruga', function (olay, govde) {
     govde.yerelKimlik = 'sip-' + Date.now() + '-' + Math.round(Math.random() * 99999);
   }
 
-  kuyruk.push({ kayit: govde, zaman: new Date().toISOString(), durum: 'bekliyor' });
+  const satir = { kayit: govde, zaman: new Date().toISOString(), durum: 'bekliyor' };
+  const sahip = kuyrukSahibi(plasiyerOturumu);
+
+  /* Sahiplik OTURUMDAN (Faz 22-E) — arayüzün gönderdiği kimliğe bakılmaz. */
+  if (sahip) satir.sahipPlasiyerId = sahip;
+
+  kuyruk.push(satir);
 
   ayarlariYaz({ plasiyerSiparisKuyrugu: kuyruk });
 
@@ -1907,6 +1983,12 @@ ipcMain.handle('musteri:kuyruga', function (olay, musteri) {
   if (liste.some(function (m) { return m && String(m.id) === String(musteri.id); })) {
     return { ok: true, bekleyen: liste.length, tekrar: true };
   }
+
+  /* Sahiplik OTURUMDAN (Faz 22-E): Y oturum açınca X'in çevrimdışı müşterisi
+     Y'nin portföyünde görünmesin ve Y'nin jetonuyla eşitlenmesin. */
+  const sahip = kuyrukSahibi(plasiyerOturumu);
+
+  if (sahip) musteri.sahipPlasiyerId = sahip;
 
   liste.unshift(musteri);
 
@@ -2161,7 +2243,11 @@ ipcMain.handle('musteri:kunyeden-dirilt', function (olay, veri) {
   const oluHedef = String(satir.kayit.musteriId);
   const yeniKimlik = geciciMusteriKimligi();
 
-  const yeniMusteri = Object.assign({}, kunye, {
+  /* Diriltilen müşteri SİPARİŞİN sahibine aittir (Faz 22-E). */
+  const diriltSahip = Number(satir.sahipPlasiyerId) || Number(satir.kayit && satir.kayit.plasiyerId) ||
+    kuyrukSahibi(plasiyerOturumu);
+
+  const yeniMusteri = Object.assign({}, kunye, diriltSahip ? { sahipPlasiyerId: diriltSahip } : {}, {
     id: yeniKimlik,
     gecici: true,
     senkron: false,
@@ -2346,6 +2432,11 @@ ipcMain.handle('ziyaret:kuyruga', function (olay, veri) {
     not: String(veri.not || ''),
     gorsel: String(veri.gorsel || '')
   });
+
+  /* Sahiplik OTURUMDAN (Faz 22-E). */
+  const notSahibi = kuyrukSahibi(plasiyerOturumu);
+
+  if (notSahibi) kuyruk[kuyruk.length - 1].sahipPlasiyerId = notSahibi;
 
   ayarlariYaz({ plasiyerZiyaretKuyrugu: kuyruk });
 

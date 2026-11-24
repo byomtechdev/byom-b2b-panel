@@ -342,6 +342,45 @@
    *  OTURUM DURUMU
    * ------------------------------------------------------------------ */
 
+  /*
+   * KİMLİK DEĞİŞİMİ (Faz 22-E).
+   *
+   * Ürün sahibi: "X profilini seçip çıkış yapıp Y profiline girince 'Saha
+   * Müşterilerim'de X'in müşterileri görünüyor; Yenile'ye basınca düzeliyor."
+   * Modüller veriyi bellekte tutuyor ve "bir kez çekildi" bayrağı oturumla
+   * birlikte sıfırlanmıyordu: Y, X'in portföyünü, seçili müşterisini ve
+   * sepetini görüyordu — yanlış müşteriye sipariş yazdıran bir karışıklık.
+   *
+   * Kimlik (rol + id) DEĞİŞTİĞİNDE `byom:oturum-degisti` yayılır — giriş,
+   * profil değişimi ve çıkışta (yeni = null). Aynı kişinin tekrarı yaymaz.
+   * Dinleyen modüller eski kişinin verisini atar, ekranı hemen temizler ve
+   * yeni kişinin verisini sessizce çeker; uçuştaki eski istek döndüğünde
+   * sonucu yazmaz (her modülde `nesil` denetimi).
+   */
+  var sonKimlik = '';
+
+  function kimlikAnahtari(o) {
+    return (o && o.rol) ? (String(o.rol) + ':' + (Number(o.id) || 0)) : '';
+  }
+
+  function kimlikDegistiyseYay(yeni) {
+    var anahtar = kimlikAnahtari(yeni);
+
+    if (anahtar === sonKimlik) return false;
+
+    var onceki = sonKimlik;
+
+    sonKimlik = anahtar;
+
+    try {
+      window.dispatchEvent(new CustomEvent('byom:oturum-degisti', {
+        detail: { onceki: onceki, yeni: anahtar, oturum: yeni || null }
+      }));
+    } catch (e) { /* CustomEvent yoksa sessiz geç */ }
+
+    return true;
+  }
+
   function oturumKur(rol, bilgi) {
     bilgi = bilgi || {};
 
@@ -354,6 +393,9 @@
          son sözü sunucu söyler (B2B_Plasiyer::iskonto_gecerli_mi). */
       maxIskonto: Number(bilgi.maxIskonto || 0) || 0
     };
+
+    /* Kimlik değiştiyse önce modüller eski kişinin verisini atsın (Faz 22-E). */
+    kimlikDegistiyseYay(durum.oturum);
 
     /*
      * Modüller oturumun kurulduğunu ÖĞRENSİN (Faz 12-B). Yönetici-özel
@@ -1244,6 +1286,9 @@
     } catch (e) { /* sunucuya ulaşılamasa da yerel oturum düşer */ }
 
     durum.oturum = null;
+
+    /* Çıkan kişinin verisi kapının / terminalin arkasında beklemesin (Faz 22-E). */
+    kimlikDegistiyseYay(null);
 
     kisitlamayiUygula();
 

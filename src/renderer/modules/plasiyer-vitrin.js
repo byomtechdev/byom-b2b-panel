@@ -1171,6 +1171,35 @@
     };
   }
 
+  /*
+   * OTURUM DEĞİŞİMİ (Faz 22-E): sepet KİŞİYE aittir.
+   *
+   * Eskiden X çıkıp Y girince X'in sepeti (X'in müşterisi ve iskontosuyla)
+   * ekranda kalıyordu; Y "Siparişi Tamamla"ya basarsa X'in sepeti Y'nin
+   * siparişi olarak giderdi. Artık çıkan kişinin sepeti bellekte kendi
+   * anahtarıyla saklanır, yeni kişi kendi (ya da boş) sepetiyle başlar; X
+   * aynı uygulama oturumunda geri girerse sepeti geri gelir — iş kaybolmaz.
+   * Ürün kataloğu cihaz geneldir ve korunur.
+   */
+  var sepetHafiza = {};
+
+  function oturumDegisti(olay) {
+    var d = (olay && olay.detail) || {};
+
+    if (d.onceki && durumV.sepet && durumV.sepet.satirlar && durumV.sepet.satirlar.length) {
+      sepetHafiza[d.onceki] = durumV.sepet;
+    }
+
+    durumV.sepet = (d.yeni && sepetHafiza[d.yeni]) || null;
+    durumV.acikUrun = null;
+
+    if (d.yeni) delete sepetHafiza[d.yeni];
+
+    try { sepetiCiz(); } catch (e) { /* sepet kabı yoksa sessiz */ }
+  }
+
+  window.addEventListener('byom:oturum-degisti', oturumDegisti);
+
   if ('loading' === document.readyState) {
     document.addEventListener('DOMContentLoaded', akisaBaglan);
   } else {

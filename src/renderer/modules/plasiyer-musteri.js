@@ -60,6 +60,19 @@
   var portfoyBagli = false;
   var aramaSaat = null;
 
+  /*
+   * OTURUM NESLİ (Faz 22-E): kimlik her değiştiğinde artar. Uçuştaki bir
+   * istek döndüğünde nesil değişmişse sonucunu YAZMAZ — X'in listesi Y'nin
+   * ekranına düşmesin. `ucustaki`: aynı nesilde süren liste isteği.
+   */
+  var nesil = 0;
+  var ucustaki = null;
+
+  /* Profil değişiminde çıkan kişinin seçili müşterisi bellekte saklanır;
+     aynı kişi geri girince (aynı uygulama oturumunda) seçimi geri gelir —
+     sepet de plasiyer-vitrin.js'te aynı anahtarla saklanır. */
+  var seciliHafiza = {};
+
   function M() {
     return window.PlasiyerSiparisMotor;
   }
@@ -131,17 +144,41 @@
    *  YEREL MÜŞTERİ DEPOSU (ayarlar.json)
    * ------------------------------------------------------------------ */
 
+  /**
+   * Kayıt oturumdaki pazarlamacının mı? (Faz 22-E)
+   *
+   * Ana süreç kuyruğa yazarken `sahipPlasiyerId` damgası basar; eski sipariş
+   * satırı gövdedeki `plasiyerId`'yi taşır. Hiçbir sahip bilgisi yoksa kayıt
+   * herkese görünür (eski davranış — kimin olduğu bilinmeyen kayıt saklanmaz).
+   * Oturum kimliği yoksa (yönetici) süzülmez.
+   */
+  function benimMi(kayit) {
+    var ben = Number(oturum().id) || 0;
+
+    if (!ben || !kayit || 'object' !== typeof kayit) return true;
+
+    var sahip = Number(kayit.sahipPlasiyerId) || Number(kayit.kayit && kayit.kayit.plasiyerId) || 0;
+
+    return !sahip || sahip === ben;
+  }
+
   async function yerelleriYukle() {
+    var benimNesil = nesil;
+
     try {
       var ayar = await ipcRenderer.invoke('ayar:oku');
       var liste = (ayar && ayar[YEREL_ANAHTAR]) || [];
 
+      /* Oturum bu arada değiştiyse eski kişinin okuması yazılmaz (Faz 22-E). */
+      if (benimNesil !== nesil) return;
+
       /* `senkron: true` kayıt sunucuda zaten var (anında eşitleme ya da tur);
          temizlik sıradaki eşitlemede yapılır. Onu ÇEVRİMDIŞI rozetiyle
-         listelemek yanlış bilgi olurdu. */
-      durumM.yereller = (Array.isArray(liste) ? liste : []).filter(function (x) { return x && !x.senkron; });
+         listelemek yanlış bilgi olurdu. Başka pazarlamacının çevrimdışı
+         müşterisi bu portföyde görünmez (Faz 22-E). */
+      durumM.yereller = (Array.isArray(liste) ? liste : []).filter(function (x) { return x && !x.senkron && benimMi(x); });
     } catch (e) {
-      durumM.yereller = [];
+      if (benimNesil === nesil) durumM.yereller = [];
     }
   }
 
@@ -219,10 +256,35 @@
    * başka bir plasiyerin müşterilerini getirtemez.
    *
    * Yönetici oturumunda tüm bayiler listelenir (wc/v3/customers).
+   *
+   * UÇUŞTAKİ İSTEK PAYLAŞILIR (Faz 22-E): giriş anında şerit ve sekme açılışı
+   * listeyi aynı anda ister; aynı oturumda süren istek varsa ikincisi ona
+   * katılır (çift ağ turu yok). Plasiyer yolu aramaya bakmadığı için güvenli;
+   * yönetici yolu aramaya bağlı olduğundan paylaşılmaz.
    */
-  async function musterileriGetir() {
-    if (plasiyerMi()) {
+  function musterileriGetir() {
+    if (!plasiyerMi()) return yoneticiMusterileriniCek();
+
+    if (ucustaki && ucustaki.nesil === nesil) return ucustaki.soz;
+
+    var kayit = { nesil: nesil, soz: null };
+    var birak = function () { if (ucustaki === kayit) ucustaki = null; };
+
+    kayit.soz = plasiyerMusterileriniCek(nesil).then(
+      function (s) { birak(); return s; },
+      function (e) { birak(); throw e; }
+    );
+    ucustaki = kayit;
+
+    return kayit.soz;
+  }
+
+  async function plasiyerMusterileriniCek(benimNesil) {
+    {
       var cevap = await ipcRenderer.invoke('plasiyer:get-dealers', { arama: '', adet: 500 });
+
+      /* Oturum bu arada değiştiyse (X → Y) X'in listesi YAZILMAZ (Faz 22-E). */
+      if (benimNesil !== nesil) return { ok: false, eski: true };
 
       if (!cevap || !cevap.ok) {
         durumM.musteriler = [];
@@ -292,6 +354,10 @@
 
       return { ok: true };
     }
+  }
+
+  async function yoneticiMusterileriniCek() {
+    var benimNesil = nesil;
 
     /*
      * YÖNETİCİ yolu YALNIZCA açıkça yönetici oturumunda (Faz 10).
@@ -307,7 +373,11 @@
       return { ok: false, hata: 'Oturum rolü bilinmiyor; müşteri listesi çekilmedi.' };
     }
 
-    durumM.musteriler = await woo_musteriler();
+    var liste = await woo_musteriler();
+
+    if (benimNesil !== nesil) return { ok: false, eski: true };
+
+    durumM.musteriler = liste;
     durumM.yuklendi = true;
 
     return { ok: true };
@@ -2011,7 +2081,9 @@
     } catch (e) { kuyruk = []; }
 
     var Sync = window.PlasiyerSyncMotor;
-    var bekleyen = kuyruk.filter(function (k) { return k && k.kayit && (!Sync || Sync.GONDERILDI !== k.durum); });
+    /* Başka pazarlamacının bekleyen siparişi bu şeritte görünmez (Faz 22-E):
+       eşitleme onu zaten göndermez, sahibi oturum açınca gider. */
+    var bekleyen = kuyruk.filter(function (k) { return k && k.kayit && (!Sync || Sync.GONDERILDI !== k.durum) && benimMi(k); });
 
     sonKuyruk = bekleyen;
 
@@ -2336,12 +2408,55 @@
   }
 
   /* ------------------------------------------------------------------ *
+   *  OTURUM DEĞİŞİMİ (Faz 22-E)
+   *  ---------------------------------------------------------------------
+   *  renderer-plasiyer.js kimlik değişince `byom:oturum-degisti` yayar.
+   *  Eski kişinin portföyü, seçimi ve aramaları atılır; ekran hemen temizlenir
+   *  ve yeni kişinin listesi SESSİZCE çekilir (Yenile'ye basmak gerekmez).
+   *  Tekrar çağrılması zararsızdır: değerler yazılır, birikmez.
+   * ------------------------------------------------------------------ */
+
+  function oturumDegisti(olay) {
+    var d = (olay && olay.detail) || {};
+
+    nesil++;
+    ucustaki = null;
+
+    if (d.onceki && durumM.secili) seciliHafiza[d.onceki] = durumM.secili;
+
+    durumM.musteriler = [];
+    durumM.yereller = [];
+    durumM.secili = (d.yeni && seciliHafiza[d.yeni]) || null;
+    durumM.sonSiparis = null;
+    durumM.arama = '';
+    durumM.portfoyArama = '';
+    durumM.yuklendi = false;
+    durumM.profil = null;
+    durumM.odemeVarsayilan = null;
+    durumM.odemeMatrisiAcik = null;
+    sonKuyruk = [];
+
+    if (d.yeni) delete seciliHafiza[d.yeni];
+
+    /* Eski çizim ekranda kalmasın. Şerit, plasiyer oturumunda listeyi
+       kendisi ister (listeyiHazirla); portföy açıksa o da tazelenir. */
+    try { seridiCiz(); } catch (e) { /* şerit yoksa sessiz */ }
+    try { portfoyuCiz(); } catch (e) { /* portföy yoksa sessiz */ }
+
+    if ('musterilerim' === (window.durum && window.durum.aktifSekme) && plasiyerMi()) {
+      portfoyuAc().catch(function () { /* çevrimdışı: yereller kalır */ });
+    }
+  }
+
+  /* ------------------------------------------------------------------ *
    *  KURULUM
    * ------------------------------------------------------------------ */
 
   function kur() {
     if (bagli) return;
     bagli = true;
+
+    window.addEventListener('byom:oturum-degisti', oturumDegisti);
 
     /* Esc: satış penceresini kapat. */
     document.addEventListener('keydown', function (olay) {
