@@ -64,8 +64,48 @@ test('koliliMi: yalnızca 1\'den büyük koli koli sayılır', (t) => {
   assert.equal(M.koliliMi(u(1, 'A', 10, 0)), false);
 });
 
-test('adediOturt: KOLİLİ üründe yukarı tamamlanır', (t) => {
+/*
+ * BİLİNÇLİ SÖZ DEĞİŞİKLİĞİ (Faz 22-C, BYOM-REGISTRY §5.59). Ürün sahibi:
+ * "Koli içi adet o ürünün BİLGİSİ olsun. Müşteri / plasiyer istediği adette
+ * eklesin; 24'lük koliden 6 adet almak isteyen müşteriye sistem izin
+ * vermedi, ürünü almaktan vazgeçti. Sistem yalnızca 'koli içi X adet, siz Y
+ * adet ekliyorsunuz, onaylıyor musunuz' diye sorsun."
+ *
+ * Eski söz ("KOLİLİ üründe YUKARI tamamlanır") artık YALNIZCA "Sadece koli
+ * olarak satılır" işaretli ürünlerin sözüdür — yönetici bunu ürün bazında
+ * bilerek seçer (eklenti `_byom_only_box`, katalogda `yalniz_koli`).
+ */
+function yalniz(urun) {
+  urun.yalniz_koli = true;
+  return urun;
+}
+
+test('yalnizKoli: yalnızca İŞARETLİ ve koli > 1 üründe', (t) => {
+  assert.equal(M.yalnizKoli(yalniz(u(1, 'A', 10, 24))), true);
+  assert.equal(M.yalnizKoli(u(1, 'A', 10, 24)), false, 'işaretsiz kolili ürün serbest');
+  assert.equal(M.yalnizKoli(yalniz(u(1, 'A', 10, 1))), false, '"1\'lik koli" kuralı yoktur');
+  assert.equal(M.yalnizKoli(Object.assign(u(1, 'A', 10, 12), { yalniz_koli: 'yes' })), true, 'sunucu metni de kabul');
+  assert.equal(M.yalnizKoli(Object.assign(u(1, 'A', 10, 12), { yalniz_koli: 'no' })), false);
+  assert.equal(M.yalnizKoli(null), false);
+});
+
+test('adediOturt: KOLİ BİLGİDİR — işaretsiz kolili üründe adet AYNEN kalır (Faz 22-C)', (t) => {
   const urun = u(1, 'Silikon', 10, 24);
+
+  assert.equal(M.adediOturt(urun, 6), 6, '24\'lük koliden 6 adet — ürün sahibinin örneği');
+  assert.equal(M.adediOturt(urun, 25), 25, '25 → 25 (48 DEĞİL)');
+  assert.equal(M.adediOturt(urun, 24), 24);
+  assert.equal(M.adediOturt(urun, 1), 1, '1 → 1 (bir koli DEĞİL)');
+
+  /* Sıfır, negatif ve bozuk değer BİR ADETE çekilir: "0 adetli satır" yoktur. */
+  assert.equal(M.adediOturt(urun, 0), 1);
+  assert.equal(M.adediOturt(urun, -5), 1);
+  assert.equal(M.adediOturt(urun, 'abc'), 1);
+  assert.equal(M.adediOturt(urun, 2.3), 3, 'ondalık yukarı');
+});
+
+test('adediOturt: "Sadece koli" İŞARETLİ üründe ESKİ söz — yukarı tamamlanır', (t) => {
+  const urun = yalniz(u(1, 'Silikon', 10, 24));
 
   assert.equal(M.adediOturt(urun, 24), 24, 'tam kat degismez');
   assert.equal(M.adediOturt(urun, 25), 48, '25 -> 48 (eksik sevkiyat yerine tam koli)');
@@ -88,8 +128,17 @@ test('adediOturt: TEKİL üründe adet aynen kalır', (t) => {
   assert.equal(M.adediOturt(urun, 2.3), 3, 'ondalik yukari');
 });
 
-test('adimla: + / - düğmeleri koli katlarında ilerler', (t) => {
+test('adimla: işaretsiz kolili üründe + / - BİRER ilerler (Faz 22-C)', (t) => {
   const koli = u(1, 'Silikon', 10, 24);
+
+  assert.equal(M.adimla(koli, 24, 1), 25, '24 -> 25 (48 DEĞİL)');
+  assert.equal(M.adimla(koli, 6, 1), 7);
+  assert.equal(M.adimla(koli, 6, -1), 5);
+  assert.equal(M.adimla(koli, 1, -1), 1, 'birin altına inmez');
+});
+
+test('adimla: "Sadece koli" işaretli üründe + / - koli katlarında ilerler (eski söz)', (t) => {
+  const koli = yalniz(u(1, 'Silikon', 10, 24));
 
   assert.equal(M.adimla(koli, 24, 1), 48, '24 -> 48');
   assert.equal(M.adimla(koli, 48, 1), 72, '48 -> 72');
@@ -107,16 +156,40 @@ test('adimla: + / - düğmeleri koli katlarında ilerler', (t) => {
   assert.equal(M.adimla(koli, 25, -1), 24, '25 -> (48) -> 24');
 });
 
-test('koliSayisi ve adetEtiketi', (t) => {
+test('koliSayisi ve adetEtiketi: TAM koli + kalan adet (Faz 22-C)', (t) => {
   const koli = u(1, 'Silikon', 10, 24);
 
   assert.equal(M.koliSayisi(koli, 48), 2);
   assert.equal(M.koliSayisi(koli, 24), 1);
+  assert.equal(M.koliSayisi(koli, 25), 1, 'tam koli sayısı (kalan ayrı)');
+  assert.equal(M.koliSayisi(koli, 6), 0, 'koliden az');
   assert.equal(M.koliSayisi(u(2, 'Çivi', 2, 1), 5), 0, 'tekil urunde koli yok');
 
   assert.equal(M.adetEtiketi(koli, 48), '48 Adet (2 Koli)');
-  assert.equal(M.adetEtiketi(koli, 25), '48 Adet (2 Koli)', 'oturtulmus deger yazilir');
+  assert.equal(M.adetEtiketi(koli, 25), '25 Adet (1 Koli + 1 Adet)', 'kalan açıkça yazılır');
+  assert.equal(M.adetEtiketi(koli, 6), '6 Adet');
   assert.equal(M.adetEtiketi(u(2, 'Çivi', 2, 1), 3), '3 Adet');
+
+  /* İşaretli üründe oturtulmuş değer yazılır (eski söz) */
+  assert.equal(M.adetEtiketi(yalniz(u(1, 'Silikon', 10, 24)), 25), '48 Adet (2 Koli)');
+});
+
+test('koliUyarisi: koli katı OLMAYAN adette ürün sahibinin cümlesi; katında, tekilde ve "Sadece koli"de YOK', (t) => {
+  const koli = u(1, 'Silikon', 10, 24);
+  const uyari = M.koliUyarisi(koli, 6);
+
+  assert.ok(uyari, '6 adet → uyarı');
+  assert.equal(uyari.koli, 24);
+  assert.equal(uyari.adet, 6);
+  assert.equal(uyari.metin, 'Bu ürün koli içi 24 adedindedir. Siz 6 adet sepete eklemeye çalışıyorsunuz. Onaylıyor musunuz?');
+
+  assert.equal(M.koliUyarisi(koli, 30).adet, 30, 'kolinin üstünde ama katı değil → uyarı');
+  assert.equal(M.koliUyarisi(koli, 24), null, 'tam koli → sessiz');
+  assert.equal(M.koliUyarisi(koli, 72), null, 'üç koli → sessiz');
+  assert.equal(M.koliUyarisi(u(2, 'Çivi', 2, 1), 7), null, 'tekil ürün → sessiz');
+  assert.equal(M.koliUyarisi(yalniz(u(1, 'Silikon', 10, 24)), 6), null, '"Sadece koli" üründe sorulmaz (zaten tamamlanır)');
+  assert.equal(M.koliUyarisi(null, 3), null);
+  assert.equal(M.koliUyarisi(koli, 'abc').adet, 1, 'bozuk adet → 1 adet uyarısı (eklenecek gerçek adet)');
 });
 
 /* =========================================================================
@@ -128,15 +201,24 @@ test('ekle: aynı ürün ikinci kez ARTIRIR (yerine yazmaz)', (t) => {
   const urun = u(1, 'Silikon', 10, 24);
 
   M.ekle(s, urun);
-  assert.deepEqual(adetleri(s), [[1, 24]], 'varsayilan bir koli');
+  assert.deepEqual(adetleri(s), [[1, 1]], 'varsayılan BİR ADET (Faz 22-C: koli bilgidir)');
 
   M.ekle(s, urun);
-  assert.deepEqual(adetleri(s), [[1, 48]], 'ikinci okutma USTUNE ekler');
+  assert.deepEqual(adetleri(s), [[1, 2]], 'ikinci okutma USTUNE ekler');
 
   M.ekle(s, urun, 24);
-  assert.deepEqual(adetleri(s), [[1, 72]]);
+  assert.deepEqual(adetleri(s), [[1, 26]]);
 
   assert.equal(s.satirlar.length, 1, 'tek satir kalir');
+
+  /* "Sadece koli" işaretli üründe varsayılan bir koli ve tamamlama (eski söz) */
+  const s2 = M.sepetKur();
+  const kilitli = yalniz(u(2, 'Mastik', 8, 12));
+
+  M.ekle(s2, kilitli);
+  assert.deepEqual(adetleri(s2), [[2, 12]], 'işaretli: varsayılan bir koli');
+  M.ekle(s2, kilitli, 5);
+  assert.deepEqual(adetleri(s2), [[2, 24]], 'işaretli: 12 + 5 → 24');
 });
 
 test('ekle: geçersiz ürün sepeti bozmaz', (t) => {
@@ -149,26 +231,34 @@ test('ekle: geçersiz ürün sepeti bozmaz', (t) => {
   assert.equal(s.satirlar.length, 0);
 });
 
-test('adetYaz: doğrudan yazılan adet satış birimine oturur', (t) => {
+test('adetYaz: doğrudan yazılan adet AYNEN yazılır; işaretli üründe koliye oturur', (t) => {
   const s = M.sepetKur();
 
   M.ekle(s, u(1, 'Silikon', 10, 24));
   M.adetYaz(s, 1, 25);
 
-  assert.deepEqual(adetleri(s), [[1, 48]], '25 -> 48');
+  assert.deepEqual(adetleri(s), [[1, 25]], '25 -> 25 (Faz 22-C)');
+
+  /* Satır, ürünün "Sadece koli" bayrağını TAŞIR (eklendiği andaki katalog kaydından) */
+  M.ekle(s, yalniz(u(3, 'Mastik', 8, 12)));
+  M.adetYaz(s, 3, 13);
+  assert.equal(s.satirlar[M.satirBul(s, 3)].adet, 24, 'işaretli satır 13 → 24');
 
   M.adetYaz(s, 999, 10);   // olmayan satır
-  assert.equal(s.satirlar.length, 1);
+  assert.equal(s.satirlar.length, 2, 'olmayan satır eklenmez');
 });
 
 test('adimlaSatir: bir birimin altına inerse satır SİLİNİR', (t) => {
   const s = M.sepetKur();
 
-  M.ekle(s, u(1, 'Silikon', 10, 24));
+  M.ekle(s, u(1, 'Silikon', 10, 24), 2);
   M.ekle(s, u(2, 'Çivi', 2, 1));
 
   M.adimlaSatir(s, 1, -1);
-  assert.equal(M.satirBul(s, 1), -1, 'bir kolinin altinda satir silinir');
+  assert.equal(s.satirlar[M.satirBul(s, 1)].adet, 1, 'işaretsiz kolili: 2 → 1 (Faz 22-C)');
+
+  M.adimlaSatir(s, 1, -1);
+  assert.equal(M.satirBul(s, 1), -1, 'bir adetin altında satır silinir');
 
   M.adimlaSatir(s, 2, -1);
   assert.equal(M.satirBul(s, 2), -1, 'tekil urunde de silinir');
@@ -322,12 +412,12 @@ test('sonSiparisiKopyala: katalogda OLMAYAN kalem atlanır ve BİLDİRİLİR', (
   assert.match(sonuc.atlanan[0].sebep, /katalogda yok/);
 });
 
-test('sonSiparisiKopyala: adetler satış birimine oturur', (t) => {
-  const bul = katalog([u(1, 'Silikon', 15, 24)]);
+test('sonSiparisiKopyala: adetler AYNEN kopyalanır; "Sadece koli" üründe koliye oturur', (t) => {
+  const bul = katalog([u(1, 'Silikon', 15, 24), yalniz(u(2, 'Mastik', 8, 12))]);
 
-  const sonuc = M.sonSiparisiKopyala({ line_items: [{ product_id: 1, quantity: 25 }] }, bul);
+  const sonuc = M.sonSiparisiKopyala({ line_items: [{ product_id: 1, quantity: 25 }, { product_id: 2, quantity: 13 }] }, bul);
 
-  assert.deepEqual(adetleri(sonuc.sepet), [[1, 48]], '25 -> 48');
+  assert.deepEqual(adetleri(sonuc.sepet), [[1, 25], [2, 24]], 'serbest 25 → 25 · işaretli 13 → 24');
 });
 
 test('sonSiparisiKopyala: sepet SONRASINDA tamamen düzenlenebilir', (t) => {
@@ -341,7 +431,7 @@ test('sonSiparisiKopyala: sepet SONRASINDA tamamen düzenlenebilir', (t) => {
 
   /* Adet artır */
   M.adimlaSatir(s, 1, 1);
-  assert.equal(s.satirlar[M.satirBul(s, 1)].adet, 48, 'adet artirilabilir');
+  assert.equal(s.satirlar[M.satirBul(s, 1)].adet, 25, 'adet artirilabilir (birer — Faz 22-C)');
 
   /* Adet azalt */
   M.adetYaz(s, 2, 3);

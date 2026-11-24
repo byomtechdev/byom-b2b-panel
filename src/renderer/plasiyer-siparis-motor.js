@@ -75,20 +75,52 @@
     return n > 100 ? 100 : Math.round(n * 100) / 100;
   }
 
-  /** Ürün koli katlarında mı satılır? */
+  /** Ürünün koli bilgisi var mı? (koli içi > 1) */
   function koliliMi(urun) {
     return koliIci(urun) > 1;
+  }
+
+  /*
+   * KOLİ = BİLGİ (Faz 22-C, ürün sahibi): "Koli içi adet o ürünün BİLGİSİ
+   * olsun. Müşteri / plasiyer istediği adette eklesin; 24'lük koliden 6 adet
+   * almak isteyen müşteriye sistem izin vermedi, ürünü almaktan vazgeçti.
+   * Sistem yalnızca 'koli içi X adet, siz Y adet ekliyorsunuz, onaylıyor
+   * musunuz' diye sorsun."
+   *
+   * Eskiden koli içi > 1 olan HER ürün koli katına zorlanıyordu. Artık adet
+   * serbesttir; koli katı olmayan adette arayüz onay sorar (koliUyarisi).
+   *
+   * TEK İSTİSNA — "Sadece koli olarak satılır" (yönetici ürün bazında bilerek
+   * işaretler; eklentide `_byom_only_box`, katalogda `yalniz_koli`): o üründe
+   * eski kural sürer — adet YUKARI tamamlanır, +/− koli katlarında ilerler.
+   * Eklenti de o ürünü sepette koliye tamamlar (B2B_Box_Sales); iki taraf
+   * aynı kuralla çalışır.
+   */
+
+  /** Ürün "Sadece koli olarak satılır" mı? (işaretli VE koli içi > 1) */
+  function yalnizKoli(urun) {
+    if (!urun || 'object' !== typeof urun || koliIci(urun) < 2) return false;
+
+    var b = urun.yalniz_koli;
+
+    return true === b || 1 === b || '1' === b || 'yes' === b || 'true' === b;
+  }
+
+  /** Satış birimi: işaretli üründe bir koli, diğerlerinde bir adet. */
+  function birimAdet(urun) {
+    return yalnizKoli(urun) ? koliIci(urun) : 1;
   }
 
   /**
    * Adedi ürünün satış birimine oturtur.
    *
-   * Kat dışı değer YUKARI tamamlanır (eksik sevkiyat yerine tam koli).
-   * Sonuç en az bir birimdir: 0 ya da negatif istek bir koliye çekilir —
+   * İşaretsiz üründe adet AYNEN kalır (ondalık yukarı); "Sadece koli"
+   * üründe kat dışı değer YUKARI tamamlanır (eksik sevkiyat yerine tam koli).
+   * Sonuç en az bir birimdir: 0 ya da negatif istek bir birime çekilir —
    * "sepette 0 adetli satır" diye bir şey yoktur, silinmesi gerekir.
    */
   function adediOturt(urun, adet) {
-    var birim = koliIci(urun);
+    var birim = birimAdet(urun);
     var n = Number(adet);
 
     if (!isFinite(n) || n <= 0) return birim;
@@ -97,7 +129,8 @@
   }
 
   /**
-   * `+` / `-` düğmelerinin bir adımı.
+   * `+` / `-` düğmelerinin bir adımı: işaretsiz üründe bir adet, "Sadece
+   * koli" üründe bir koli.
    *
    * @param {object} urun Ürün.
    * @param {number} adet Mevcut adet.
@@ -105,28 +138,56 @@
    * @returns {number} Yeni adet (en az bir birim).
    */
   function adimla(urun, adet, yon) {
-    var birim = koliIci(urun);
+    var birim = birimAdet(urun);
     var simdi = adediOturt(urun, adet);
     var hedef = simdi + (yon < 0 ? -birim : birim);
 
     return hedef < birim ? birim : hedef;
   }
 
-  /** Kaç koli ediyor? (tekil satılan üründe 0) */
+  /** Kaç TAM koli ediyor? (tekil satılan üründe 0; kalan adet ayrıdır) */
   function koliSayisi(urun, adet) {
-    var birim = koliIci(urun);
+    var koli = koliIci(urun);
 
-    if (birim <= 1) return 0;
+    if (koli <= 1) return 0;
 
-    return Math.floor(adediOturt(urun, adet) / birim);
+    return Math.floor(adediOturt(urun, adet) / koli);
   }
 
-  /** "48 Adet (2 Koli)" / "3 Adet" */
+  /** "48 Adet (2 Koli)" · "25 Adet (1 Koli + 1 Adet)" · "6 Adet" */
   function adetEtiketi(urun, adet) {
     var n = adediOturt(urun, adet);
     var koli = koliSayisi(urun, n);
+    var kalan = koli > 0 ? n - koli * koliIci(urun) : 0;
 
-    return koli > 0 ? (n + ' Adet (' + koli + ' Koli)') : (n + ' Adet');
+    if (koli <= 0) return n + ' Adet';
+
+    return n + ' Adet (' + koli + ' Koli' + (kalan > 0 ? ' + ' + kalan + ' Adet' : '') + ')';
+  }
+
+  /**
+   * Koli katı OLMAYAN adette onay metni (Faz 22-C) — ürün sahibinin cümlesi.
+   *
+   * Yalnızca koli bilgisi olan ve "Sadece koli" İŞARETSİZ üründe, eklenecek
+   * GERÇEK adet (adediOturt sonrası) koli katı değilse döner; aksi hâlde null.
+   * Metin tek yerdedir: satış vitrini, matris ve ürün penceresi aynı cümleyi
+   * kullanır.
+   *
+   * @returns {{koli:number, adet:number, metin:string}|null}
+   */
+  function koliUyarisi(urun, adet) {
+    if (!urun || !koliliMi(urun) || yalnizKoli(urun)) return null;
+
+    var koli = koliIci(urun);
+    var n = adediOturt(urun, adet);
+
+    if (0 === n % koli) return null;
+
+    return {
+      koli: koli,
+      adet: n,
+      metin: 'Bu ürün koli içi ' + koli + ' adedindedir. Siz ' + n + ' adet sepete eklemeye çalışıyorsunuz. Onaylıyor musunuz?'
+    };
   }
 
   /* ------------------------------------------------------------------ *
@@ -185,7 +246,9 @@
     if (!urun || !Number(urun.id)) return sepet;
 
     var k = satirBul(sepet, urun.id);
-    var istenen = adediOturt(urun, undefined === adet || null === adet ? koliIci(urun) : adet);
+    /* Varsayılan bir SATIŞ BİRİMİ: işaretsiz üründe bir adet, "Sadece koli"
+       üründe bir koli (Faz 22-C). */
+    var istenen = adediOturt(urun, undefined === adet || null === adet ? birimAdet(urun) : adet);
 
     if (k === -1) {
       sepet.satirlar.push({
@@ -195,6 +258,9 @@
         barcode: String(urun.barcode || ''),
         price: Number(urun.price) || 0,
         koli_ici_adet: koliIci(urun),
+        /* Satır kuralı TAŞIR: sepetteki −/+ ve adet yazımı ürünü yeniden
+           aramadan doğru birimle çalışsın (Faz 22-C). */
+        yalniz_koli: yalnizKoli(urun),
         /*
          * ÜRÜNÜN KDV ORANI — yalnızca TAŞINIR, hesaba girmez. Katalog kaydı
          * sunucudan gelir (wc/v3 ürün eki → `byom.kdvOrani`); alan yoksa 0,
@@ -230,7 +296,7 @@
     if (k === -1) return sepet;
 
     var satir = sepet.satirlar[k];
-    var birim = koliIci(satir);
+    var birim = birimAdet(satir);
 
     if (yon < 0 && adediOturt(satir, satir.adet) <= birim) {
       sepet.satirlar.splice(k, 1);
@@ -850,10 +916,13 @@
     /* koli */
     koliIci: koliIci,
     koliliMi: koliliMi,
+    yalnizKoli: yalnizKoli,
+    birimAdet: birimAdet,
     adediOturt: adediOturt,
     adimla: adimla,
     koliSayisi: koliSayisi,
     adetEtiketi: adetEtiketi,
+    koliUyarisi: koliUyarisi,
     kdvOrani: kdvOrani,
     /* sepet */
     sepetKur: sepetKur,

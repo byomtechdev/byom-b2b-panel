@@ -4342,7 +4342,7 @@
                class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                       focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
-        <p class="mt-1 text-sm text-slate-500">Bir kolide kaç adet ürün var? Bayi siparişleri bu katlarda toplanır. Varsayılan: 1</p>
+        <p class="mt-1 text-sm text-slate-500">Bir kolide kaç adet ürün var? <b>Bilgi amaçlıdır</b>: müşteri ve pazarlamacı istediği adedi girer; koli katı olmayan adette onay sorulur. Varsayılan: 1</p>
       </div>
 
       <div>
@@ -4499,7 +4499,7 @@
                class="w-full h-14 px-4 rounded-xl text-xl font-bold text-right bg-slate-50 dark:bg-slate-900
                       border-2 border-slate-300 dark:border-slate-600 focus:border-marka-600
                       focus:ring-4 focus:ring-marka-600/20 outline-none transition" />
-        <p class="mt-1 text-sm text-slate-500">Bir kolide kaç adet ürün var? Varsayılan: 1</p>
+        <p class="mt-1 text-sm text-slate-500">Bir kolide kaç adet ürün var? <b>Bilgi amaçlıdır</b>: müşteri ve pazarlamacı istediği adedi girer; koli katı olmayan adette onay sorulur. Varsayılan: 1</p>
 
         <!-- "Sadece koli" kuralı: eklenti sepeti bu bayrağa göre kilitler
              (b2b-core › B2B_Box_Sales). Koli içi adet en az 2 olmalıdır. -->
@@ -4508,7 +4508,7 @@
           <span class="text-base leading-relaxed">
             <b>Sadece koli olarak satılır</b>
             <span class="block text-sm text-slate-500 dark:text-slate-400">
-              Sitede adet seçici koli katlarında ilerler; ara adetler otomatik koliye tamamlanır.
+              Yalnızca bu kutu işaretliyse koli ZORUNLU olur: sitede ve sahada adet koli katlarında ilerler, ara adetler koliye tamamlanır. İşaretsiz ürünlerde koli yalnızca bilgidir.
             </span>
           </span>
         </label>
@@ -4614,8 +4614,12 @@
 
 <!-- ==================================================================
      ONAY PENCERESİ (MODAL)
+     EN ÜSTTE (z-[90], Faz 22-C): onay her zaman açık perdenin ÜSTÜNDE
+     görünmeli. Eskiden z-40 idi; saha perdeleri (ürün z-[68], ziyaret
+     z-[69], Siparişi Tamamla z-[71]) onu ÖRTÜYOR, perdeden sorulan onay
+     görünmeden bekliyordu. arayuz-sistemi testi sırayı kilitler.
      ================================================================== -->
-<div id="modalKatman" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="modalKatman" class="hidden fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
     <div class="p-7">
       <div id="modalBaslik" class="text-2xl font-black mb-3">Emin misiniz?</div>
@@ -5025,7 +5029,7 @@
 <!-- ==================================================================
      METİN SORMA PENCERESİ (ör. red sebebi)
      ================================================================== -->
-<div id="metinModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm grid place-items-center p-6">
+<div id="metinModalKatman" data-kabuk="admin" class="hidden fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm grid place-items-center p-6">
   <div class="w-full max-w-xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl
               border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
     <div class="p-7">

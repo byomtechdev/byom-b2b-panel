@@ -481,7 +481,8 @@
     if (!kutu || !urun || !eksi) return;
 
     var deger = Number(kutu.value) || 0;
-    eksi.disabled = deger <= M().koliIci(urun);
+    /* Alt sınır = satış birimi: işaretsiz üründe 1 adet, "Sadece koli"de 1 koli (Faz 22-C). */
+    eksi.disabled = deger <= M().birimAdet(urun);
   }
 
   function tumEksileriTazele() {
@@ -498,11 +499,18 @@
    */
   function koliEtiketi(u) {
     var koli = M().koliIci(u);
-    var yalniz = !!(u && u.yalniz_koli);
+    var yalniz = M().yalnizKoli(u) || !!(u && true === u.yalniz_koli);
     var vurgu = 'px-2 py-1 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-extrabold';
 
     if (koli > 1) {
-      return '<span class="' + vurgu + '">' + (yalniz ? 'Sadece koli: ' : 'Koli: ') + koli + ' adet</span>';
+      /* KOLİ = BİLGİ (Faz 22-C): rozetin üzerine gelince açıklama penceresi
+         (title) — ürün sahibinin "kartta bilgi olarak görünsün" isteği. */
+      var bilgi = yalniz
+        ? 'Bu ürün yalnızca koli katlarında satılır: 1 koli = ' + koli + ' adet.'
+        : 'Bilgi: 1 koli = ' + koli + ' adet. İstediğiniz adedi girebilirsiniz; koli katı değilse onay sorulur.';
+
+      return '<span class="pv-koli-bilgi ' + vurgu + '" title="' + kacis(bilgi) + '" data-koli="' + koli + '">' +
+        (yalniz ? 'Sadece koli: ' : 'Koli: ') + koli + ' adet</span>';
     }
 
     if (yalniz) return '<span class="' + vurgu + '">Sadece koli</span>';
@@ -538,14 +546,15 @@
               fiyatHtml(u, 'text-lg font-black', true) +
             '</div>' +
             /* HIZLI ADET (Faz 10 — Görsel 4): kartta doğrudan sayı yazılır;
-               −/+ koli katlarında ilerler, Enter ya da "Sepete Ekle" yazılan
-               adedi sepete koyar (motor koli katına YUKARI tamamlar). */
+               Enter ya da "Sepete Ekle" yazılan adedi sepete koyar.
+               Faz 22-C: adet SERBESTTİR, −/+ birer ilerler; koli katı olmayan
+               adette onay sorulur. "Sadece koli" üründe eski kural (koli katı). */
             '<div class="pv-kart__alt">' +
               '<div class="pv-adet">' +
                 '<button type="button" class="hizli-eksi dg dg-ikincil dg-b dg-kare" data-id="' + u.id + '" aria-label="Azalt" disabled>−</button>' +
-                '<input type="number" min="1" step="' + M().koliIci(u) + '" value="' + M().koliIci(u) + '" data-id="' + u.id + '" ' +
+                '<input type="number" min="' + M().birimAdet(u) + '" step="' + M().birimAdet(u) + '" value="' + M().birimAdet(u) + '" data-id="' + u.id + '" ' +
                        'class="hizli-adet-input pv-adet__kutu" ' +
-                       'aria-label="Adet" title="Adet yazın; koli katına tamamlanır" />' +
+                       'aria-label="Adet" title="' + (M().yalnizKoli(u) ? 'Adet yazın; koli katına tamamlanır' : 'İstediğiniz adedi yazın') + '" />' +
                 '<button type="button" class="hizli-arti dg dg-ikincil dg-b dg-kare" data-id="' + u.id + '" aria-label="Artır">+</button>' +
               '</div>' +
               '<button type="button" class="urun-ekle dg dg-birincil dg-b dg-tam" ' +
@@ -595,8 +604,9 @@
               '<td class="p-3 text-sm font-bold">' + (koli > 1 ? koli : '—') + '</td>' +
               '<td class="p-3 text-right whitespace-nowrap">' + fiyatHtml(u, 'font-black') + '</td>' +
               '<td class="p-3">' +
-                '<input type="number" min="1" step="' + koli + '" class="matris-adet w-28 px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-center" ' +
-                       'data-id="' + u.id + '" data-sira="' + i + '" placeholder="' + koli + '" />' +
+                /* Faz 22-C: adet serbest (step = satış birimi: 1 adet ya da "Sadece koli"de 1 koli). */
+                '<input type="number" min="' + M().birimAdet(u) + '" step="' + M().birimAdet(u) + '" class="matris-adet w-28 px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-center" ' +
+                       'data-id="' + u.id + '" data-sira="' + i + '" placeholder="' + M().birimAdet(u) + '" />' +
               '</td>' +
             '</tr>';
           }).join('') +
@@ -681,7 +691,8 @@
             : '') +
           '<div class="mt-5 flex items-center gap-2">' +
             '<button type="button" id="modalEksi" class="dg dg-ikincil dg-b dg-kare" aria-label="Azalt">−</button>' +
-            '<input id="modalAdet" type="number" min="1" step="' + koli + '" value="' + koli + '" class="w-24 px-3 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-black text-center text-lg" />' +
+            /* Faz 22-C: adet serbest — başlangıç bir satış birimi (1 adet; "Sadece koli"de 1 koli). */
+            '<input id="modalAdet" type="number" min="' + M().birimAdet(u) + '" step="' + M().birimAdet(u) + '" value="' + M().birimAdet(u) + '" class="w-24 px-3 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 font-black text-center text-lg" />' +
             '<button type="button" id="modalArti" class="dg dg-ikincil dg-b dg-kare" aria-label="Artır">+</button>' +
           '</div>' +
           '<div id="modalEtiket" class="mt-2 text-sm font-bold text-slate-600 dark:text-slate-300"></div>' +
@@ -715,9 +726,9 @@
 
     el('modalAdet').addEventListener('change', etiketiTazele);
 
-    el('modalEkle').addEventListener('click', function () {
-      sepeteEkle(u.id, el('modalAdet').value);
-      urunuKapat();
+    el('modalEkle').addEventListener('click', async function () {
+      /* Koli onayı reddedilirse pencere AÇIK kalır: adet düzeltilebilsin (Faz 22-C). */
+      if (await sepeteEkle(u.id, el('modalAdet').value)) urunuKapat();
     });
 
     etiketiTazele();
@@ -760,10 +771,29 @@
     return isFinite(n) && n > 0 ? n : undefined;
   }
 
-  function sepeteEkle(id, adet) {
+  /**
+   * Ürünü sepete ekler. Sepete eklendiyse true, eklenmediyse (ürün yok ya da
+   * koli onayı reddedildi) false döner — çağıran adet kutusunu ona göre
+   * temizler / pencereyi ona göre kapatır.
+   *
+   * KOLİ ONAYI (Faz 22-C): adet serbesttir; koli katı olmayan adette ürün
+   * sahibinin cümlesiyle sorulur ("Bu ürün koli içi 24 adedindedir. Siz 6
+   * adet sepete eklemeye çalışıyorsunuz. Onaylıyor musunuz?"). Metin motorda
+   * tek yerdedir (koliUyarisi). Onay penceresi yoksa (eski kabuk) eklenir —
+   * adet zaten serbesttir, onay bir uyarıdır, kapı değil.
+   */
+  async function sepeteEkle(id, adet) {
     var u = urunBul(id);
 
-    if (!u) return;
+    if (!u) return false;
+
+    var uyari = M().koliUyarisi ? M().koliUyarisi(u, undefined === adet ? M().birimAdet(u) : adet) : null;
+
+    if (uyari && 'function' === typeof window.onayla) {
+      var tamam = await window.onayla('Koli içi adet', uyari.metin, 'Evet, ' + uyari.adet + ' adet ekle');
+
+      if (!tamam) return false;
+    }
 
     var oncekiSatir = M().satirBul(sepet(), u.id);
     var onceki = -1 === oncekiSatir ? 0 : Number(sepet().satirlar[oncekiSatir].adet) || 0;
@@ -773,14 +803,16 @@
     var yeniSatir = M().satirBul(sepet(), u.id);
     var eklenen = (-1 === yeniSatir ? 0 : Number(sepet().satirlar[yeniSatir].adet) || 0) - onceki;
 
-    /* Kutu bir sonraki ürün için birime döner. */
+    /* Kutu bir sonraki ürün için satış birimine döner (1 adet; "Sadece koli"de 1 koli). */
     var kutu = hizliKutu(u.id);
-    if (kutu) kutu.value = M().koliIci(u);
+    if (kutu) kutu.value = M().birimAdet(u);
     eksiDurumunuTazele(u.id);
 
     sepetiCiz();
     satiriGoster(u.id);
     bildir(kacis(u.name) + ' sepete eklendi: ' + kacis(M().adetEtiketi(u, eklenen)) + '.', 'ok');
+
+    return true;
   }
 
   /**
@@ -975,7 +1007,8 @@
 
         if (ekle) { sepeteEkle(ekle.dataset.id, hizliAdet(ekle.dataset.id)); return; }
 
-        /* −/+ : karttaki adet kutusunu koli katlarında ilerletir (sepete eklemez). */
+        /* −/+ : karttaki adet kutusunu bir satış birimi ilerletir — işaretsiz
+           üründe 1 adet, "Sadece koli"de 1 koli (Faz 22-C). Sepete eklemez. */
         var adim = olay.target.closest('.hizli-arti, .hizli-eksi');
 
         if (adim) {
@@ -1023,13 +1056,17 @@
 
         olay.preventDefault();
 
-        sepeteEkle(alan.dataset.id, alan.value || undefined);
+        /* Koli onayı reddedilirse adet kutusu ve odak YERİNDE kalır: plasiyer
+           adedi düzeltip tekrar Enter'a basabilsin (Faz 22-C). */
+        sepeteEkle(alan.dataset.id, alan.value || undefined).then(function (eklendi) {
+          if (!eklendi) { alan.focus(); return; }
 
-        alan.value = '';
+          alan.value = '';
 
-        var arama2 = el('satisArama');
+          var arama2 = el('satisArama');
 
-        if (arama2) { arama2.select(); arama2.focus(); }
+          if (arama2) { arama2.select(); arama2.focus(); }
+        });
       });
     }
 

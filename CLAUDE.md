@@ -366,8 +366,10 @@ Eklenti tarafı (`byom` REST eki, iskonto tavanı): **`../CLAUDE.md` §10**.
   görseller yeniden inerdi.
 - **ŞEMA SÜRÜMÜ UYUŞMAZSA dosya yok sayılır.** Yarı okunmuş bir kayıtla yanlış
   fiyat göstermek, boş başlayıp eşitlemekten kötüdür.
-- **KOLİ MATEMATİĞİ YUKARI TAMAMLAR:** 25 adet isteyen bayiye 24 göndermek
-  eksik sevkiyattır. `koli_ici_adet ≤ 1` ise tekil adet.
+- **KOLİ = BİLGİ (Faz 22-C, eski söz değişti → §4.30):** adet serbesttir; koli katı
+  olmayan adette onay sorulur. **YUKARI TAMAMLAMA yalnızca "Sadece koli" işaretli
+  üründe** (`yalniz_koli`): 25 adet isteyene 24 göndermek orada eksik sevkiyattır.
+  `koli_ici_adet ≤ 1` ise tekil adet.
 - **SON SİPARİŞ KOPYALANIRKEN BUGÜNÜN FİYATI kullanılır.** Siparişteki fiyat
   geçmişe aittir; onu kopyalamak zam görmüş ürünü zararına satmaktır.
   Katalogda bulunamayan kalem ATLANIR ve kullanıcıya **söylenir**.
@@ -2123,6 +2125,26 @@ Panel **2.13.0** · eklenti **2.29.0** → `../BYOM-REGISTRY.md §5.58`.
 
 ---
 
+## 4.30 Faz 22-C — Koli içi adet = BİLGİ (serbest adet + onay)
+
+Panel **2.13.0** · eklenti **2.29.0** · tema v1 **2.14.0** · v2 **2.0.4** → `../BYOM-REGISTRY.md §5.59`.
+
+| Ne | Yer |
+|---|---|
+| `yalnizKoli` · `birimAdet` · serbest `adediOturt` / `adimla` · "25 Adet (1 Koli + 1 Adet)" · **`koliUyarisi`** (ürün sahibinin cümlesi tek yerde) · satır `yalniz_koli` taşır | `plasiyer-siparis-motor.js` |
+| Kart / matris / ürün penceresi satış birimiyle; `sepeteEkle` async + `onayla`; red → eklenmez, adet yerinde; rozet `title` | `plasiyer-vitrin.js` |
+| `KOLI_META_TUM_ANAHTARLAR` eklentinin 13 anahtarıyla birebir ("1 yaptık, 24'te takılı") | `renderer.js` |
+| `#modalKatman` / `#metinModalKatman` **z-[90]** (perdelerin üstünde) | `index.html` |
+
+### Bozmaman gereken sözler (Faz 22-C)
+- İşaretsiz kolili üründe adet ZORLANMAZ; koli katı değilse onay sorulur. Zorunluluk yalnızca "Sadece koli" bayrağıyla gelir.
+- Onay metni motorda tek yerdedir (`koliUyarisi`); vitrin kendi cümlesini yazmaz.
+- `sepeteEkle` eklendiyse `true` döner; çağıran kutuyu / pencereyi buna göre temizler.
+- Koli anahtar listesi eklentiyle birebir (`koli-anahtar-paritesi` testi).
+- Onay penceresi her perdenin üstünde kalır; yeni perde eklerken z-index'i 90'ın altında tut (test kilitler).
+
+---
+
 ## 5. Hızlı test komutları
 
 İki test kökü var:
@@ -2130,15 +2152,15 @@ Panel **2.13.0** · eklenti **2.29.0** → `../BYOM-REGISTRY.md §5.58`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.184 test**: panel 441 + kök 721 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.208 test**: panel 445 + kök 741 + hub 22).
 
 ```bash
-# Bu submodule'un kendi birim testleri (441 test) — Electron GEREKMEZ
+# Bu submodule'un kendi birim testleri (445 test) — Electron GEREKMEZ
 node --test test/arayuz-dugme.test.js       # 12 — Faz 20: meşgul durumu (aria-busy, ikinci basış, en az süre), etiket() başlık düzeni
 npm test
 node --test test/telemetri.test.js          # 31 — sessiz hata avcisi, 3 sn sure asimi
 node --test test/katalog-depo.test.js       # 25 — cevrimdisi katalog: arama, indeks, disk, esitleme
-node --test test/plasiyer-siparis.test.js   # 54 — koli matematigi, sepet, son siparis, UUID, tavan,
+node --test test/plasiyer-siparis.test.js   # 68 — Faz 22-C: koli = bilgi (serbest adet, koliUyarisi, "Sadece koli" eski kural) · koli matematigi, sepet, son siparis, UUID, tavan,
                                             #      kendiSiparisleri ("Kendi Siparislerim" suzgeci),
                                             #      Faz 14: kalemKdv + toplamlar KDV kipi (100/%10 → 90,91; iskonto NET matrahtan)
 node --test test/plasiyer-sync.test.js      # 30 — outbox: sira, kimlik koprusu, hata toleransi,
@@ -2215,7 +2237,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.184 test)
+# Bitirirken: üç katmanın tamamı (1.208 test)
 node scripts/check-all.js
 ```
 
@@ -2296,7 +2318,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 204 php / 151 js / 1.184 test
+cd .. && node scripts/check-all.js     # 0 hata / 205 php / 154 js / 1.208 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

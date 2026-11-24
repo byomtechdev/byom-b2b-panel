@@ -2246,14 +2246,29 @@ const KOLI_META_AYNA     = 'b2b_koli_adeti';
 
 /* Yazılırken kullanılan TAM liste. Sıra önemsizdir; hepsi aynı değeri alır.
    Doğrudan wc/v3'e yazıldığında (b2b-core devrede değilken) temanın taradığı
-   adların da dolması için tema adları da buradadır. */
+   adların da dolması için tema adları da buradadır.
+
+   EKLENTİNİN LİSTESİYLE BİREBİR (Faz 22-C): b2b-core okurken 13 anahtarı
+   tarar ve 1'den BÜYÜK İLK değeri alır (b2b_box_qty_meta_keys). Bu liste
+   eskiden 6 anahtardı; eklentinin kendi uçlarının yazdığı `_byom_box_qty`
+   gibi aynalar wc/v3 kaydında güncellenmiyor, "koliyi 1 yaptık, hep 24'te
+   takılı" hatası doğuyordu. Eklenti 2.29.0 wc/v3 kaydını kendisi de eşitler
+   (B2B_REST_Hooks::sync_box_quantity); bu liste sitede eski eklenti varken
+   de doğru yazar. `koli-anahtar-paritesi` testi iki listeyi karşılaştırır. */
 const KOLI_META_TUM_ANAHTARLAR = [
   KOLI_META_ANAHTARI,   // _b2b_koli_adeti — kanonik
+  '_byom_box_qty',      // "sadece koli" motorunun kanonik ikizi (eklenti uçları yazar)
   '_byom_case_qty',     // tema listesinde ilk sırada
   '_b2b_koli_adet',     // temanın tarihsel adı (sondaki "i" yok)
   KOLI_META_YEDEK,      // _box_quantity
   KOLI_META_AYNA,       // b2b_koli_adeti (alt çizgisiz ayna)
-  'box_quantity'        // alt çizgisiz İngilizce ayna
+  'box_quantity',       // alt çizgisiz İngilizce ayna
+  '_koli_adet',
+  'koli_adet',
+  '_koli_ici_adet',
+  '_case_qty',
+  '_b2b_case_qty',
+  '_paket_adet'
 ];
 
 /** Ürün yanıtından koli içi adedi okur. Bulunamazsa 1 döner. */
