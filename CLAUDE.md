@@ -2205,6 +2205,15 @@ Panel **2.13.0** · eklenti **2.29.0** → `../BYOM-REGISTRY.md §5.64`.
 - Hata metni `sunucuMesaji(cevap)`: önce `cevap.veri.message` (sunucunun kendi cümlesi), yoksa `cevap.hata`. `httpHatasiTurkce` 500'ü "hosting firmanıza danışın" diye sarar — yarım kalan silmede yanlış yöne gönderir.
 - Test: `../scripts/tests/plasiyer-sil.dom.test.js` (10) — gerçek `index.html` + gerçek modül; `onayla` taklidi 5. argümanı da kaydeder.
 
+## 4.36 Kuyruk yarışı — eşitleme sürerken yazılan kayıt kaybolmaz
+
+Panel **2.13.0** → `../BYOM-REGISTRY.md §5.65`. Faz 3'ten beri var olan kayıp; yayın öncesi sipariş güvenliği taramasında bulundu.
+
+- **`sync:esitle` ağ beklerken kuyruğa yazılabilir** (`siparis:kuyruga`, `ziyaret:kuyruga`, `musteri:kuyruga`, `*:kuyruktan-sil`, onarım kanalları). Tur sonunda liste diskten TAZE okunur ve **`kuyrukBirlestir(taze, onceki, kalan, benim)`** ile birleşir: turun işlediği kayda turun sonucu, tur sırasında gelene diskteki hâli, tur sırasında silinene hiçbir şey. Eski kopyayı geri yazan kod bir daha yazılmaz.
+- **Ağ bekleyen (async) yeni bir IPC işleyicisi kuyruğa yazacaksa** aynı kural: `await`'ten SONRA `ayarlariOku()` ile taze oku, yalnızca kendi kaydını değiştir, hemen yaz (araya `await` koyma). `musteri:esitle-tek` örnek.
+- Eşleştirme kimliği: sipariş `kayit.yerelKimlik`, not `yerelKimlik`, müşteri `id`. Yeni bir kuyruk türü bu üçünden birini taşımalı; taşımayan kayıtta birleştirme `null` döner ve eski yol çalışır.
+- Test taklidi gerçeğe sadık olmalı: `ayarlariOku` her çağrıda **yeni kopya** döndürmeli (`test/kuyruk-yaris.test.js → dosyaAyarlari`). Aynı nesneyi döndüren taklit (`sahteAyarlar`) bu hata sınıfını göremez.
+
 ---
 
 ## 5. Hızlı test komutları
@@ -2214,7 +2223,7 @@ Panel **2.13.0** · eklenti **2.29.0** → `../BYOM-REGISTRY.md §5.64`.
 - **`test/`** (bu submodule) — panelin kendi birim testleri. `npm test` ile koşar.
 - **`../scripts/tests/`** (kök depo) — üç katmanın entegrasyon/DOM/PHP testleri.
 
-İkisini birden `../scripts/check-all.js` koşar (**1.273 test**: panel 455 + kök 796 + hub 22).
+İkisini birden `../scripts/check-all.js` koşar (**1.281 test**: panel 463 + kök 796 + hub 22).
 
 ```bash
 # Bu submodule'un kendi birim testleri (455 test) — Electron GEREKMEZ
@@ -2299,7 +2308,7 @@ node --test --test-name-pattern="outbox" scripts/tests/vitrin-motor.test.js
 # Sözdizimi (hızlı)
 node --check "B2B Yönetim Paneli Klasör/renderer.js"
 
-# Bitirirken: üç katmanın tamamı (1.273 test)
+# Bitirirken: üç katmanın tamamı (1.281 test)
 node scripts/check-all.js
 ```
 
@@ -2380,7 +2389,7 @@ if (typeof window !== 'undefined') window.X = X;
 ## 8. Bitirme kontrol listesi
 
 ```bash
-cd .. && node scripts/check-all.js     # 0 hata / 206 php / 162 js / 1.273 test
+cd .. && node scripts/check-all.js     # 0 hata / 206 php / 163 js / 1.281 test
 ```
 1. `check-all.js` sıfır hata mı? PHP atlandıysa **söyle**, gizleme.
 2. Yeni bölüm/dosya eklediysen bu `CLAUDE.md`'deki satır haritasını tazele.

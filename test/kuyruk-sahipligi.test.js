@@ -59,6 +59,7 @@ function handler(kanal, baglam) {
   const tam = Object.assign({
     kuyrukSahibi: fonksiyonuCikar('kuyrukSahibi'),
     sahibininMi: fonksiyonuCikar('sahibininMi'),
+    kuyrukBirlestir: fonksiyonuCikar('kuyrukBirlestir'),
     kuyrukSatiriBul: fonksiyonuCikar('kuyrukSatiriBul'),
     geciciMusteriKimligi: fonksiyonuCikar('geciciMusteriKimligi'),
     syncMotor: syncMotor,

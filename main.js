@@ -1535,12 +1535,24 @@ ipcMain.handle('musteri:esitle-tek', async function (olay, veri) {
     return { ok: false, durum: cevap ? cevap.durum : 0, hata: (cevap && cevap.hata) || 'Sunucu yanıt vermedi.' };
   }
 
-  m.senkron = true;
-  m.gercekId = yeniId;
-  m.durum = syncMotor.GONDERILDI;
-  m.hata = '';
+  /*
+   * KUYRUK YARIŞI: istek sürerken liste değişmiş olabilir (eşitleme turu, yeni
+   * müşteri, kuyruktan silme). İstek ÖNCESİ kopyayı geri yazmak onları silerdi —
+   * diskten TAZE okunur, yalnızca bu kayıt işaretlenir. Kayıt bu arada silindiyse
+   * (ya da eşitleme onu işleyip düşürdüyse) hiçbir şey yazılmaz.
+   */
+  const taze = ayarlariOku();
+  const tazeListe = Array.isArray(taze.plasiyerYerelMusteriler) ? taze.plasiyerYerelMusteriler : [];
+  const tm = tazeListe.find(function (x) { return x && String(x.id) === id; });
 
-  ayarlariYaz({ plasiyerYerelMusteriler: liste });
+  if (tm) {
+    tm.senkron = true;
+    tm.gercekId = yeniId;
+    tm.durum = syncMotor.GONDERILDI;
+    tm.hata = '';
+
+    ayarlariYaz({ plasiyerYerelMusteriler: tazeListe });
+  }
 
   return {
     ok: true,
@@ -1777,6 +1789,77 @@ function sahibininMi(kayit, plasiyerId) {
 }
 
 /**
+ * Turun sonucunu DİSKTEKİ GÜNCEL kuyruğa işler — kuyruk yarışı düzeltmesi.
+ *
+ * `sync:esitle` kuyruğu turun BAŞINDA okur ve ağ isteklerini bekler (her biri
+ * 45 sn'ye kadar). Eskiden turun SONUNDA o eski kopyayı geri yazıyordu: tur
+ * sürerken `siparis:kuyruga` / `ziyaret:kuyruga` / `musteri:kuyruga` ile yazılan
+ * kayıt dosyadan SİLİNİYOR (hiç gönderilmiyordu), tur sürerken kuyruktan silinen
+ * kayıt da geri geliyordu. Saha siparişlerinin hepsi önce kuyruğa yazılır ve
+ * eşitleme 60 sn'de bir kendiliğinden çalışır — pencere sahada gerçekten açıktı.
+ *
+ * Artık tur bittiğinde liste diskten TAZE okunur ve:
+ *  - turun işlediği kayıt (tur başında bu pazarlamacının olan) → turun SONUCU
+ *    yazılır (durum, deneme sayısı, köprülenen kimlik); gönderildiyse düşer;
+ *  - tur başında olmayan kayıt (tur sırasında eklenen) ya da başkasının kaydı
+ *    → diskteki hâli AYNEN kalır;
+ *  - tur sırasında diskten silinmiş kayıt → yazılmaz (diriltilmez).
+ * Sıra diskteki sıradır. Kimlik: sipariş `kayit.yerelKimlik`, not `yerelKimlik`,
+ * müşteri `id` — üçü de kuyruğa yazılırken her zaman doldurulur.
+ *
+ * @param {Array}    taze   Tur bittiğinde diskten okunan liste.
+ * @param {Array}    onceki Tur başında okunan liste (tamamı).
+ * @param {Array}    kalan  Turun bu pazarlamacı için bıraktığı kayıtlar.
+ * @param {Function} benim  Kayıt bu turun işi mi (sahibininMi).
+ * @returns {Array|null} Yeni liste; turun işlediği bir kayıt kimliksizse null
+ *   (eşleştirilemez → çağıran ESKİ yola döner, eski kayıt eski davranışla sürer).
+ */
+function kuyrukBirlestir(taze, onceki, kalan, benim) {
+  function anahtar(k) {
+    if (!k || 'object' !== typeof k) return '';
+    if (k.kayit && 'object' === typeof k.kayit && k.kayit.yerelKimlik) return 's:' + String(k.kayit.yerelKimlik);
+    if (k.yerelKimlik) return 'y:' + String(k.yerelKimlik);
+    if (undefined !== k.id && null !== k.id && '' !== k.id) return 'm:' + String(k.id);
+    return '';
+  }
+
+  const turunIsi = new Set();
+  const islenen = new Map();
+  const oncekiler = Array.isArray(onceki) ? onceki : [];
+
+  for (let i = 0; i < oncekiler.length; i++) {
+    if (!benim(oncekiler[i])) continue;
+
+    const a = anahtar(oncekiler[i]);
+
+    if (!a) return null;
+
+    turunIsi.add(a);
+  }
+
+  (Array.isArray(kalan) ? kalan : []).forEach(function (k) {
+    const a = anahtar(k);
+
+    if (a) islenen.set(a, k);
+  });
+
+  const sonuc = [];
+
+  (Array.isArray(taze) ? taze : []).forEach(function (k) {
+    const a = anahtar(k);
+
+    if (!a || !turunIsi.has(a)) {
+      sonuc.push(k);
+    } else if (islenen.has(a)) {
+      sonuc.push(islenen.get(a));
+    }
+    /* aksi hâlde: turun gönderip düşürdüğü kayıt — yazılmaz */
+  });
+
+  return sonuc;
+}
+
+/**
  * Kuyruğu boşaltır.
  *
  * Arayüzü BEKLETMEZ: çağıran `await` etse bile tek turluk iştir ve kuyruk
@@ -1855,18 +1938,34 @@ ipcMain.handle('sync:esitle', async function () {
      * ölüyor ve sunucudaki kullanıcı sonradan silinirse siparişi hangi
      * müşteriye bağlayacağımızı söyleyecek hiçbir veri kalmıyordu.
      */
-    /* Başka pazarlamacının kayıtları DOKUNULMADAN, sıraları korunarak yazılır. */
-    const kalanMusteri = syncMotor.esitlenenMusterileriTemizle(musteriler, { siparisler: siparisler, notlar: notlar });
+    /*
+     * Başka pazarlamacının kayıtları DOKUNULMADAN, sıraları korunarak yazılır.
+     *
+     * KUYRUK YARIŞI: tur sürerken kuyruk değişmiş olabilir (yeni sipariş / not /
+     * müşteri, kullanıcı silmesi). Eski kopyayı geri yazmak onları silerdi —
+     * sonuç DİSKTEKİ GÜNCEL listeye işlenir (kuyrukBirlestir). Okuma ile yazma
+     * arasında await YOK: ana süreçte başka bir işleyici araya giremez.
+     */
     const kalanSiparis = syncMotor.gonderilenleriTemizle(siparisler);
     const kalanNot = syncMotor.gonderilenleriTemizle(notlar);
-    const birlestir = function (tum, kalan) {
+    const taze = ayarlariOku();
+    const liste = function (v) { return Array.isArray(v) ? v : []; };
+    const yeniSiparisler = kuyrukBirlestir(liste(taze.plasiyerSiparisKuyrugu), tumSiparisler, kalanSiparis, benim);
+    const yeniNotlar = kuyrukBirlestir(liste(taze.plasiyerZiyaretKuyrugu), tumNotlar, kalanNot, benim);
+    /* Müşteri temizliği BİRLEŞMİŞ kuyrukları görür: tur sırasında geçici müşteriye
+       yazılan sipariş, aynı turda eşitlenen müşterinin kaydını (gerçek kimlik)
+       tutar → sonraki tur onu bağlar. */
+    const kalanMusteri = syncMotor.esitlenenMusterileriTemizle(musteriler, { siparisler: yeniSiparisler || siparisler, notlar: yeniNotlar || notlar });
+    const yeniMusteriler = kuyrukBirlestir(liste(taze.plasiyerYerelMusteriler), tumMusteriler, kalanMusteri, benim);
+    /* Kimliksiz kayıt (eşleştirilemez) → eski yol: tur başındaki liste üzerinden. */
+    const eskiYol = function (tum, kalan) {
       return tum.filter(function (k) { return !benim(k) || kalan.indexOf(k) !== -1; });
     };
 
     ayarlariYaz({
-      plasiyerYerelMusteriler: birlestir(tumMusteriler, kalanMusteri),
-      plasiyerSiparisKuyrugu: birlestir(tumSiparisler, kalanSiparis),
-      plasiyerZiyaretKuyrugu: birlestir(tumNotlar, kalanNot)
+      plasiyerYerelMusteriler: yeniMusteriler || eskiYol(tumMusteriler, kalanMusteri),
+      plasiyerSiparisKuyrugu: yeniSiparisler || eskiYol(tumSiparisler, kalanSiparis),
+      plasiyerZiyaretKuyrugu: yeniNotlar || eskiYol(tumNotlar, kalanNot)
     });
 
     sonEsitleme = Object.assign({ zaman: new Date().toISOString() }, ozet);

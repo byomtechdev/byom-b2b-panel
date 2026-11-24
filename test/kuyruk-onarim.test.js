@@ -89,6 +89,7 @@ function handler(kanal, baglam) {
     /* Faz 22-E: kuyruk sahipliği yardımcıları (saf) + "oturum yok" varsayılanı */
     kuyrukSahibi: fonksiyonuCikar('kuyrukSahibi'),
     sahibininMi: fonksiyonuCikar('sahibininMi'),
+    kuyrukBirlestir: fonksiyonuCikar('kuyrukBirlestir'),
     plasiyerOturumu: null
   }, baglam);
 
